@@ -49,6 +49,8 @@ This list is not extensive, but the main goal is the have a stable system for yo
 No modifications to the Bitcoin node source code is required for the Gateway, as it uses the standard GBT mechanism for template fetch.
 
 The following external libraries are required:
+ - libbase58
+ - libblkmaker (with jansson support)
  - libcurl
  - libjansson
  - libmicrohttpd
@@ -80,7 +82,7 @@ Install and fully sync your Bitcoin full node. Instructions for this are beyond 
 
 Configure your node to create block templates as you desire. Be sure to reserve some space for the generation transaction, otherwise your work will not be able to fit a reward split.  See node configuration recommendations above.
 
-Install the required libraries and development packages for dependencies: cmake, pkg-config, jansson, libmicrohttpd, libsodium, and libcurl.
+Install the required libraries and development packages for dependencies: cmake, pkg-config, libbase58, libblkmaker, jansson, libmicrohttpd, libsodium, and libcurl.
 
 Compile DATUM by running:
 
