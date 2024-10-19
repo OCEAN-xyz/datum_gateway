@@ -55,6 +55,10 @@
 #include "thirdparty_segwit_addr.h"
 #include "datum_logger.h"
 
+#if EMBEDDED_THIN_BLKMAKER
+bool (*blkmk_sha256_impl)(void *, const void *, size_t) = NULL;
+#endif
+
 volatile int panic_mode = 0;
 
 void get_target_from_diff(unsigned char *result, uint64_t diff) {

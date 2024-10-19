@@ -49,12 +49,17 @@ This list is not extensive, but the main goal is the have a stable system for yo
 No modifications to the Bitcoin node source code is required for the Gateway, as it uses the standard GBT mechanism for template fetch.
 
 The following external libraries are required:
- - libbase58
- - libblkmaker (with jansson support)
+ - libbase58*
+ - libblkmaker* (with jansson support)
  - libcurl
  - libjansson
  - libmicrohttpd
  - libsodium
+
+If your OS does not have a package for libbase58 or libblkmaker, or you want to embed a static build into DATUM, simply clone or unpack their source code under the DATUM code directory:
+
+    git clone https://github.com/bitcoin/libbase58 -b v0.1.4
+    git clone https://github.com/bitcoin/libblkmaker -b v0.6.0
 
 ## Node Configuration
 Your Bitcoin node must be configured to construct blocks as you desire.  Bitcoin Knots provides many options for configuring your node's policy and is highly recommended.
