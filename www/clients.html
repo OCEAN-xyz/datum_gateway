@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DATUM Gateway Status</title>
+    <link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico" />
+    <link rel="stylesheet" type="text/css" href="./assets/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>
+          <img
+            src="/assets/icons/datum_logo.svg"
+            alt="(DATUM Logo)"
+            style="vertical-align: text-top"
+            width="28"
+            height="33"
+          />
+          DATUM <span>GATEWAY</span>
+        </h1>
+      </div>
+      <div class="menu-container">
+        <a href="/">Status</a>
+        <a href="/clients" style="background-color: darkslategrey">Clients</a>
+        <a href="/threads">Threads</a>
+        <a href="/coinbaser">Coinbaser</a>
+      </div>
+    </div>
+
+    <div class="tables-container">
+      <div class="table-wrapper">
+        <div class="table-container">
+          <h2>Stratum Client List</h2>
+          <table id="clients">
+            <tr>
+              <td><u>TID/CID</u></td>
+              <td><u>RemHost</u></td>
+              <td><u>Auth Username</u></td>
+              <td><u>Subbed</u></td>
+              <td><u>Last Accepted</u></td>
+              <td><u>VDiff</u></td>
+              <td><u>DiffA (A)</u></td>
+              <td><u>DiffR (R)</u></td>
+              <td><u>Hashrate (age)</u></td>
+              <td><u>Coinbase</u></td>
+              <td><u>UserAgent</u></td>
+              <td><u>Command</u></td>
+            </tr>
+            <tbody>
+            <tr>
+  
+            </tr>
+            </tbody>
+          </table>
+          <center>Total active hashrate estimate: <span id="total_hashrate">0.00</span> Th/s</center>
+         <script>
+			function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+			
+            function updateClientsTable() {
+                fetch('/api/v1/clients')
+                    .then(response => response.json())
+                    .then(data => {
+                    const table = document.getElementById('clients');
+                    const tbody = table.querySelector('tbody') || table;
+                    
+                    // Clear existing rows except the header
+                    while (tbody.rows.length > 1) {
+                        tbody.deleteRow(1);
+                    }
+
+                    // Add new rows
+                    data.clients.forEach(client => {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                        <td>${client.tid}/${client.cid}</td>
+                        <td>${client.rem_host}</td>
+                        <td>${client.auth_username}</td>
+                        <td>
+                            <span style="font-family: monospace">${client.sid.toString(16).padStart(8, '0')}</span>
+                            ${client.subscribe_age.toFixed(1)}s
+                        </td>
+                        <td>${client.last_accepted ? new Date(client.last_accepted * 1000).toLocaleString() : 'N/A'}</td>
+                        <td>${client.v_diff}</td>
+                        <td>${client.diff_A} (${client.shares_A})</td>
+                        <td>${client.diff_R} (${client.shares_R}) ${(client.reject_rate * 100).toFixed(2)}%</td>
+                        <td>${client.hashrate.toFixed(2)} Th/s</td>
+                        <td>${client.coinbase}</td>
+                        <td>${client.useragent}</td>
+                        <td>
+                            <button onclick="sendPostRequest('/cmd', {cmd:'kill_client',tid:${client.tid},cid:${client.cid}})">
+                            Kick
+                            </button>
+                        </td>
+                        `;
+                    });
+
+                    // Update total hashrate
+                    document.getElementById('total_hashrate').textContent = data.total_hashrate.toFixed(2);
+                    })
+                    .catch(error => console.error('Error:', error));
+                }
+
+                // Call the function to update the table
+                updateClientsTable();
+
+                // Optionally, update the table every 10 seconds
+                setInterval(updateClientsTable, 10000);
+         </script>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

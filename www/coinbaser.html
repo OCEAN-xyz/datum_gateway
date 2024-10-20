@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>DATUM Gateway Status</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<style type="text/css">
+		.table-wrapper {
+			justify-content: center;
+		}
+		
+		.table-container {
+			max-width: 800px;
+		}
+		
+		table {
+			border-collapse: collapse;
+		}
+		
+		td {
+			word-break: break-all;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
+		</div>
+		<div class="menu-container">
+			<a href="/">Status</a>
+			<a href="/clients">Clients</a>
+			<a href="/threads">Threads</a>
+			<a href="/coinbaser" style="background-color: darkslategrey;">Coinbaser</a>
+		</div>
+	</div>
+	
+	<div class="tables-container">
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Current Coinbaser</h2>
+				<table id="coinbaser">
+					<tr>
+					  <td><u>Value</u></td>
+					  <td><u>Address</u></td>
+					  </tr>
+				</table>
+				<script>
+					function updateCoinbaserTable() {
+						fetch('/api/v1/coinbaser')
+							.then(response => response.json())
+							.then(data => {
+							const table = document.getElementById('coinbaser');
+							const tbody = table.querySelector('tbody') || table;
+							
+							// Clear existing rows except the header
+							while (tbody.rows.length > 1) {
+								tbody.deleteRow(1);
+							}
+
+							// Sort data by value in descending order
+							data.sort((a, b) => b.value - a.value);
+
+							// Add new rows
+							data.forEach(item => {
+								const row = tbody.insertRow();
+								row.innerHTML = `
+								<td>${item.value.toFixed(8)} BTC</td>
+								<td>${item.address}</td>
+								`;
+							});
+						})
+						.catch(error => console.error('Error:', error));
+					}
+
+					// Call the function to update the table
+					updateCoinbaserTable();
+
+					// Optionally, update the table every 60 seconds
+					setInterval(updateCoinbaserTable, 60000);					
+				</script>
+			</div>
+		</div>
+	</div>
+</body>
+</html>

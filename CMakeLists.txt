@@ -25,9 +25,9 @@ install(TARGETS datum_gateway DESTINATION bin)
 
 set(WEB_RESOURCES
 	www/home.html
-	www/clients_top.html
-	www/coinbaser_top.html
-	www/threads_top.html
+	www/clients.html
+	www/coinbaser.html
+	www/threads.html
 	www/foot.html
 	www/assets/style.css
 	www/assets/icons/datum_logo.svg
