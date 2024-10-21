@@ -17,7 +17,6 @@ add_executable(datum_gateway
 	src/datum_stratum_dupes.c
 	src/datum_submitblock.c
 	src/datum_utils.c
-	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
 )
@@ -35,6 +34,20 @@ set(WEB_RESOURCES
 )
 
 find_package(PkgConfig REQUIRED)
+if(EXISTS ${PROJECT_SOURCE_DIR}/libbase58)
+	target_sources(datum_gateway PRIVATE libbase58/base58.c)
+	set(LIBBASE58_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/libbase58")
+else()
+	pkg_check_modules(LIBBASE58 REQUIRED libbase58)
+endif()
+if(EXISTS ${PROJECT_SOURCE_DIR}/libblkmaker)
+	target_sources(datum_gateway PRIVATE libblkmaker/base58.c)
+	set(LIBBLKMAKER_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/libblkmaker")
+	add_compile_definitions(EMBEDDED_THIN_BLKMAKER=1)
+else()
+	pkg_check_modules(LIBBLKMAKER REQUIRED libblkmaker_jansson-0.1)
+	add_compile_definitions(EMBEDDED_THIN_BLKMAKER=0)
+endif()
 pkg_check_modules(CURL REQUIRED libcurl)
 pkg_check_modules(JANSSON REQUIRED jansson)
 pkg_check_modules(MICROHTTPD REQUIRED libmicrohttpd)
@@ -67,6 +80,8 @@ add_custom_command(
 target_include_directories(datum_gateway
 	PRIVATE
 	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+	${LIBBASE58_INCLUDE_DIRS}
+	${LIBBLKMAKER_INCLUDE_DIRS}
 	${CURL_INCLUDE_DIRS}
 	${MICROHTTPD_INCLUDE_DIRS}
 	${JANSSON_INCLUDE_DIRS}
@@ -74,6 +89,8 @@ target_include_directories(datum_gateway
 )
 target_link_directories(datum_gateway
 	PUBLIC
+	${LIBBASE58_LIBRARY_DIRS}
+	${LIBBLKMAKER_LIBRARY_DIRS}
 	${CURL_LIBRARY_DIRS}
 	${MICROHTTPD_LIBRARY_DIRS}
 	${JANSSON_LIBRARY_DIRS}
@@ -83,6 +100,8 @@ target_link_libraries(datum_gateway
 	PUBLIC
 	${POW_LIBS}
 	Threads::Threads
+	${LIBBASE58_LIBRARIES} ${LIBBASE58_LDFLAGS} ${LIBBASE58_LDFLAGS_OTHER}
+	${LIBBLKMAKER_LIBRARIES} ${LIBBLKMAKER_LDFLAGS} ${LIBBLKMAKER_LDFLAGS_OTHER}
 	${CURL_LIBRARIES} ${CURL_LDFLAGS} ${CURL_LDFLAGS_OTHER}
 	${MICROHTTPD_LIBRARIES} ${MICROHTTPD_LDFLAGS} ${MICROHTTPD_LDFLAGS_OTHER}
 	${JANSSON_LIBRARIES} ${JANSSON_LDFLAGS} ${JANSSON_LDFLAGS_OTHER}
@@ -90,6 +109,8 @@ target_link_libraries(datum_gateway
 )
 target_compile_options(datum_gateway
 	PUBLIC
+	${LIBBASE58_CFLAGS} ${LIBBASE58_CFLAGS_OTHER}
+	${LIBBLKMAKER_CFLAGS} ${LIBBLKMAKER_CFLAGS_OTHER}
 	${CURL_CFLAGS} ${CURL_CFLAGS_OTHER}
 	${MICROHTTPD_CFLAGS} ${MICROHTTPD_CFLAGS_OTHER}
 	${JANSSON_CFLAGS} ${JANSSON_CFLAGS_OTHER}
