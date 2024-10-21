@@ -421,7 +421,7 @@ void *datum_gateway_template_thread(void *args) {
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {
-			DLOG_ERROR("Could not fetch new template!");
+			DLOG_ERROR("Could not fetch new template from %s!", datum_config.bitcoind_rpcurl);
 			sleep(1);
 			continue;
 		} else {
