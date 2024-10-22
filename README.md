@@ -106,7 +106,7 @@ Clone and build image, Create your config file, see the config_template.json. th
 
   ```
   docker run -d \
-  -v ./config.json:/usr/src/app/datum_gateway_config.json:ro \
+  -v ./config.json:/app/datum_gateway_config.json:ro \
   -p 8080:8080 -p 23334:23334 \
    datumgateway
   ```
@@ -130,7 +130,7 @@ OR Compose Service:
         - "23334:23334"
         - "8080:8080"
       volumes:
-        - ./YOUR_CONFIG.json:/usr/src/app/datum_gateway_config.json:ro
+        - ./YOUR_CONFIG.json:/app/datum_gateway_config.json:ro
   
   ```
 
