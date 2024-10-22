@@ -117,7 +117,6 @@ OR Compose Service:
   version: '3'
   services:
     datumgateway:
-      image: datumgateway
       build: 
         dockerfile: https://github.com/OCEAN-xyz/datum_gateway.git
       restart: unless-stopped
