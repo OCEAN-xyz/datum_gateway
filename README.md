@@ -118,7 +118,7 @@ OR Compose Service:
   services:
     datumgateway:
       build: 
-        dockerfile: https://github.com/OCEAN-xyz/datum_gateway.git
+        context: https://github.com/OCEAN-xyz/datum_gateway.git
       restart: unless-stopped
       depends_on:
         bitcoinknots:
