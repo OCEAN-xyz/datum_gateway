@@ -100,6 +100,40 @@ Ensure you have "killall" installed on your system (*psmisc* package on Debian-l
 
 If the node and Gateway are on different systems, you may need to utilize the "NOTIFY" endpoint on the Gateway's dashboard/API instead.
 
+## Docker
+
+Clone and build image, Create your config file, see the config_template.json. then:
+
+  ```
+  docker run -d \
+  -v ./config.json:/usr/src/app/datum_gateway_config.json:ro \
+  -p 8080:8080 -p 23334:23334 \
+   datumgateway
+  ```
+
+OR Compose Service:
+
+  ```
+  version: '3'
+  services:
+    datumgateway:
+      image: datumgateway
+      build: 
+        dockerfile: https://github.com/OCEAN-xyz/datum_gateway.git
+      container_name: "datumgateway"
+      hostname: "datumgateway"
+      restart: unless-stopped
+      depends_on:
+        bitcoinknots:
+          condition: service_healthy
+      ports:
+        - "23334:23334"
+        - "8080:8080"
+      volumes:
+        - ./YOUR_CONFIG.json:/usr/src/app/datum_gateway_config.json:ro
+  
+  ```
+
 ## Template/Share Requirements for Pooled Mining
 
  - Must be a valid block and conform to current Bitcoin consensus rules
