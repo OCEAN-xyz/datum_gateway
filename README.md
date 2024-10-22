@@ -120,8 +120,6 @@ OR Compose Service:
       image: datumgateway
       build: 
         dockerfile: https://github.com/OCEAN-xyz/datum_gateway.git
-      container_name: "datumgateway"
-      hostname: "datumgateway"
       restart: unless-stopped
       depends_on:
         bitcoinknots:
