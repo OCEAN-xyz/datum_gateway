@@ -33,7 +33,7 @@ With the current version of the protocol, the pool does block validation after c
 
 The protocol is not specific to a pooled reward system, as the Gateway coordinates the appropriate generation transaction with the pool.  However, in the spirit of maximum decentralization, the pool should implement rewarding miners directly from generated payouts, such as with OCEAN's TIDES reward system.
 
-![DATUM v0 2-beta recommended setup - network diagram](https://github.com/user-attachments/assets/b2a4aa73-b46a-4ce7-814a-451296af5fc4)
+![DATUM v0 2-beta recommended setup - network diagram](https://github.com/user-attachments/assets/69876d4b-f44c-4d06-adf8-30c9f4b68008)
 
 ## Requirements
 
