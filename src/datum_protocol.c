@@ -63,6 +63,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <netinet/tcp.h>
+#include <netinet/in.h>
 #include <inttypes.h>
 
 #include "datum_utils.h"
