@@ -390,18 +390,18 @@ void datum_gateway_help(void) {
 	printf("    -?, --help ............................ Print this help\n");
 	printf("    --version ............................. Print this software's name and version\n");
 	puts("");
-	printf("Configuration file options:\n\n   {\n");
+	printf("Configuration file options:\n\n{\n");
 	for (i=0;i<NUM_CONFIG_ITEMS;i++) {
 		if (strcmp(datum_config_options[i].category, lastcat)) {
-			if (i) { printf("     },\n"); }
-			printf("     \"%s\":{\n", datum_config_options[i].category);
+			if (i) { printf("    },\n"); }
+			printf("    \"%s\": {\n", datum_config_options[i].category);
 			strcpy(lastcat, datum_config_options[i].category);
 		}
 		p = 30 - strlen(datum_config_options[i].name);
 		if (p < 0) p = 0;
 		if (p > 62) p = 62;
 		paddots[p] = 0;
-		printf("         \"%s\": %s %s (%s", datum_config_options[i].name, paddots, datum_config_options[i].description, (datum_config_options[i].var_type<DATUM_CONF_TYPES)?datum_conf_var_type_text[datum_config_options[i].var_type]:"UNKNOWN");
+		printf("        \"%s\": %s %s (%s", datum_config_options[i].name, paddots, datum_config_options[i].description, (datum_config_options[i].var_type<DATUM_CONF_TYPES)?datum_conf_var_type_text[datum_config_options[i].var_type]:"UNKNOWN");
 		paddots[p] = '.';
 		if (datum_config_options[i].required) {
 			printf(", REQUIRED)\n");
@@ -429,5 +429,5 @@ void datum_gateway_help(void) {
 			}
 		}
 	}
-	printf("     }\n   }\n\n");
+	printf("    }\n}\n\n");
 }
