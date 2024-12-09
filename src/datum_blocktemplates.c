@@ -423,15 +423,19 @@ void *datum_gateway_template_thread(void *args) {
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {
+			const bool already_in_error = datum_blocktemplates_error;
 			datum_blocktemplates_error = "Could not fetch new template!";
 			DLOG_ERROR("%s", datum_blocktemplates_error);
+			if (!already_in_error) datum_stratum_v1_shutdown_all();
 			sleep(1);
 			continue;
 		} else {
 			res_val = json_object_get(gbt, "result");
 			if (!res_val) {
+				const bool already_in_error = datum_blocktemplates_error;
 				datum_blocktemplates_error = "Could not decode GBT result!";
 				DLOG_ERROR("%s", datum_blocktemplates_error);
+				if (!already_in_error) datum_stratum_v1_shutdown_all();
 			} else {
 				DLOG_DEBUG("DEBUG: calling datum_gbt_parser (new=%d)", was_notified?1:0);
 				t = datum_gbt_parser(res_val);
