@@ -236,9 +236,8 @@ void *datum_stratum_v1_socket_server(void *arg) {
 			i = global_latest_stratum_job_index;
 			pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
 			j++;
-			if (j > 500) {
-				DLOG_FATAL("Did not see an initial stratum job after ~25 seconds. Is your node properly setup? Check your config and connectivity and try again!");
-				panic_from_thread(__LINE__);
+			if (j > 500 && j % 100 == 1) {
+				DLOG_ERROR("Did not see an initial stratum job after ~%d seconds. Is your node properly setup?", j / 20);
 			}
 		}
 	}
@@ -293,6 +292,8 @@ int datum_stratum_v1_global_subscriber_count(void) {
 	int j, kk, ii;
 	T_DATUM_MINER_DATA *m;
 	
+	if (!global_stratum_app) return 0;
+	
 	kk = 0;
 	for(j=0;j<global_stratum_app->max_threads;j++) {
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
@@ -314,6 +315,8 @@ double datum_stratum_v1_est_total_th_sec(void) {
 	T_DATUM_MINER_DATA *m = NULL;
 	uint64_t tsms;
 	int j,ii;
+	
+	if (!global_stratum_app) return 0;
 	
 	tsms = current_time_millis();
 	
