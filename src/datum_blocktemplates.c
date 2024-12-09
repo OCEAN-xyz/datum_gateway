@@ -74,6 +74,8 @@ T_DATUM_TEMPLATE_DATA *template_data = NULL;
 
 int next_template_index = 0;
 
+const char *datum_blocktemplates_error = NULL;
+
 int datum_template_init(void) {
 	char *temp = NULL, *ptr = NULL;
 	int i,j;
@@ -421,18 +423,21 @@ void *datum_gateway_template_thread(void *args) {
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {
-			DLOG_ERROR("Could not fetch new template!");
+			datum_blocktemplates_error = "Could not fetch new template!";
+			DLOG_ERROR("%s", datum_blocktemplates_error);
 			sleep(1);
 			continue;
 		} else {
 			res_val = json_object_get(gbt, "result");
 			if (!res_val) {
-				DLOG_ERROR("ERROR: Could not decode GBT result!");
+				datum_blocktemplates_error = "Could not decode GBT result!";
+				DLOG_ERROR("%s", datum_blocktemplates_error);
 			} else {
 				DLOG_DEBUG("DEBUG: calling datum_gbt_parser (new=%d)", was_notified?1:0);
 				t = datum_gbt_parser(res_val);
 				
 				if (t) {
+					datum_blocktemplates_error = NULL;
 					DLOG_DEBUG("height: %d / value: %"PRIu64,t->height, t->coinbasevalue);
 					DLOG_DEBUG("--- prevhash: %s", t->previousblockhash);
 					DLOG_DEBUG("--- txn_count: %u / sigops: %u / weight: %u / size: %u", t->txn_count, t->txn_total_sigops, t->txn_total_weight, t->txn_total_size);

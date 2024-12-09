@@ -186,6 +186,8 @@ typedef struct {
 	uint32_t	local_data_size;
 } T_DATUM_TEMPLATE_DATA;
 
+extern const char *datum_blocktemplates_error;
+
 int datum_template_init(void);
 T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt);
 void *datum_gateway_template_thread(void *args);

@@ -47,6 +47,7 @@
 #include <jansson.h>
 
 #include "datum_api.h"
+#include "datum_blocktemplates.h"
 #include "datum_conf.h"
 #include "datum_utils.h"
 #include "datum_stratum.h"
@@ -86,8 +87,13 @@ void datum_api_var_DATUM_SHARES_REJECTED(char *buffer, size_t buffer_size, const
 }
 void datum_api_var_DATUM_CONNECTION_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	const char *colour = "lime";
-	const char *s;
-	if (!vardata->sjob) {
+	const char *s, *s2 = "";
+	const char * const bt_err = datum_blocktemplates_error;
+	if (bt_err) {
+		colour = "red";
+		s = "ERROR: ";
+		s2 = bt_err;
+	} else if (!vardata->sjob) {
 		colour = "silver";
 		s = "Initialising...";
 	} else if (datum_protocol_is_active()) {
@@ -101,7 +107,7 @@ void datum_api_var_DATUM_CONNECTION_STATUS(char *buffer, size_t buffer_size, con
 		}
 		s = "Non-Pooled Mode";
 	}
-	snprintf(buffer, buffer_size, "<svg viewBox='0 0 100 100' role='img' style='width:1em;height:1em'><circle cx='50' cy='60' r='35' style='fill:%s' /></svg> %s", colour, s);
+	snprintf(buffer, buffer_size, "<svg viewBox='0 0 100 100' role='img' style='width:1em;height:1em'><circle cx='50' cy='60' r='35' style='fill:%s' /></svg> %s%s", colour, s, s2);
 }
 void datum_api_var_DATUM_POOL_HOST(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	if (datum_config.datum_pool_host[0]) {
