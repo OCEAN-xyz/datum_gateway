@@ -331,7 +331,7 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 
 void *datum_gateway_fallback_notifier(void *args) {
 	CURL *tcurl = NULL;
-	char userpass[512];
+	char userpass[1024];
 	char req[512];
 	char p1[72];
 	p1[0] = 0;
@@ -345,10 +345,10 @@ void *datum_gateway_fallback_notifier(void *args) {
 	}
 	DLOG_DEBUG("Fallback notifier thread ready.");
 	
-	sprintf(userpass, "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+	snprintf(userpass, sizeof(userpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
 	
 	while(1) {
-		sprintf(req, "{\"jsonrpc\":\"1.0\",\"id\":\"%"PRIu64"\",\"method\":\"getbestblockhash\",\"params\":[]}", current_time_millis());
+		snprintf(req, sizeof(req), "{\"jsonrpc\":\"1.0\",\"id\":\"%"PRIu64"\",\"method\":\"getbestblockhash\",\"params\":[]}", current_time_millis());
 		gbbh = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, req);
 		if (gbbh) {
 			res_val = json_object_get(gbbh, "result");
@@ -383,7 +383,7 @@ void *datum_gateway_template_thread(void *args) {
 	uint64_t i = 0;
 	char gbt_req[1024];
 	int j;
-	char userpass[512];
+	char userpass[1024];
 	T_DATUM_TEMPLATE_DATA *t;
 	bool was_notified = false;
 	int wnc = 0;
@@ -411,13 +411,13 @@ void *datum_gateway_template_thread(void *args) {
 	char p1[72];
 	p1[0] = 0;
 	
-	sprintf(userpass, "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+	snprintf(userpass, sizeof(userpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
 	
 	while(1) {
 		i++;
 		
 		// fetch latest template
-		sprintf(gbt_req, "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
+		snprintf(gbt_req, sizeof(gbt_req), "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {

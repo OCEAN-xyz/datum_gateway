@@ -55,10 +55,8 @@ void preciousblock(CURL *curl, char *blockhash) {
 	char userpass[1024];
 	
 	// TODO: Move these types of things to the conf file
-	snprintf(userpass, 1023, "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
-	userpass[1023] = 0;
-	
-	sprintf(rpc_data,"{\"method\":\"preciousblock\",\"params\":[\"%s\"],\"id\":1}",blockhash);
+	snprintf(userpass, sizeof(userpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+	snprintf(rpc_data, sizeof(rpc_data), "{\"method\":\"preciousblock\",\"params\":[\"%s\"],\"id\":1}", blockhash);
 	json = json_rpc_call(curl, datum_config.bitcoind_rpcurl, userpass, rpc_data);
 	if (!json) return;
 	
@@ -72,8 +70,7 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 	char *s = NULL;
 	// TODO: Move these types of things to the conf file
 	if (!url) {
-		snprintf(userpass, 1023, "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
-		userpass[1023] = 0;
+		snprintf(userpass, sizeof(userpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
 		
 		r = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, submitblock_req);
 	} else {

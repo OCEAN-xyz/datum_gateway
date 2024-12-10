@@ -201,7 +201,7 @@ int datum_logger_queue_msg(const char *func, int level, const char *format, ...)
 	msg->calling_function[47] = 0;
 	msg->msg = &msg_buffer[buffer_id][msg_buf_idx[buffer_id]];
 	va_start(args, format);
-	i = vsnprintf(msg->msg, 1023, format, args);
+	i = vsnprintf(msg->msg, sizeof(msg->msg), format, args);
 	msg->msg[i] = 0;
 	va_end(args);
 	
@@ -348,9 +348,9 @@ void * datum_logger_thread(void *ptr) {
 				tm_info = localtime_r(&seconds, &tm_info_storage);
 				strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", tm_info);
 				if (log_calling_function) {
-					j = snprintf(log_line, 1199, "%s.%03d [%44s] %s: %s\n", time_buffer, millis, msg->calling_function, level_text[msg->level], msg->msg);
+					j = snprintf(log_line, sizeof(log_line), "%s.%03d [%44s] %s: %s\n", time_buffer, millis, msg->calling_function, level_text[msg->level], msg->msg);
 				} else {
-					j = snprintf(log_line, 1199, "%s.%03d %s: %s\n", time_buffer, millis, level_text[msg->level], msg->msg);
+					j = snprintf(log_line, sizeof(log_line), "%s.%03d %s: %s\n", time_buffer, millis, level_text[msg->level], msg->msg);
 				}
 				log_line[1199] = 0;
 				
@@ -390,8 +390,7 @@ void * datum_logger_thread(void *ptr) {
 				
 				tm_info = localtime_r(&log_file_opened, &tm_info_storage);
 				strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d", tm_info);
-				snprintf(log_line, 1199, "%s.%s", log_file, time_buffer);
-				log_line[1199] = 0;
+				snprintf(log_line, sizeof(log_line), "%s.%s", log_file, time_buffer);
 				
 				fclose(log_handle);
 
