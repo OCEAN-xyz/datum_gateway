@@ -1497,7 +1497,7 @@ void *datum_protocol_client(void *args) {
 	port_str[6] = 0;
 	
 	if ((ret = getaddrinfo(datum_config.datum_pool_host, port_str, &hints, &res)) != 0) {
-		DLOG_ERROR("getaddrinfo: %s\n", gai_strerror(ret));
+		DLOG_ERROR("getaddrinfo: %s", gai_strerror(ret));
 		datum_protocol_client_active = 0;
 		return NULL;
 	}
