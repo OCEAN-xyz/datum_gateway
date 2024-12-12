@@ -258,7 +258,7 @@ size_t datum_api_fill_var(const char * const var_start, const size_t var_name_le
 	return strlen(replacement);
 }
 
-size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const T_DATUM_API_DASH_VARS *vardata) {
+size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const DATUM_API_VarFillFunc var_fill_func, const T_DATUM_API_DASH_VARS *vardata) {
 	const char* p = input;
 	size_t output_len = 0;
 	size_t var_name_len = 0;
@@ -279,7 +279,7 @@ size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_si
 			char * const replacement = &output[output_len];
 			size_t replacement_max_len = max_output_size - output_len;
 			if (replacement_max_len > 256) replacement_max_len = 256;
-			const size_t replacement_len = datum_api_fill_var(var_start, var_name_len, replacement, replacement_max_len, vardata);
+			const size_t replacement_len = var_fill_func(var_start, var_name_len, replacement, replacement_max_len, vardata);
 			output_len += replacement_len;
 			output[output_len] = 0;
 			p = var_end + 1; // Move past '}'
@@ -762,7 +762,7 @@ int datum_api_homepage(struct MHD_Connection *connection) {
 	}
 	
 	output[0] = 0;
-	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, &vardata);
+	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, datum_api_fill_var, &vardata);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (strlen(output), (void *) output, MHD_RESPMEM_MUST_COPY);
