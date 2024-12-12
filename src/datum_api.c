@@ -230,9 +230,9 @@ DATUM_API_VarEntry var_entries[] = {
 	{NULL, NULL} // Mark the end of the array
 };
 
-DATUM_API_VarFunc datum_api_find_var_func(const char *var_name) {
+DATUM_API_VarFunc datum_api_find_var_func(const char * const var_start, const size_t var_name_len) {
 	for (int i = 0; var_entries[i].var_name != NULL; i++) {
-		if (strcmp(var_entries[i].var_name, var_name) == 0) {
+		if (strncmp(var_entries[i].var_name, var_start, var_name_len) == 0 && !var_entries[i].var_name[var_name_len]) {
 			return var_entries[i].func;
 		}
 	}
@@ -243,7 +243,6 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 	const char* p = input;
 	size_t output_len = 0;
 	size_t var_name_len = 0;
-	char var_name[256];
 	const char *var_start;
 	const char *var_end;
 	
@@ -258,17 +257,10 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 			}
 			var_name_len = var_end - var_start;
 			
-			if (var_name_len >= sizeof(var_name)-1) {
-				DLOG_ERROR("%s: Excessively long variable name '%.*s'", __func__, (int)var_name_len, var_start);
-				break;
-			}
-			strncpy(var_name, var_start, var_name_len);
-			var_name[var_name_len] = 0;
-			
-			DATUM_API_VarFunc func = datum_api_find_var_func(var_name);
+			DATUM_API_VarFunc func = datum_api_find_var_func(var_start, var_name_len);
 			if (func) {
 				// Skip running STRATUM_JOB functions if there's no sjob
-				if (var_name[8] == 'J' && !vardata->sjob) {
+				if (var_start[8] == 'J' && !vardata->sjob) {
 					// Leave blank for now
 				} else {
 					char * const replacement = &output[output_len];
@@ -280,7 +272,7 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 				}
 				output[output_len] = 0;
 			} else {
-				DLOG_ERROR("%s: Unknown variable '%s'", __func__, var_name);
+				DLOG_ERROR("%s: Unknown variable '%.*s'", __func__, (int)var_name_len, var_start);
 				break;
 			}
 			p = var_end + 1; // Move past '}'
