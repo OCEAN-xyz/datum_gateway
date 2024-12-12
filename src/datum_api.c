@@ -258,7 +258,7 @@ size_t datum_api_fill_var(const char * const var_start, const size_t var_name_le
 	return strlen(replacement);
 }
 
-void datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const T_DATUM_API_DASH_VARS *vardata) {
+size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const T_DATUM_API_DASH_VARS *vardata) {
 	const char* p = input;
 	size_t output_len = 0;
 	size_t var_name_len = 0;
@@ -290,6 +290,8 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 	}
 	
 	output[output_len] = 0;
+	
+	return output_len;
 }
 
 size_t strncpy_html_escape(char *dest, const char *src, size_t n) {
