@@ -244,8 +244,6 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 	size_t output_len = 0;
 	size_t var_name_len = 0;
 	char var_name[256];
-	char replacement[256];
-	size_t replacement_len;
 	size_t remaining;
 	size_t to_copy;
 	const char *var_start;
@@ -281,14 +279,12 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 				if (var_name[8] == 'J' && !vardata->sjob) {
 					// Leave blank for now
 				} else {
+					char * const replacement = &output[output_len];
+					size_t replacement_max_len = max_output_size - output_len;
+					if (replacement_max_len > 256) replacement_max_len = 256;
 					replacement[0] = 0;
-					func(replacement, sizeof(replacement), vardata);
-					replacement_len = strlen(replacement);
-					if (replacement_len) {
-						to_copy = (replacement_len < max_output_size - output_len - 1) ? replacement_len : max_output_size - output_len - 1;
-						strncpy(&output[output_len], replacement, to_copy);
-						output_len += to_copy;
-					}
+					func(replacement, replacement_max_len, vardata);
+					output_len += strlen(replacement);
 				}
 				output[output_len] = 0;
 			} else {
