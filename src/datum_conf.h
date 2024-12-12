@@ -55,10 +55,14 @@ typedef struct {
 	char name[64];
 	char description[512];
 	int var_type;
-	int max_string_len;
-	int default_int;
-	bool default_bool;
-	const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+	union {
+		int default_int;
+		bool default_bool;
+		struct {
+			int max_string_len;
+			const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+		};
+	};
 	
 	void *ptr;
 	
