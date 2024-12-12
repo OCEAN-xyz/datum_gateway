@@ -150,6 +150,17 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 
 #define NUM_CONFIG_ITEMS (sizeof(datum_config_options) / sizeof(datum_config_options[0]))
 
+const T_DATUM_CONFIG_ITEM *datum_config_get_option_info(const char * const category, const size_t category_len, const char * const name, const size_t name_len) {
+	for (size_t i = 0; i < NUM_CONFIG_ITEMS; ++i) {
+		if (strncmp(category, datum_config_options[i].category, category_len)) continue;
+		if (datum_config_options[i].category[category_len]) continue;
+		if (strncmp(name, datum_config_options[i].name, name_len)) continue;
+		if (datum_config_options[i].name[name_len]) continue;
+		return &datum_config_options[i];
+	}
+	return NULL;
+}
+
 json_t *load_json_from_file(const char *file_path) {
 	json_error_t error;
 	json_t *root = json_load_file(file_path, 0, &error);
