@@ -239,6 +239,25 @@ DATUM_API_VarFunc datum_api_find_var_func(const char * const var_start, const si
 	return NULL; // Variable not found
 }
 
+size_t datum_api_fill_var(const char * const var_start, const size_t var_name_len, char * const replacement, const size_t replacement_max_len, const T_DATUM_API_DASH_VARS * const vardata) {
+	DATUM_API_VarFunc func = datum_api_find_var_func(var_start, var_name_len);
+	if (!func) {
+		DLOG_ERROR("%s: Unknown variable '%.*s'", __func__, (int)var_name_len, var_start);
+		return 0;
+	}
+	
+	// Skip running STRATUM_JOB functions if there's no sjob
+	if (var_start[8] == 'J' && !vardata->sjob) {
+		// Leave blank for now
+		return 0;
+	}
+	
+	assert(replacement_max_len > 0);
+	replacement[0] = 0;
+	func(replacement, replacement_max_len, vardata);
+	return strlen(replacement);
+}
+
 void datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const T_DATUM_API_DASH_VARS *vardata) {
 	const char* p = input;
 	size_t output_len = 0;
@@ -257,24 +276,12 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 			}
 			var_name_len = var_end - var_start;
 			
-			DATUM_API_VarFunc func = datum_api_find_var_func(var_start, var_name_len);
-			if (func) {
-				// Skip running STRATUM_JOB functions if there's no sjob
-				if (var_start[8] == 'J' && !vardata->sjob) {
-					// Leave blank for now
-				} else {
-					char * const replacement = &output[output_len];
-					size_t replacement_max_len = max_output_size - output_len;
-					if (replacement_max_len > 256) replacement_max_len = 256;
-					replacement[0] = 0;
-					func(replacement, replacement_max_len, vardata);
-					output_len += strlen(replacement);
-				}
-				output[output_len] = 0;
-			} else {
-				DLOG_ERROR("%s: Unknown variable '%.*s'", __func__, (int)var_name_len, var_start);
-				break;
-			}
+			char * const replacement = &output[output_len];
+			size_t replacement_max_len = max_output_size - output_len;
+			if (replacement_max_len > 256) replacement_max_len = 256;
+			const size_t replacement_len = datum_api_fill_var(var_start, var_name_len, replacement, replacement_max_len, vardata);
+			output_len += replacement_len;
+			output[output_len] = 0;
 			p = var_end + 1; // Move past '}'
 		} else {
 			output[output_len++] = *p++;
