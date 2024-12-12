@@ -244,12 +244,8 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 	size_t output_len = 0;
 	size_t var_name_len = 0;
 	char var_name[256];
-	size_t remaining;
-	size_t to_copy;
 	const char *var_start;
 	const char *var_end;
-	size_t total_var_len;
-	char temp_var[260];
 	
 	while (*p && output_len < max_output_size - 1) {
 		if (strncmp(p, "${", 2) == 0) {
@@ -257,18 +253,14 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 			var_start = p;
 			var_end = strchr(p, '}');
 			if (!var_end) {
-				// No closing '}', copy rest of the input to output
-				remaining = strlen(p);
-				to_copy = (remaining < max_output_size - output_len - 1) ? remaining : max_output_size - output_len - 1;
-				strncpy(&output[output_len], p, to_copy);
-				output_len += to_copy;
+				DLOG_ERROR("%s: Missing closing } for variable", __func__);
 				break;
 			}
 			var_name_len = var_end - var_start;
 			
 			if (var_name_len >= sizeof(var_name)-1) {
-				output[output_len] = 0;
-				return;
+				DLOG_ERROR("%s: Excessively long variable name '%.*s'", __func__, (int)var_name_len, var_start);
+				break;
 			}
 			strncpy(var_name, var_start, var_name_len);
 			var_name[var_name_len] = 0;
@@ -288,13 +280,8 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 				}
 				output[output_len] = 0;
 			} else {
-				// Not sure what this is... so just leave it
-				total_var_len = var_name_len + 3;
-				snprintf(temp_var, sizeof(temp_var), "${%s}", var_name);
-				to_copy = (total_var_len < max_output_size - output_len - 1) ? total_var_len : max_output_size - output_len - 1;
-				strncpy(&output[output_len], temp_var, to_copy);
-				output_len += to_copy;
-				output[output_len] = 0;
+				DLOG_ERROR("%s: Unknown variable '%s'", __func__, var_name);
+				break;
 			}
 			p = var_end + 1; // Move past '}'
 		} else {
