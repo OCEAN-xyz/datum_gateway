@@ -43,6 +43,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <jansson.h>
+
 #define DATUM_CONF_BOOL 1
 #define DATUM_CONF_INT 2
 #define DATUM_CONF_STRING 3
@@ -55,15 +57,21 @@ typedef struct {
 	char name[64];
 	char description[512];
 	int var_type;
-	int max_string_len;
-	int default_int;
-	bool default_bool;
-	const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+	union {
+		int default_int;
+		bool default_bool;
+		struct {
+			int max_string_len;
+			const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+		};
+	};
 	
 	void *ptr;
 	
 	bool required;
 } T_DATUM_CONFIG_ITEM;
+
+const T_DATUM_CONFIG_ITEM *datum_config_get_option_info(const char *category, size_t category_len, const char *name, size_t name_len);
 
 // Globally accessable config options
 typedef struct {
@@ -95,6 +103,8 @@ typedef struct {
 	int coinbase_unique_id;
 	
 	int api_listen_port;
+	bool api_modify_conf;
+	json_t *config_json;
 	
 	int extra_block_submissions_count;
 	char extra_block_submissions_urls[DATUM_MAX_BLOCK_SUBMITS][DATUM_CONFIG_MAX_STRING_ARRAY_LEN];

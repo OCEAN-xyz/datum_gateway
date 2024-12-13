@@ -33,6 +33,10 @@
  *
  */
 
+#include <assert.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <sodium.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -47,7 +51,10 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <inttypes.h>
+#include <unistd.h>
 
+#include "datum_gateway.h"
+#include "datum_logger.h"
 #include "datum_utils.h"
 #include "thirdparty_base58.h"
 #include "thirdparty_segwit_addr.h"
@@ -702,4 +709,73 @@ uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char ke
 	SIPHASH_DOUBLE_ROUND(v0,v1,v2,v3);
 	SIPHASH_DOUBLE_ROUND(v0,v1,v2,v3);
 	return (v0 ^ v1) ^ (v2 ^ v3);
+}
+
+// Uses a fixed-size buffer; positive only; digits only
+// Returns -1 on failure
+int datum_atoi_strict(const char * const s, const size_t size) {
+	if (!size) return -1;
+	assert(s);
+	int ret = 0;
+	for (size_t i = 0; i < size; ++i) {
+		if (s[i] < '0' || s[i] > '9') return -1;
+		int digit = s[i] - '0';
+		if (ret > (INT_MAX - digit) / 10) return -1;
+		ret = (ret * 10) + digit;
+	}
+	return ret;
+}
+
+// Currently accepts 0 and 1 only, but may add more later
+// Returns true if valid, actual value in *out
+bool datum_str_to_bool_strict(const char * const s, bool * const out) {
+	if (0 == strcmp(s, "0")) {
+		*out = false;
+		return true;
+	} else if (0 == strcmp(s, "1")) {
+		*out = true;
+		return true;
+	}
+	return false;
+}
+
+char **datum_deepcopy_charpp(const char * const * const p) {
+	size_t sz = sizeof(char*), n = 0;
+	for (const char * const *p2 = p; *p2; ++p2) {
+		sz += sizeof(char*) + strlen(*p2) + 1;
+		++n;
+	}
+	char **out = malloc(sz);
+	char *p3 = (void*)(&out[n + 1]);
+	out[n] = NULL;
+	for (size_t i = 0; i < n; ++i) {
+		const size_t sz = strlen(p[i]) + 1;
+		memcpy(p3, p[i], sz);
+		out[i] = p3;
+		p3 += sz;
+	}
+	assert(p3 - (char*)out == sz);
+	return out;
+}
+
+void datum_reexec() {
+	// FIXME: kill other threads (except logging?) before closing fds
+	
+	DIR * const D = opendir("/proc/self/fd");
+	if (D) {
+		for (struct dirent *ent; (ent = readdir(D)) != NULL; ) {
+			const int fd = datum_atoi_strict(ent->d_name, strlen(ent->d_name));
+			if (fd < 3) continue;
+			fcntl(fd, F_SETFD, FD_CLOEXEC);
+		}
+		closedir(D);
+	} else {
+		DLOG_ERROR("%s: Failed to close files, this could cause issues! (Is /proc mounted?)", __func__);
+	}
+	
+	execv((void*)datum_argv[0], (void*)datum_argv);
+	// execv shouldn't return!
+	
+	DLOG_FATAL("Failed to restart! We're too deep in to recover!");
+	abort();
 }

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>DATUM Gateway Configuration - Restarting</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<style type="text/css">
+		.table-wrapper {
+			justify-content: center;
+		}
+		
+		.table-container {
+			max-width: 800px;
+		}
+		
+		button {
+			background-color: #444;
+			color: #3498db;
+			padding: 10px 20px;
+			margin: 5px;
+			border-radius: 5px;
+			text-decoration: none;
+			transition: background-color 0.3s, color 0.3s;
+			font-weight: bold;
+			font-size: large;
+		}
+		
+		.notice {
+			padding: 10px;
+			background-color: #2a2a3b;
+			white-space: nowrap;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
+		</div>
+		<div class="menu-container">
+			<a href="/">Status</a>
+			<a href="/config" style="background-color: darkslategrey;">Config</a>
+			<a href="/clients">Clients</a>
+			<a href="/threads">Threads</a>
+			<a href="/coinbaser">Coinbaser</a>
+		</div>
+	</div>
+	
+	<form action='/config' method='get' name="continue_form">
+	<div class="tables-container">
+		<div style="margin-top: 20px; text-align: center;">
+			<button>Continue</button>
+		</div>
+		
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Changes Successful</h2>
+				<div class="notice">
+					DATUM Gateway is restarting... Please wait a few seconds before continuing.
+				</div>
+			</div>
+		</div>
+		
+		<div style="margin-bottom: 20px; text-align: center;">
+			<button>Continue</button>
+		</div>
+	</div>
+	</form>
+	<script>
+		setTimeout(function() { document.continue_form.submit(); }, 10000);
+	</script>
+</body>
+</html>

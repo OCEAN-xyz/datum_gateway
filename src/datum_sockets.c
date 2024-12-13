@@ -52,6 +52,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
+#include "datum_blocktemplates.h"
 #include "datum_conf.h"
 #include "datum_gateway.h"
 #include "datum_protocol.h"
@@ -542,6 +543,7 @@ void *datum_gateway_listener_thread(void *arg) {
 	int i, ret;
 	int reuse = 1;
 	bool rejecting_now = false;
+	const char *rejecting_reason;
 	uint64_t last_reject_msg_tsms = 0, curtime_tsms = 0;
 	uint64_t reject_count = 0;
 	
@@ -630,7 +632,12 @@ void *datum_gateway_listener_thread(void *arg) {
 	for (;;) {
 		nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
 		if (nfds) {
-			if (datum_config.datum_pooled_mining_only && (!datum_protocol_is_active())) {
+			if (datum_blocktemplates_error) {
+				rejecting_reason = "GBT error!";
+			} else if (datum_config.datum_pooled_mining_only && (!datum_protocol_is_active())) {
+				rejecting_reason = "DATUM not connected and configured for pooled mining only!";
+			}
+			if (rejecting_reason) {
 				curtime_tsms = current_time_millis(); // we only need this if we're rejecting connections
 				if (!rejecting_now) {
 					last_reject_msg_tsms = curtime_tsms - 5000; // first disconnect triggers msg
@@ -651,7 +658,7 @@ void *datum_gateway_listener_thread(void *arg) {
 				if (rejecting_now) {
 					reject_count++;
 					if ((curtime_tsms - last_reject_msg_tsms) > 5000) {
-						DLOG_INFO("DATUM not connected and configured for pooled mining only! Rejecting connection. (%llu connections rejected since last noted)", (unsigned long long)reject_count);
+						DLOG_INFO("%s Rejecting connection. (%llu connections rejected since last noted)", rejecting_reason, (unsigned long long)reject_count);
 						last_reject_msg_tsms = curtime_tsms;
 						reject_count = 0;
 					}

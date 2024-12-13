@@ -74,6 +74,8 @@ T_DATUM_TEMPLATE_DATA *template_data = NULL;
 
 int next_template_index = 0;
 
+const char *datum_blocktemplates_error = NULL;
+
 int datum_template_init(void) {
 	char *temp = NULL, *ptr = NULL;
 	int i,j;
@@ -400,6 +402,21 @@ void *datum_gateway_template_thread(void *args) {
 		panic_from_thread(__LINE__);
 	}
 	
+	{
+		unsigned char dummy[64];
+		if (!addr_2_output_script(datum_config.mining_pool_address, &dummy[0], 64)) {
+			if (datum_config.api_modify_conf) {
+				DLOG_ERROR("Could not generate output script for pool addr! Perhaps invalid? Configure via API/dashboard.");
+			} else {
+				DLOG_FATAL("Could not generate output script for pool addr! Perhaps invalid? This is bad.");
+				panic_from_thread(__LINE__);
+			}
+		}
+		while (!addr_2_output_script(datum_config.mining_pool_address, &dummy[0], 64)) {
+			usleep(50000);
+		}
+	}
+	
 	if (datum_config.bitcoind_notify_fallback) {
 		// start getbestblockhash poller thread as a backup for notifications
 		DLOG_DEBUG("Starting fallback block notifier");
@@ -421,18 +438,25 @@ void *datum_gateway_template_thread(void *args) {
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {
-			DLOG_ERROR("Could not fetch new template!");
+			const bool already_in_error = datum_blocktemplates_error;
+			datum_blocktemplates_error = "Could not fetch new template!";
+			DLOG_ERROR("%s", datum_blocktemplates_error);
+			if (!already_in_error) datum_stratum_v1_shutdown_all();
 			sleep(1);
 			continue;
 		} else {
 			res_val = json_object_get(gbt, "result");
 			if (!res_val) {
-				DLOG_ERROR("ERROR: Could not decode GBT result!");
+				const bool already_in_error = datum_blocktemplates_error;
+				datum_blocktemplates_error = "Could not decode GBT result!";
+				DLOG_ERROR("%s", datum_blocktemplates_error);
+				if (!already_in_error) datum_stratum_v1_shutdown_all();
 			} else {
 				DLOG_DEBUG("DEBUG: calling datum_gbt_parser (new=%d)", was_notified?1:0);
 				t = datum_gbt_parser(res_val);
 				
 				if (t) {
+					datum_blocktemplates_error = NULL;
 					DLOG_DEBUG("height: %d / value: %"PRIu64,t->height, t->coinbasevalue);
 					DLOG_DEBUG("--- prevhash: %s", t->previousblockhash);
 					DLOG_DEBUG("--- txn_count: %u / sigops: %u / weight: %u / size: %u", t->txn_count, t->txn_total_sigops, t->txn_total_weight, t->txn_total_size);
