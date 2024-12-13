@@ -34,6 +34,9 @@
  */
 
 #include <assert.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <fcntl.h>
 #include <sodium.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -49,6 +52,8 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#include "datum_gateway.h"
+#include "datum_logger.h"
 #include "datum_utils.h"
 #include "thirdparty_base58.h"
 #include "thirdparty_segwit_addr.h"
@@ -750,4 +755,26 @@ char **datum_deepcopy_charpp(const char * const * const p) {
 	}
 	assert(p3 - (char*)out == sz);
 	return out;
+}
+
+void datum_reexec() {
+	// FIXME: kill other threads (except logging?) before closing fds
+	
+	DIR * const D = opendir("/proc/self/fd");
+	if (D) {
+		for (struct dirent *ent; (ent = readdir(D)) != NULL; ) {
+			const int fd = datum_atoi_strict(ent->d_name, strlen(ent->d_name));
+			if (fd < 3) continue;
+			fcntl(fd, F_SETFD, FD_CLOEXEC);
+		}
+		closedir(D);
+	} else {
+		DLOG_ERROR("%s: Failed to close files, this could cause issues! (Is /proc mounted?)", __func__);
+	}
+	
+	execv((void*)datum_argv[0], (void*)datum_argv);
+	// execv shouldn't return!
+	
+	DLOG_FATAL("Failed to restart! We're too deep in to recover!");
+	abort();
 }
