@@ -55,4 +55,6 @@
 
 #define STRATUM_JOB_INDEX_XOR 0xC0DE
 
+extern const char *datum_gateway_config_filename;
+
 #endif
