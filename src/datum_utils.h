@@ -71,6 +71,7 @@ uint64_t datum_siphash(const void *src, uint64_t sz, const unsigned char key[16]
 uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char key[16]);
 int datum_atoi_strict(const char *s, size_t size);
 bool datum_str_to_bool_strict(const char *s, bool *out);
+char **datum_deepcopy_charpp(const char * const *p);
 
 
 static inline

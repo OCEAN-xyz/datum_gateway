@@ -732,3 +732,22 @@ bool datum_str_to_bool_strict(const char * const s, bool * const out) {
 	}
 	return false;
 }
+
+char **datum_deepcopy_charpp(const char * const * const p) {
+	size_t sz = sizeof(char*), n = 0;
+	for (const char * const *p2 = p; *p2; ++p2) {
+		sz += sizeof(char*) + strlen(*p2) + 1;
+		++n;
+	}
+	char **out = malloc(sz);
+	char *p3 = (void*)(&out[n + 1]);
+	out[n] = NULL;
+	for (size_t i = 0; i < n; ++i) {
+		const size_t sz = strlen(p[i]) + 1;
+		memcpy(p3, p[i], sz);
+		out[i] = p3;
+		p3 += sz;
+	}
+	assert(p3 - (char*)out == sz);
+	return out;
+}
