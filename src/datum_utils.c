@@ -51,6 +51,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <inttypes.h>
+#include <unistd.h>
 
 #include "datum_gateway.h"
 #include "datum_logger.h"
