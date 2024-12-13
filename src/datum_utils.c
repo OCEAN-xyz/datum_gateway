@@ -719,3 +719,16 @@ int datum_atoi_strict(const char * const s, const size_t size) {
 	}
 	return ret;
 }
+
+// Currently accepts 0 and 1 only, but may add more later
+// Returns true if valid, actual value in *out
+bool datum_str_to_bool_strict(const char * const s, bool * const out) {
+	if (0 == strcmp(s, "0")) {
+		*out = false;
+		return true;
+	} else if (0 == strcmp(s, "1")) {
+		*out = true;
+		return true;
+	}
+	return false;
+}
