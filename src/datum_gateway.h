@@ -57,4 +57,6 @@
 
 extern const char *datum_gateway_config_filename;
 
+extern const char * const *datum_argv;
+
 #endif
