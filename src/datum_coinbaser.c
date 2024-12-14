@@ -872,8 +872,13 @@ void *datum_coinbaser_thread(void *ptr) {
 }
 
 int datum_coinbaser_init(void) {
-	// TODO: Handle failed (rare, not priority)
 	pthread_t pthread_datum_coinbaser_thread;
-	pthread_create(&pthread_datum_coinbaser_thread, NULL, datum_coinbaser_thread, NULL);
+	int result = pthread_create(&pthread_datum_coinbaser_thread, NULL, datum_coinbaser_thread, NULL);
+
+	if (result != 0) {
+		DLOG_FATAL("datum_coinbaser_init: pthread_create failed with code %d", result);
+		return -1;
+	}
+
 	return 0;
 }
