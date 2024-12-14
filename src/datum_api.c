@@ -35,6 +35,7 @@
 
 // This is quick and dirty for now.  Will be improved over time.
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <microhttpd.h>
@@ -56,6 +57,7 @@
 const char * const homepage_html_end = "</body></html>";
 
 #define DATUM_API_HOMEPAGE_MAX_SIZE 128000
+#define DATUM_API_VAR_MAX_SIZE 128
 
 const char *cbnames[] = {
 	"Blank",
@@ -76,121 +78,140 @@ static void html_leading_zeros(char * const buffer, const size_t buffer_size, co
 	}
 }
 
-void datum_api_var_DATUM_SHARES_ACCEPTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_accepted_share_count, (unsigned long long)datum_accepted_share_diff);
+#define MAKE_API_D(api_var, val)  \
+	static void datum_api_var_ ## api_var(char * const buffer, const size_t buffer_size, const T_DATUM_API_DASH_VARS * const vardata) {  \
+		snprintf(buffer, buffer_size, "%d", (int)(val));  \
+	}  \
+// end of MAKE_API_D
+#define MAKE_API_LLU(api_var, val)  \
+	static void datum_api_var_ ## api_var(char * const buffer, const size_t buffer_size, const T_DATUM_API_DASH_VARS * const vardata) {  \
+		snprintf(buffer, buffer_size, "%llu", (unsigned long long)(val));  \
+	}  \
+// end of MAKE_API_LLU
+#define MAKE_API_S(api_var, val)  \
+	static void datum_api_var_ ## api_var(char * const buffer, const size_t buffer_size, const T_DATUM_API_DASH_VARS * const vardata) {  \
+		snprintf(buffer, buffer_size, "%s", (val));  \
+	}  \
+// end of MAKE_API_S
+
+MAKE_API_LLU(DATUM_SHARES_ACCEPTED_ABSOLUTE, datum_accepted_share_count)
+MAKE_API_LLU(DATUM_SHARES_ACCEPTED_WEIGHED, datum_accepted_share_diff)
+MAKE_API_LLU(DATUM_SHARES_REJECTED_ABSOLUTE, datum_rejected_share_count)
+MAKE_API_LLU(DATUM_SHARES_REJECTED_WEIGHED, datum_rejected_share_diff)
+void datum_api_var_DATUM_CONNECTION_STATUS_INDICATOR_COLOUR(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const char *colour;
+	if (datum_protocol_is_active() || !datum_config.datum_pool_host[0]) {
+		colour = "lime";
+	} else if (datum_config.datum_pooled_mining_only) {
+		colour = "red";
+	} else {
+		colour = "yellow";
+	}
+	snprintf(buffer, buffer_size, "%s", colour);
 }
-void datum_api_var_DATUM_SHARES_REJECTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_rejected_share_count, (unsigned long long)datum_rejected_share_diff);
-}
-void datum_api_var_DATUM_CONNECTION_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	const char *colour = "lime";
+void datum_api_var_DATUM_CONNECTION_STATUS_DESCRIPTION(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	const char *s;
 	if (datum_protocol_is_active()) {
 		s = "Connected and Ready";
 	} else if (datum_config.datum_pooled_mining_only && datum_config.datum_pool_host[0]) {
-		colour = "red";
 		s = "Not Ready";
 	} else {
-		if (datum_config.datum_pool_host[0]) {
-			colour = "yellow";
-		}
 		s = "Non-Pooled Mode";
 	}
-	snprintf(buffer, buffer_size, "<svg viewBox='0 0 100 100' role='img' style='width:1em;height:1em'><circle cx='50' cy='60' r='35' style='fill:%s' /></svg> %s", colour, s);
+	snprintf(buffer, buffer_size, "%s", s);
 }
-void datum_api_var_DATUM_POOL_HOST(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+void datum_api_var_DATUM_POOL_HOST_OR_NA(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	if (datum_config.datum_pool_host[0]) {
 		snprintf(buffer, buffer_size, "%s:%u", datum_config.datum_pool_host, (unsigned)datum_config.datum_pool_port);
 	} else {
 		snprintf(buffer, buffer_size, "N/A");
 	}
 }
-void datum_api_var_DATUM_POOL_TAG(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+void datum_api_var_DATUM_POOL_HOST(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	if (datum_config.datum_pool_host[0]) {
+		snprintf(buffer, buffer_size, "%s:%u", datum_config.datum_pool_host, (unsigned)datum_config.datum_pool_port);
+	} else {
+		snprintf(buffer, buffer_size, "");
+	}
+}
+void datum_api_var_DATUM_POOL_TAG_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	size_t i;
 	buffer[0] = '"';
 	i = strncpy_html_escape(&buffer[1], datum_protocol_is_active()?datum_config.override_mining_coinbase_tag_primary:datum_config.mining_coinbase_tag_primary, buffer_size-3);
 	buffer[i+1] = '"';
 	buffer[i+2] = 0;
 }
-void datum_api_var_DATUM_MINER_TAG(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+MAKE_API_S(DATUM_POOL_TAG, datum_protocol_is_active() ? datum_config.override_mining_coinbase_tag_primary : datum_config.mining_coinbase_tag_primary)
+void datum_api_var_DATUM_MINER_TAG_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	size_t i;
 	buffer[0] = '"';
 	i = strncpy_html_escape(&buffer[1], datum_config.mining_coinbase_tag_secondary, buffer_size-3);
 	buffer[i+1] = '"';
 	buffer[i+2] = 0;
 }
-void datum_api_var_DATUM_POOL_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_config.override_vardiff_min);
-}
-void datum_api_var_DATUM_POOL_PUBKEY(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%s", datum_config.datum_pool_pubkey);
-}
-void datum_api_var_STRATUM_ACTIVE_THREADS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%d", vardata->STRATUM_ACTIVE_THREADS);
-}
-void datum_api_var_STRATUM_TOTAL_CONNECTIONS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%d", vardata->STRATUM_TOTAL_CONNECTIONS);
-}
-void datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%d", vardata->STRATUM_TOTAL_SUBSCRIPTIONS);
-}
-void datum_api_var_STRATUM_HASHRATE_ESTIMATE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+MAKE_API_S(DATUM_MINER_TAG, datum_config.mining_coinbase_tag_secondary)
+MAKE_API_LLU(DATUM_POOL_DIFF, datum_config.override_vardiff_min)
+MAKE_API_S(DATUM_POOL_PUBKEY, datum_config.datum_pool_pubkey)
+MAKE_API_D(STRATUM_ACTIVE_THREADS, vardata->STRATUM_ACTIVE_THREADS)
+MAKE_API_D(STRATUM_TOTAL_CONNECTIONS, vardata->STRATUM_TOTAL_CONNECTIONS)
+MAKE_API_D(STRATUM_TOTAL_SUBSCRIPTIONS, vardata->STRATUM_TOTAL_SUBSCRIPTIONS)
+void datum_api_var_STRATUM_HASHRATE_ESTIMATE_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%.2f Th/sec", vardata->STRATUM_HASHRATE_ESTIMATE);
 }
+void datum_api_var_STRATUM_HASHRATE_ESTIMATE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%.0f", vardata->STRATUM_HASHRATE_ESTIMATE * 1e12);
+}
 void datum_api_var_STRATUM_JOB_INFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	if (!vardata->sjob) return;
 	snprintf(buffer, buffer_size, "%s (%d) @ %.3f", vardata->sjob->job_id, vardata->sjob->global_index, (double)vardata->sjob->tsms / 1000.0);
 }
-void datum_api_var_STRATUM_JOB_BLOCK_HEIGHT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu", (unsigned long long)vardata->sjob->block_template->height);
+MAKE_API_S(STRATUM_JOB_ID, vardata->sjob->job_id)
+MAKE_API_D(STRATUM_JOB_INDEX, vardata->sjob->global_index)
+void datum_api_var_STRATUM_JOB_TIMESTAMP(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%.3f", (double)vardata->sjob->tsms / 1000.0);
 }
-void datum_api_var_STRATUM_JOB_BLOCK_VALUE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+MAKE_API_LLU(STRATUM_JOB_BLOCK_HEIGHT, vardata->sjob->block_template->height)
+void datum_api_var_STRATUM_JOB_BLOCK_VALUE_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%.8f BTC", (double)vardata->sjob->block_template->coinbasevalue / (double)100000000.0);
 }
-void datum_api_var_STRATUM_JOB_TARGET(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+MAKE_API_LLU(STRATUM_JOB_BLOCK_VALUE, vardata->sjob->block_template->coinbasevalue)
+void datum_api_var_STRATUM_JOB_TARGET_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	html_leading_zeros(buffer, buffer_size, vardata->sjob->block_template->block_target_hex);
 }
-void datum_api_var_STRATUM_JOB_PREVBLOCK(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+MAKE_API_S(STRATUM_JOB_TARGET, vardata->sjob->block_template->block_target_hex)
+void datum_api_var_STRATUM_JOB_PREVBLOCK_FORMATTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	html_leading_zeros(buffer, buffer_size, vardata->sjob->block_template->previousblockhash);
 }
-void datum_api_var_STRATUM_JOB_WITNESS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%s", vardata->sjob->block_template->default_witness_commitment);
-}
+MAKE_API_S(STRATUM_JOB_PREVBLOCK, vardata->sjob->block_template->previousblockhash)
+MAKE_API_S(STRATUM_JOB_WITNESS, vardata->sjob->block_template->default_witness_commitment)
 void datum_api_var_STRATUM_JOB_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%.3Lf", calc_network_difficulty(vardata->sjob->nbits));
 }
-void datum_api_var_STRATUM_JOB_VERSION(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%s (%u)", vardata->sjob->version, (unsigned)vardata->sjob->version_uint);
-}
-void datum_api_var_STRATUM_JOB_BITS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%s", vardata->sjob->nbits);
-}
-void datum_api_var_STRATUM_JOB_TIMEINFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "Current: %llu / Min: %llu", (unsigned long long)vardata->sjob->block_template->curtime, (unsigned long long)vardata->sjob->block_template->mintime);
-}
-void datum_api_var_STRATUM_JOB_LIMITINFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "Size: %lu, Weight: %lu, SigOps: %lu", (unsigned long)vardata->sjob->block_template->sizelimit, (unsigned long)vardata->sjob->block_template->weightlimit, (unsigned long)vardata->sjob->block_template->sigoplimit);
-}
-void datum_api_var_STRATUM_JOB_SIZE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_size);
-}
-void datum_api_var_STRATUM_JOB_WEIGHT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_weight);
-}
-void datum_api_var_STRATUM_JOB_SIGOPS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_sigops);
-}
-void datum_api_var_STRATUM_JOB_TXNCOUNT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%u", (unsigned)vardata->sjob->block_template->txn_count);
-}
+MAKE_API_S(STRATUM_JOB_VERSION_HEX, vardata->sjob->version)
+MAKE_API_LLU(STRATUM_JOB_VERSION, vardata->sjob->version_uint)
+MAKE_API_S(STRATUM_JOB_BITS, vardata->sjob->nbits)
+MAKE_API_LLU(STRATUM_JOB_CURTIME, vardata->sjob->block_template->curtime)
+MAKE_API_LLU(STRATUM_JOB_MINTIME, vardata->sjob->block_template->mintime)
+MAKE_API_LLU(STRATUM_JOB_SIZE_LIMIT, vardata->sjob->block_template->sizelimit)
+MAKE_API_LLU(STRATUM_JOB_WEIGHT_LIMIT, vardata->sjob->block_template->weightlimit)
+MAKE_API_LLU(STRATUM_JOB_SIGOP_LIMIT, vardata->sjob->block_template->sigoplimit)
+MAKE_API_LLU(STRATUM_JOB_SIZE, vardata->sjob->block_template->txn_total_size)
+MAKE_API_LLU(STRATUM_JOB_WEIGHT, vardata->sjob->block_template->txn_total_weight)
+MAKE_API_LLU(STRATUM_JOB_SIGOPS, vardata->sjob->block_template->txn_total_sigops)
+MAKE_API_LLU(STRATUM_JOB_TXNCOUNT, vardata->sjob->block_template->txn_count)
 
 
 DATUM_API_VarEntry var_entries[] = {
-	{"DATUM_SHARES_ACCEPTED", datum_api_var_DATUM_SHARES_ACCEPTED},
-	{"DATUM_SHARES_REJECTED", datum_api_var_DATUM_SHARES_REJECTED},
-	{"DATUM_CONNECTION_STATUS", datum_api_var_DATUM_CONNECTION_STATUS},
+	{"DATUM_SHARES_ACCEPTED_ABSOLUTE", datum_api_var_DATUM_SHARES_ACCEPTED_ABSOLUTE},
+	{"DATUM_SHARES_ACCEPTED_WEIGHED", datum_api_var_DATUM_SHARES_ACCEPTED_WEIGHED},
+	{"DATUM_SHARES_REJECTED_ABSOLUTE", datum_api_var_DATUM_SHARES_REJECTED_ABSOLUTE},
+	{"DATUM_SHARES_REJECTED_WEIGHED", datum_api_var_DATUM_SHARES_REJECTED_WEIGHED},
+	{"DATUM_CONNECTION_STATUS_INDICATOR_COLOUR", datum_api_var_DATUM_CONNECTION_STATUS_INDICATOR_COLOUR},
+	{"DATUM_CONNECTION_STATUS_DESCRIPTION", datum_api_var_DATUM_CONNECTION_STATUS_DESCRIPTION},
+	{"DATUM_POOL_HOST_OR_NA", datum_api_var_DATUM_POOL_HOST_OR_NA},
 	{"DATUM_POOL_HOST", datum_api_var_DATUM_POOL_HOST},
+	{"DATUM_POOL_TAG_FORMATTED", datum_api_var_DATUM_POOL_TAG_FORMATTED},
 	{"DATUM_POOL_TAG", datum_api_var_DATUM_POOL_TAG},
+	{"DATUM_MINER_TAG_FORMATTED", datum_api_var_DATUM_MINER_TAG_FORMATTED},
 	{"DATUM_MINER_TAG", datum_api_var_DATUM_MINER_TAG},
 	{"DATUM_POOL_DIFF", datum_api_var_DATUM_POOL_DIFF},
 	{"DATUM_POOL_PUBKEY", datum_api_var_DATUM_POOL_PUBKEY},
@@ -198,19 +219,30 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_ACTIVE_THREADS", datum_api_var_STRATUM_ACTIVE_THREADS},
 	{"STRATUM_TOTAL_CONNECTIONS", datum_api_var_STRATUM_TOTAL_CONNECTIONS},
 	{"STRATUM_TOTAL_SUBSCRIPTIONS", datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS},
+	{"STRATUM_HASHRATE_ESTIMATE_FORMATTED", datum_api_var_STRATUM_HASHRATE_ESTIMATE_FORMATTED},
 	{"STRATUM_HASHRATE_ESTIMATE", datum_api_var_STRATUM_HASHRATE_ESTIMATE},
 	
 	{"STRATUM_JOB_INFO", datum_api_var_STRATUM_JOB_INFO},
+	{"STRATUM_JOB_ID", datum_api_var_STRATUM_JOB_ID},
+	{"STRATUM_JOB_INDEX", datum_api_var_STRATUM_JOB_INDEX},
+	{"STRATUM_JOB_TIMESTAMP", datum_api_var_STRATUM_JOB_TIMESTAMP},
 	{"STRATUM_JOB_BLOCK_HEIGHT", datum_api_var_STRATUM_JOB_BLOCK_HEIGHT},
+	{"STRATUM_JOB_BLOCK_VALUE_FORMATTED", datum_api_var_STRATUM_JOB_BLOCK_VALUE_FORMATTED},
 	{"STRATUM_JOB_BLOCK_VALUE", datum_api_var_STRATUM_JOB_BLOCK_VALUE},
+	{"STRATUM_JOB_PREVBLOCK_FORMATTED", datum_api_var_STRATUM_JOB_PREVBLOCK_FORMATTED},
 	{"STRATUM_JOB_PREVBLOCK", datum_api_var_STRATUM_JOB_PREVBLOCK},
+	{"STRATUM_JOB_TARGET_FORMATTED", datum_api_var_STRATUM_JOB_TARGET_FORMATTED},
 	{"STRATUM_JOB_TARGET", datum_api_var_STRATUM_JOB_TARGET},
 	{"STRATUM_JOB_WITNESS", datum_api_var_STRATUM_JOB_WITNESS},
 	{"STRATUM_JOB_DIFF", datum_api_var_STRATUM_JOB_DIFF},
 	{"STRATUM_JOB_VERSION", datum_api_var_STRATUM_JOB_VERSION},
+	{"STRATUM_JOB_VERSION_HEX", datum_api_var_STRATUM_JOB_VERSION_HEX},
 	{"STRATUM_JOB_BITS", datum_api_var_STRATUM_JOB_BITS},
-	{"STRATUM_JOB_TIMEINFO", datum_api_var_STRATUM_JOB_TIMEINFO},
-	{"STRATUM_JOB_LIMITINFO", datum_api_var_STRATUM_JOB_LIMITINFO},
+	{"STRATUM_JOB_CURTIME", datum_api_var_STRATUM_JOB_CURTIME},
+	{"STRATUM_JOB_MINTIME", datum_api_var_STRATUM_JOB_MINTIME},
+	{"STRATUM_JOB_SIZE_LIMIT", datum_api_var_STRATUM_JOB_SIZE_LIMIT},
+	{"STRATUM_JOB_WEIGHT_LIMIT", datum_api_var_STRATUM_JOB_WEIGHT_LIMIT},
+	{"STRATUM_JOB_SIGOP_LIMIT", datum_api_var_STRATUM_JOB_SIGOP_LIMIT},
 	{"STRATUM_JOB_SIZE", datum_api_var_STRATUM_JOB_SIZE},
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
@@ -267,7 +299,10 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 			DATUM_API_VarFunc func = datum_api_find_var_func(var_name);
 			if (func) {
 				replacement[0] = 0;
-				func(replacement, sizeof(replacement), vardata);
+				// Skip running STRATUM_JOB functions if there's no sjob
+				if (var_name[8] != 'J' || vardata->sjob) {
+					func(replacement, sizeof(replacement), vardata);
+				}
 				replacement_len = strlen(replacement);
 				if (replacement_len) {
 					to_copy = (replacement_len < max_output_size - output_len - 1) ? replacement_len : max_output_size - output_len - 1;
@@ -657,24 +692,21 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	return ret;
 }
 
-int datum_api_homepage(struct MHD_Connection *connection) {
-	struct MHD_Response *response;
-	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
-	int j, k = 0, kk = 0, ii, ret;
+static void datum_api_prepare_vardata(T_DATUM_API_DASH_VARS * const vardata) {
+	int j, k = 0, kk = 0, ii;
 	T_DATUM_MINER_DATA *m;
-	T_DATUM_API_DASH_VARS vardata;
 	unsigned char astat;
 	double thr = 0.0;
 	double hr;
 	uint64_t tsms;
 	
-	memset(&vardata, 0, sizeof(T_DATUM_API_DASH_VARS));
-
+	memset(vardata, 0, sizeof(T_DATUM_API_DASH_VARS));
+	
 	pthread_rwlock_rdlock(&stratum_global_job_ptr_lock);
 	j = global_latest_stratum_job_index;
-	vardata.sjob = (j >= 0 && j < MAX_STRATUM_JOBS) ? global_cur_stratum_jobs[j] : NULL;
+	vardata->sjob = (j >= 0 && j < MAX_STRATUM_JOBS) ? global_cur_stratum_jobs[j] : NULL;
 	pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
-
+	
 	tsms = current_time_millis();
 	
 	if (global_stratum_app) {
@@ -699,16 +731,25 @@ int datum_api_homepage(struct MHD_Connection *connection) {
 				}
 			}
 		}
-		vardata.STRATUM_ACTIVE_THREADS = global_stratum_app->datum_active_threads;
-		vardata.STRATUM_TOTAL_CONNECTIONS = k;
-		vardata.STRATUM_TOTAL_SUBSCRIPTIONS = kk;
-		vardata.STRATUM_HASHRATE_ESTIMATE = thr;
+		vardata->STRATUM_ACTIVE_THREADS = global_stratum_app->datum_active_threads;
+		vardata->STRATUM_TOTAL_CONNECTIONS = k;
+		vardata->STRATUM_TOTAL_SUBSCRIPTIONS = kk;
+		vardata->STRATUM_HASHRATE_ESTIMATE = thr;
 	} else {
-		vardata.STRATUM_ACTIVE_THREADS = 0;
-		vardata.STRATUM_TOTAL_CONNECTIONS = 0;
-		vardata.STRATUM_TOTAL_SUBSCRIPTIONS = 0;
-		vardata.STRATUM_HASHRATE_ESTIMATE = 0.0;
+		vardata->STRATUM_ACTIVE_THREADS = 0;
+		vardata->STRATUM_TOTAL_CONNECTIONS = 0;
+		vardata->STRATUM_TOTAL_SUBSCRIPTIONS = 0;
+		vardata->STRATUM_HASHRATE_ESTIMATE = 0.0;
 	}
+}
+
+int datum_api_homepage(struct MHD_Connection *connection) {
+	struct MHD_Response *response;
+	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
+	int ret;
+	T_DATUM_API_DASH_VARS vardata;
+	
+	datum_api_prepare_vardata(&vardata);
 	
 	output[0] = 0;
 	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, &vardata);
@@ -909,6 +950,43 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 				
 				datum_blocktemplates_notifynew("T", t);
 				return datum_api_OK(connection);
+			}
+			break;
+		}
+		
+		case 'v': {
+			if (!strncmp(url, "/v1/", 4)) {
+				if (strlen(&url[3]) > DATUM_API_VAR_MAX_SIZE) break;
+				char var_name[DATUM_API_VAR_MAX_SIZE];
+				for (size_t i = 0; ; ++i) {
+					var_name[i] = toupper(url[4 + i]);
+					if (!var_name[i]) break;
+				}
+				DATUM_API_VarFunc func = datum_api_find_var_func(var_name);
+				if (!func) break;
+				
+				T_DATUM_API_DASH_VARS vardata;
+				datum_api_prepare_vardata(&vardata);
+				
+				// Skip running STRATUM_JOB functions if there's no sjob
+				if (var_name[8] == 'J' && !vardata.sjob) {
+					response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+					http_resp_prevent_caching(response);
+					ret = MHD_queue_response(connection, MHD_HTTP_NO_CONTENT, response);
+					MHD_destroy_response(response);
+					return ret;
+				}
+				
+				char val[DATUM_API_VAR_MAX_SIZE];
+				val[0] = 0;
+				func(val, sizeof(val), &vardata);
+				
+				response = MHD_create_response_from_buffer (strlen(val), val, MHD_RESPMEM_MUST_COPY);
+				MHD_add_response_header(response, "Content-Type", "text/plain");
+				http_resp_prevent_caching(response);
+				ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+				MHD_destroy_response(response);
+				return ret;
 			}
 			break;
 		}
