@@ -367,6 +367,11 @@ int datum_read_config(const char *conffile) {
 		return 0;
 	}
 	
+	if (datum_config.datum_pool_host[0] == '\0' && datum_config.datum_pooled_mining_only == true) {
+		DLOG_FATAL("Pooled mining only is set to true, but pool host is not specified.");
+		return 0;
+	}
+	
 	// Save some multiplication later
 	datum_config.datum_protocol_global_timeout_ms = datum_config.datum_protocol_global_timeout * 1000;
 	
