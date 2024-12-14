@@ -54,8 +54,8 @@
 						<td>${DATUM_SHARES_REJECTED}</td>
 					</tr>
 					<tr>
-						<td class="label">Status:</td>
-						<td>${DATUM_CONNECTION_STATUS}</td>
+						<td class="label">Is Active:</td>
+						<td>${DATUM_IS_ACTIVE}</td>
 					</tr>
 					<tr>
 						<td class="label">Pool Host:</td>
@@ -171,6 +171,57 @@
 		</div>
 	</div>
 	<BR>
-	<CENTER><SMALL>Note: This page does not automatically refresh</SMALL></CENTER>
+	<script>
+		// Define the API endpoints and their corresponding placeholder prefixes
+		const apiEndpoints = [
+			{ url: '/api/v1/client_stats', prefix: 'DATUM_' },
+			{ url: '/api/v1/stratum_server_info', prefix: 'STRATUM_' },
+			{ url: '/api/v1/current_stratum_job', prefix: 'STRATUM_JOB_' }
+		];
+
+		// Function to replace placeholders in the template
+		function replacePlaceholders(template, data, prefix) {
+			const regex = new RegExp(`\\$\{${prefix}(\\w+)}`, 'g');
+			
+
+			return template.replace(regex, (match, key) => {
+				if (data[key] == 0) 
+					data[key] = "0";
+				return data[key] || match
+			});
+		}
+
+		// Function to update the DOM
+		function updateDOM(html) {
+			document.body.innerHTML = html;
+		}
+
+		function updateAllData() {
+			// Fetch all data concurrently
+			Promise.all(apiEndpoints.map(endpoint =>
+				fetch(endpoint.url)
+					.then(response => response.json())
+					.then(data => ({ data, prefix: endpoint.prefix }))
+			))
+				.then(results => {
+					let template = document.body.innerHTML;
+
+					// Apply all replacements
+					results.forEach(({ data, prefix }) => {
+						template = replacePlaceholders(template, data, prefix);
+					});
+
+					// Update the DOM once
+					updateDOM(template);
+				})
+				.catch(error => console.error('Error:', error));
+			}
+
+		// Initial update
+		updateAllData();
+
+		// Set interval to update every 30 seconds
+		setInterval(updateAllData, 30000);
+	</script>
 </body>
 </html>

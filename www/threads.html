@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>DATUM Gateway Status</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<style type="text/css">
+		.table-wrapper {
+			justify-content: center;
+		}
+		
+		.table-container {
+			max-width: 800px;
+		}
+		
+		table {
+			border-collapse: collapse;
+		}
+		
+		td {
+			word-break: break-all;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
+		</div>
+		<div class="menu-container">
+			<a href="/">Status</a>
+			<a href="/clients">Clients</a>
+			<a href="/threads" style="background-color: darkslategrey;">Threads</a>
+			<a href="/coinbaser">Coinbaser</a>
+		</div>
+	</div>
+	
+	<div class="tables-container">
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Thread Stats</h2>
+				<table id="threads">
+					<tr>
+					  <td><u>TID</u></td>
+					  <td><u>Connection Count</u></td>
+					  <td><u>Sub Count</u></td>
+					  <td><u>Approx. Hashrate</u></td>
+					  <td><u>Command</u></td>
+					</tr>
+				</table>
+				<script>
+					function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+					
+					function updateThreadsTable() {
+						fetch('/api/v1/threads')
+							.then(response => response.json())
+							.then(data => {
+							const table = document.getElementById('threads');
+							const tbody = table.querySelector('tbody') || table;
+							
+							// Clear existing rows except the header
+							while (tbody.rows.length > 1) {
+								tbody.deleteRow(1);
+							}
+
+							// Add new rows
+							data.forEach(thread => {
+								const row = tbody.insertRow();
+								row.innerHTML = `
+								<td>${thread.tid}</td>
+								<td>${thread.connection_count}</td>
+								<td>${thread.sub_count}</td>
+								<td>${thread.approx_hashrate.toFixed(2)} Th/s</td>
+								<td>
+									<button onclick="sendPostRequest('/cmd', {cmd:'empty_thread',tid:${thread.tid}})">
+									Disconnect All
+									</button>
+								</td>
+								`;
+							});
+							})
+							.catch(error => console.error('Error:', error));
+						}
+
+						// Call the function to update the table
+						updateThreadsTable();
+
+						// Optionally, update the table every 10 seconds
+						setInterval(updateThreadsTable, 10000);
+				</script>
