@@ -368,7 +368,7 @@ int datum_read_config(const char *conffile) {
 	}
 	
 	if (datum_config.share_stale_seconds < 60) {
-		DLOG_FATAL("Stratum server stratum.share_stale_seconds must be at least 60 (suggest at 120)");
+		DLOG_FATAL("Stratum server stratum.share_stale_seconds must be at least 60 (suggest 120)");
 		return 0;
 	}
 
