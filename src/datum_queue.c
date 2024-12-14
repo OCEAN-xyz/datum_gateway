@@ -68,11 +68,10 @@ int datum_queue_free(DATUM_QUEUE *q) {
 	
 	q->initialized = false;
 	q->buffer[0] = 0;
-	q->buffer[0] = 0;
 	
-	pthread_rwlock_unlock(&q->active_buffer_rwlock);
-	pthread_rwlock_unlock(&q->buffer_rwlock[0]);
 	pthread_rwlock_unlock(&q->buffer_rwlock[1]);
+	pthread_rwlock_unlock(&q->buffer_rwlock[0]);
+	pthread_rwlock_unlock(&q->active_buffer_rwlock);
 	
 	pthread_rwlock_destroy(&q->active_buffer_rwlock);
 	pthread_rwlock_destroy(&q->buffer_rwlock[0]);
@@ -132,7 +131,8 @@ int datum_queue_add_item(DATUM_QUEUE *q, void *item) {
 	// Add the msg to the logger queue
 	// this is probably overkill...
 	for (i=0;i<10000000;i++) {
-		if (i < 99999990) { // ensure we don't get the lock on the last try and forget to unlock and crash
+		if (i < 9999999) { // ensure we don't get the lock on the last try and forget to unlock and crash
+			
 			// get the active buffer ID
 			pthread_rwlock_rdlock(&q->active_buffer_rwlock);
 			buffer_id = q->active_buffer;
