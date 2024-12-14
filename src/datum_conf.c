@@ -376,7 +376,7 @@ int datum_read_config(const char *conffile) {
 		DLOG_FATAL("Stratum server stratum.stratum_v1_share_stale_seconds must not exceed 150 (suggest 120)");
 		return 0;
 	}
-
+	
 	// Save some multiplication later
 	datum_config.datum_protocol_global_timeout_ms = datum_config.datum_protocol_global_timeout * 1000;
 	
