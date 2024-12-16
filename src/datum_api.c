@@ -644,7 +644,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE><BR><CENTER>Total active hashrate estimate: %.2f Th/s</CENTER>", thr);
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p>", thr);
 	sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>");
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
