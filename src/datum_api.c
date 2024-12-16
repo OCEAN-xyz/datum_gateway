@@ -35,6 +35,8 @@
 
 // This is quick and dirty for now.  Will be improved over time.
 
+#include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <microhttpd.h>
@@ -388,6 +390,30 @@ void datum_api_cmd_kill_client(int tid, int cid) {
 	}
 }
 
+static enum MHD_Result datum_api_cmd_formdata(void * const cls, const enum MHD_ValueKind kind, const char * const key, const char * const filename, const char * const content_type, const char * const transfer_encoding, const char * const data, const uint64_t off, const size_t size) {
+	assert(cls);
+	const char * * const redirect_p = cls;
+	if (!key) return MHD_YES;
+	if (off) return MHD_YES;
+	
+	if (!strcmp(key, "empty_thread")) {
+		const int tid = datum_atoi_strict(data, size);
+		if (tid == -1) return MHD_YES;
+		datum_api_cmd_empty_thread(tid);
+		*redirect_p = "/threads";
+	} else if (!strcmp(key, "kill_client")) {
+		const char * const underscore_pos = memchr(data, '_', size);
+		if (!underscore_pos) return MHD_YES;
+		const size_t tid_size = underscore_pos - data;
+		const int tid = datum_atoi_strict(data, tid_size);
+		const int cid = datum_atoi_strict(&underscore_pos[1], size - tid_size - 1);
+		datum_api_cmd_kill_client(tid, cid);
+		*redirect_p = "/clients";
+	}
+	
+	return MHD_YES;
+}
+
 int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
 	struct MHD_Response *response;
 	char output[1024];
@@ -439,6 +465,29 @@ int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
 					}
 				}
 			}
+		} else {
+			const char *redirect;
+			struct MHD_PostProcessor * const cmd_pp = MHD_create_post_processor(connection, 32768, datum_api_cmd_formdata, &redirect);
+			if (!cmd_pp) {
+err:
+				response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+				http_resp_prevent_caching(response);
+				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
+				MHD_destroy_response(response);
+				return ret;
+			}
+			if (MHD_YES != MHD_post_process(cmd_pp, post, len) || !redirect) {
+				MHD_destroy_post_processor(cmd_pp);
+				goto err;
+			}
+			MHD_destroy_post_processor(cmd_pp);
+			
+			response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+			http_resp_prevent_caching(response);
+			MHD_add_response_header(response, "Location", redirect);
+			ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+			MHD_destroy_response(response);
+			return ret;
 		}
 	}
 	
@@ -517,7 +566,7 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 	tsms = current_time_millis();
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_threads_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>");
 	for(j=0;j<global_stratum_app->max_threads;j++) {
 		thr = 0.0;
 		subs = 0;
@@ -541,10 +590,10 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 			}
 		}
 		if (conns) {
-			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD> <TD><button onclick=\"sendPostRequest('/cmd', {cmd:'empty_thread',tid:%d})\">Disconnect All</button></TD></TR>", j, conns, subs, thr, j);
+			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD> <TD><button name='empty_thread' value='%d' onclick=\"sendPostRequest('/cmd', {cmd:'empty_thread',tid:%d}); return false;\">Disconnect All</button></TD></TR>", j, conns, subs, thr, j, j);
 		}
 	}
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form>");
 	sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>");
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
@@ -580,7 +629,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	tsms = current_time_millis();
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd'><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>");
 	
 	for(j=0;j<global_stratum_app->max_threads;j++) {
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
@@ -639,12 +688,12 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 					sz += snprintf(&output[sz], max_sz-1-sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
 				}
 				
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TD><button onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d})\">Kick</button></TD></TR>", j, ii);
+				sz += snprintf(&output[sz], max_sz-1-sz, "<TD><button name='kill_client' value='%d_%d' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d}); return false;\">Kick</button></TD></TR>", j, ii, j, ii);
 			}
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE><BR><CENTER>Total active hashrate estimate: %.2f Th/s</CENTER>", thr);
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><BR><CENTER>Total active hashrate estimate: %.2f Th/s</CENTER>", thr);
 	sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>");
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
