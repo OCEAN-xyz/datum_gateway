@@ -67,8 +67,8 @@ typedef struct {
 
 // Globally accessable config options
 typedef struct {
-	char bitcoind_rpcuser[256];
-	char bitcoind_rpcpassword[256];
+	char bitcoind_rpcuser[128];
+	char bitcoind_rpcpassword[128];
 	char bitcoind_rpcurl[256];
 	int bitcoind_work_update_seconds;
 	bool bitcoind_notify_fallback;
@@ -126,6 +126,7 @@ typedef struct {
 } global_config_t;
 
 extern global_config_t datum_config;
+extern char userpass[sizeof(datum_config.bitcoind_rpcuser) + sizeof(datum_config.bitcoind_rpcpassword)];
 
 int datum_read_config(const char *conffile);
 void datum_gateway_help(void);
