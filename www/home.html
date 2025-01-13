@@ -48,27 +48,27 @@
 				<table>
 					<tr>
 						<td class="label">Shares Accepted:</td>
-						<td>${DATUM_SHARES_ACCEPTED}</td>
+						<td>${DATUM_SHARES_ACCEPTED_ABSOLUTE}  (${DATUM_SHARES_ACCEPTED_WEIGHED} diff)</td>
 					</tr>
 					<tr>
 						<td class="label">Shares Rejected:</td>
-						<td>${DATUM_SHARES_REJECTED}</td>
+						<td>${DATUM_SHARES_REJECTED_ABSOLUTE}  (${DATUM_SHARES_REJECTED_WEIGHED} diff)</td>
 					</tr>
 					<tr>
 						<td class="label">Status:</td>
-						<td>${DATUM_CONNECTION_STATUS}</td>
+						<td><svg viewBox='0 0 100 100' role='img' style='width:1em;height:1em'><circle cx='50' cy='60' r='35' style='fill:${DATUM_CONNECTION_STATUS_INDICATOR_COLOUR}' /></svg> ${DATUM_CONNECTION_STATUS_DESCRIPTION}</td>
 					</tr>
 					<tr>
 						<td class="label">Pool Host:</td>
-						<td>${DATUM_POOL_HOST}</td>
+						<td>${DATUM_POOL_HOST_OR_NA}</td>
 					</tr>
 					<tr>
 						<td class="label">Pool Tag:</td>
-						<td>${DATUM_POOL_TAG}</td>
+						<td>${DATUM_POOL_TAG_FORMATTED}</td>
 					</tr>
 					<tr>
 						<td class="label">Secondary/Miner Tag:</td>
-						<td>${DATUM_MINER_TAG}</td>
+						<td>${DATUM_MINER_TAG_FORMATTED}</td>
 					</tr>
 					<tr>
 						<td class="label">Pool Current MinDiff:</td>
@@ -98,7 +98,7 @@
 					</tr>
 					<tr>
 						<td class="label">Estimated Hashrate:</td>
-						<td>${STRATUM_HASHRATE_ESTIMATE}</td>
+						<td>${STRATUM_HASHRATE_ESTIMATE_FORMATTED}</td>
 					</tr>
 				</table>
 			</div>
@@ -117,15 +117,15 @@
 				</tr>
 				<tr>
 					<td class="label">Block Value:</td>
-					<td>${STRATUM_JOB_BLOCK_VALUE}</td>
+					<td>${STRATUM_JOB_BLOCK_VALUE_FORMATTED}</td>
 				</tr>
 				<tr>
 					<td class="label">Previous Block:</td>
-					<td class="fixed-width">${STRATUM_JOB_PREVBLOCK}</td>
+					<td class="fixed-width">${STRATUM_JOB_PREVBLOCK_FORMATTED}</td>
 				</tr>
 				<tr>
 					<td class="label">Block Target:</td>
-					<td class="fixed-width">${STRATUM_JOB_TARGET}</td>
+					<td class="fixed-width">${STRATUM_JOB_TARGET_FORMATTED}</td>
 				</tr>
 				<tr>
 					<td class="label">Witness Commitment:</td>
@@ -137,7 +137,7 @@
 				</tr>
 				<tr>
 					<td class="label">Version:</td>
-					<td>${STRATUM_JOB_VERSION}</td>
+					<td>${STRATUM_JOB_VERSION_HEX} (${STRATUM_JOB_VERSION})</td>
 				</tr>
 				<tr>
 					<td class="label">Bits:</td>
@@ -145,11 +145,11 @@
 				</tr>
 				<tr>
 					<td class="label">Time:</td>
-					<td>${STRATUM_JOB_TIMEINFO}</td>
+					<td>Current: ${STRATUM_JOB_CURTIME} / Min: ${STRATUM_JOB_MINTIME}</td>
 				</tr>
 				<tr>
 					<td class="label">Limits:</td>
-					<td>${STRATUM_JOB_LIMITINFO}</td>
+					<td>Size: ${STRATUM_JOB_SIZE_LIMIT}, Weight: ${STRATUM_JOB_WEIGHT_LIMIT}, SigOps: ${STRATUM_JOB_SIGOP_LIMIT}</td>
 				</tr>
 				<tr>
 					<td class="label">Size:</td>
