@@ -48,10 +48,16 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#include <blkmaker.h>
+#include <libbase58.h>
+
 #include "datum_utils.h"
-#include "thirdparty_base58.h"
 #include "thirdparty_segwit_addr.h"
 #include "datum_logger.h"
+
+#if EMBEDDED_THIN_BLKMAKER
+bool (*blkmk_sha256_impl)(void *, const void *, size_t) = NULL;
+#endif
 
 volatile int panic_mode = 0;
 
@@ -76,6 +82,8 @@ void get_target_from_diff(unsigned char *result, uint64_t diff) {
 }
 
 void datum_utils_init(void) {
+	b58_sha256_impl = my_sha256;
+	blkmk_sha256_impl = my_sha256;
 	build_hex_lookup();
 }
 
