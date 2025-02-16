@@ -33,6 +33,7 @@
  *
  */
 
+#include <assert.h>
 #include <sodium.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -702,4 +703,19 @@ uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char ke
 	SIPHASH_DOUBLE_ROUND(v0,v1,v2,v3);
 	SIPHASH_DOUBLE_ROUND(v0,v1,v2,v3);
 	return (v0 ^ v1) ^ (v2 ^ v3);
+}
+
+// Uses a fixed-size buffer; positive only; digits only
+// Returns -1 on failure
+int datum_atoi_strict(const char * const s, const size_t size) {
+	if (!size) return -1;
+	assert(s);
+	int ret = 0;
+	for (size_t i = 0; i < size; ++i) {
+		if (s[i] < '0' || s[i] > '9') return -1;
+		int digit = s[i] - '0';
+		if (ret > (INT_MAX - digit) / 10) return -1;
+		ret = (ret * 10) + digit;
+	}
+	return ret;
 }

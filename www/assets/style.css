@@ -119,6 +119,11 @@ td:not(.label) {
 	background-color: black;
 }
 
+.table-footer {
+	text-align: center;
+	margin-top: 30px;
+}
+
 @media (min-width: 1100px) {
 	.table-wrapper {
 		flex-wrap: nowrap;
@@ -137,4 +142,9 @@ td:not(.label) {
 
 .fixed-width {
 	font-family: "Courier New", Courier, monospace;
+}
+
+.note {
+	text-align: center;
+	font-size: small;
 }

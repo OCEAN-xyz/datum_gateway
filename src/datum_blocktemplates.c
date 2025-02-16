@@ -253,9 +253,12 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 	}
 	
 	tdata->txn_count = json_array_size(tx_array);
+	tdata->txn_data_offset = sizeof(T_DATUM_TEMPLATE_TXN)*tdata->txn_count;
 	if (tdata->txn_count > 0) {
-		tdata->txn_data_offset = sizeof(T_DATUM_TEMPLATE_TXN)*tdata->txn_count;
-		
+		if (tdata->txn_count > 16383) {
+			DLOG_WARN("DATUM Gateway does not support blocks with more than 16383 transactions! %d txns in template. Truncating template to 16383 transactions.", (int)tdata->txn_count);
+			tdata->txn_count = 16383;
+		}
 		for(i=0;i<tdata->txn_count;i++) {
 			json_t *tx = json_array_get(tx_array, i);
 			if (!tx) {
@@ -421,7 +424,7 @@ void *datum_gateway_template_thread(void *args) {
 		gbt = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, gbt_req);
 		
 		if (!gbt) {
-			DLOG_ERROR("Could not fetch new template!");
+			DLOG_ERROR("Could not fetch new template from %s!", datum_config.bitcoind_rpcurl);
 			sleep(1);
 			continue;
 		} else {

@@ -8,9 +8,10 @@ foreach(INPUT_FILE ${INPUT_FILES})
 	math(EXPR INPUT_DATA_LEN "${INPUT_DATA_LEN} / 2")
 	
 	string(REGEX REPLACE "................" "\\0\n" INPUT_DATA_C_ARRAY "${INPUT_DATA_HEX}")
-	string(REGEX REPLACE "[^\n][^\n]" "0x\\0," INPUT_DATA_C_ARRAY "${INPUT_DATA_C_ARRAY}")
+	string(REGEX REPLACE "[^\n][^\n]" "\\\\x\\0" INPUT_DATA_C_ARRAY "${INPUT_DATA_C_ARRAY}")
+	string(REGEX REPLACE "\n" "\"\n\"" INPUT_DATA_C_ARRAY "${INPUT_DATA_C_ARRAY}")
 	
-	string(APPEND OUTPUT_CONTENT "\nstatic const char ${OUTPUT_VAR}[]={\n${INPUT_DATA_C_ARRAY}0};\nstatic const size_t ${OUTPUT_VAR}_sz=${INPUT_DATA_LEN};\n")
+	string(APPEND OUTPUT_CONTENT "\nstatic const char ${OUTPUT_VAR}[]=\n\"${INPUT_DATA_C_ARRAY}\\0\";\nstatic const size_t ${OUTPUT_VAR}_sz=${INPUT_DATA_LEN};\n")
 endforeach()
 
 file(WRITE ${OUTPUT_FILE} "${OUTPUT_CONTENT}")

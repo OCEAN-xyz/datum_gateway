@@ -1845,6 +1845,7 @@ void stratum_job_merkle_root_calc(T_DATUM_STRATUM_JOB *s, unsigned char *coinbas
 }
 
 void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
+	// NOTE: This uses a static varaible for temp space. Do not call concurrently from multiple threads.
 	bool level_needs_dupe = false;
 	int current_level_size = 0, next_level_size = 0;
 	int q,i,j;
@@ -1856,12 +1857,20 @@ void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
 	const unsigned char (*current_level)[32];
 	unsigned char (*next_level)[32];
 	
-	// stratch RAM
-	unsigned char templist[8192][32];
+	// scratch RAM
+	static unsigned char templist[16384][32];
 	
-	current_level_size = s->block_template->txn_count+1;
+	// dev sanity check for thread concurrency
+	static int safety_check;
+	int marker = ++safety_check;
 	
-	if (!current_level_size) {
+	if (s->block_template->txn_count > 16383) {
+		DLOG_FATAL("BUG: stratum_calculate_merkle_branches does not support templates with more than 16383 transactions! %d transactions in template.",(int)s->block_template->txn_count);
+		panic_from_thread(__LINE__);
+		return;
+	}
+	
+	if (!s->block_template->txn_count) {
 		// no transactions
 		s->merklebranch_count = 0;
 		s->merklebranches_full[0] = '[';
@@ -1869,6 +1878,8 @@ void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
 		s->merklebranches_full[2] = 0;
 		return;
 	}
+	
+	current_level_size = s->block_template->txn_count+1;
 	
 	next_level = &templist[0];
 	current_level = next_level;
@@ -1947,6 +1958,11 @@ void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
 	}
 	s->merklebranches_full[j] = ']';
 	s->merklebranches_full[j+1] = 0;
+	
+	if (safety_check != marker) {
+		DLOG_FATAL("BUG: stratum_calculate_merkle_branches is NOT thread safe and appears to have been called concurrently!");
+		panic_from_thread(__LINE__);
+	}
 }
 
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state) {
@@ -2144,10 +2160,10 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 		userpass[511] = 0;
 		f = fopen(userpass, "w");
 		if (!f) {
-			DLOG_ERROR("Could not open %s for writing submitblock record to disk!", userpass);
+			DLOG_ERROR("Could not open %s for writing submitblock record to disk: %s!", userpass, strerror(errno));
 		} else {
 			if (!fwrite(submitblock_req, ptr-submitblock_req, 1, f)) {
-				DLOG_ERROR("Could not write to %s when writing submitblock record to disk!", userpass);
+				DLOG_ERROR("Could not write to %s when writing submitblock record to disk: %s!", userpass, strerror(errno));
 			}
 			fclose(f);
 		}
