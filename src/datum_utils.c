@@ -706,16 +706,32 @@ uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char ke
 }
 
 // Uses a fixed-size buffer; positive only; digits only
-// Returns -1 on failure
-int datum_atoi_strict(const char * const s, const size_t size) {
-	if (!size) return -1;
+// Returns UINT64_MAX on failure
+uint64_t datum_atoi_strict_u64(const char * const s, const size_t size) {
+	if (!size) return UINT64_MAX;
 	assert(s);
-	int ret = 0;
+	uint64_t ret = 0;
 	for (size_t i = 0; i < size; ++i) {
-		if (s[i] < '0' || s[i] > '9') return -1;
+		if (s[i] < '0' || s[i] > '9') return UINT64_MAX;
 		int digit = s[i] - '0';
-		if (ret > (INT_MAX - digit) / 10) return -1;
+		if (ret > (UINT64_MAX - digit) / 10) return UINT64_MAX;
 		ret = (ret * 10) + digit;
 	}
 	return ret;
+}
+
+// Uses a fixed-size buffer; positive only; digits only
+// Returns -1 on failure
+int datum_atoi_strict(const char * const s, const size_t size) {
+	const uint64_t ret = datum_atoi_strict_u64(s, size);
+	return (ret == UINT64_MAX || ret > INT_MAX) ? -1 : ret;
+}
+
+bool datum_secure_strequals(const char *secret, const size_t secret_len, const char *guess) {
+	const size_t guess_len = strlen(guess);
+	size_t acc = secret_len ^ guess_len;
+	for (size_t i = 0; i < guess_len; ++i) {
+		acc |= ((size_t)guess[i]) ^ ((size_t)secret[i % guess_len]);
+	}
+	return !acc;
 }

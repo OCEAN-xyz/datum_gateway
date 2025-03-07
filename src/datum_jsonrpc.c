@@ -33,6 +33,7 @@
  *
  */
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +42,7 @@
 #include <jansson.h>
 #include <stdbool.h>
 
+#include "datum_conf.h"
 #include "datum_jsonrpc.h"
 #include "datum_utils.h"
 
@@ -137,7 +139,7 @@ err_out:
 	return NULL;
 }
 
-json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, const char *rpc_req, const char *extra_header) {
+json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, const char *rpc_req, const char *extra_header, long * const http_resp_code_out) {
 	json_t *val, *err_val, *res_val;
 	CURLcode rc;
 	struct data_buffer all_data = { };
@@ -185,6 +187,7 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	
 	rc = curl_easy_perform(curl);
 	if (rc) {
+		if (http_resp_code_out) curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, http_resp_code_out);
 		DLOG_DEBUG("json_rpc_call: HTTP request failed: %s", curl_err_str);
 		DLOG_DEBUG("json_rpc_call: Request was: %s",rpc_req);
 		goto err_out;
@@ -230,5 +233,31 @@ err_out:
 }
 
 json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass, const char *rpc_req) {
-	return json_rpc_call_full(curl, url, userpass, rpc_req, NULL);
+	return json_rpc_call_full(curl, url, userpass, rpc_req, NULL, NULL);
+}
+
+bool update_rpc_cookie(global_config_t * const cfg) {
+	assert(!cfg->bitcoind_rpcuser[0]);
+	FILE * const F = fopen(cfg->bitcoind_rpccookiefile, "r");
+	if (!F) {
+		DLOG_ERROR("Cannot %s cookie file %s", "open", datum_config.bitcoind_rpccookiefile);
+		return false;
+	}
+	if (!(fgets(cfg->bitcoind_rpcuserpass, sizeof(cfg->bitcoind_rpcuserpass), F) && cfg->bitcoind_rpcuserpass[0])) {
+		DLOG_ERROR("Cannot %s cookie file %s", "read", datum_config.bitcoind_rpccookiefile);
+		return false;
+	}
+	return true;
+}
+
+json_t *bitcoind_json_rpc_call(CURL * const curl, global_config_t * const cfg, const char * const rpc_req) {
+	long http_resp_code = -1;
+	json_t *j = json_rpc_call_full(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req, NULL, &http_resp_code);
+	if (j) return j;
+	if (cfg->bitcoind_rpcuser[0]) return NULL;
+	if (http_resp_code != 401) return NULL;
+	
+	// Authentication failure using cookie; reload cookie file and try again
+	if (!update_rpc_cookie(cfg)) return NULL;
+	return json_rpc_call(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req);
 }

@@ -39,6 +39,8 @@
 #include <curl/curl.h>
 #include <jansson.h>
 
+#include "datum_conf.h"
+
 #ifndef JSON_INTEGER_IS_LONG_LONG
 #       error "Jansson 2.0 with long long support required!"
 #endif
@@ -63,5 +65,7 @@ struct upload_buffer {
 
 json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass, const char *rpc_req);
 char *basic_http_call(CURL *curl, const char *url);
+bool update_rpc_cookie(global_config_t *cfg);
+json_t *bitcoind_json_rpc_call(CURL *curl, global_config_t *cfg, const char *rpc_req);
 
 #endif

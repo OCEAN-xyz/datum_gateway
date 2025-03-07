@@ -43,6 +43,7 @@
 #include <jansson.h>
 
 #include "datum_conf.h"
+#include "datum_jsonrpc.h"
 #include "datum_utils.h"
 #include "datum_sockets.h"
 
@@ -52,12 +53,14 @@ const char *datum_conf_var_type_text[] = { "N/A", "boolean", "integer", "string"
 
 const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	// Bitcoind configs
+	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpccookiefile",			.description = "Path to file to read RPC cookie from, for communication with local bitcoind.",
+		.required = false, .ptr = datum_config.bitcoind_rpccookiefile,			.default_string[0] = "", .max_string_len = sizeof(datum_config.bitcoind_rpccookiefile) },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcuser",					.description = "RPC username for communication with local bitcoind.",
-		.required = true, .ptr = datum_config.bitcoind_rpcuser, .max_string_len = 128 },
+		.required = false, .ptr = datum_config.bitcoind_rpcuser,			.default_string[0] = "", .max_string_len = sizeof(datum_config.bitcoind_rpcuser) },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcpassword",				.description = "RPC password for communication with local bitcoind.",
-		.required = true, .ptr = datum_config.bitcoind_rpcpassword, .max_string_len = 128 },
+		.required = false, .ptr = datum_config.bitcoind_rpcpassword,			.default_string[0] = "", .max_string_len = sizeof(datum_config.bitcoind_rpcpassword) },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcurl",					.description = "RPC URL for communication with local bitcoind. (GBT Template Source)",
-		.required = true, .ptr = datum_config.bitcoind_rpcurl, .max_string_len = 128 },
+		.required = true, .ptr = datum_config.bitcoind_rpcurl, .max_string_len = sizeof(datum_config.bitcoind_rpcurl) },
 	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "work_update_seconds",		.description = "How many seconds between normal work updates?  (5-120, 40 suggested)",
 		.required = false, .ptr = &datum_config.bitcoind_work_update_seconds, .default_int = 40 },
 	{ .var_type = DATUM_CONF_BOOL,	 	.category = "bitcoind", 	.name = "notify_fallback",			.description = "Fall back to less efficient methods for new block notifications. Can disable if you use blocknotify.",
@@ -93,23 +96,25 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	
 	// mining settings
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "pool_address",				.description = "Bitcoin address used for mining rewards.",
-		.required = true, .ptr = datum_config.mining_pool_address, .max_string_len = 128 },
+		.required = true, .ptr = datum_config.mining_pool_address, .max_string_len = sizeof(datum_config.mining_pool_address) },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "coinbase_tag_primary",		.description = "Text to have in the primary coinbase tag when not using pool (overridden by DATUM Pool)",
-		.required = false, .ptr = datum_config.mining_coinbase_tag_primary,				.default_string[0] = "DATUM Gateway", .max_string_len = 64 },
+		.required = false, .ptr = datum_config.mining_coinbase_tag_primary,				.default_string[0] = "DATUM Gateway", .max_string_len = sizeof(datum_config.mining_coinbase_tag_primary) },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "coinbase_tag_secondary",	.description = "Text to have in the secondary coinbase tag (Short name/identifier)",
-		.required = false, .ptr = datum_config.mining_coinbase_tag_secondary,			.default_string[0] = "DATUM User", .max_string_len = 64 },
+		.required = false, .ptr = datum_config.mining_coinbase_tag_secondary,			.default_string[0] = "DATUM User", .max_string_len = sizeof(datum_config.mining_coinbase_tag_secondary) },
 	{ .var_type = DATUM_CONF_INT, 		.category = "mining", 		.name = "coinbase_unique_id",		.description = "A unique ID between 1 and 65535. This is appended to the coinbase. Make unique per instance of datum with the same coinbase tags.",
 		.required = false, .ptr = &datum_config.coinbase_unique_id, 		.default_int = 4242 },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "save_submitblocks_dir",	.description = "Directory to save all submitted blocks to as submitblock JSON files",
-		.required = false, .ptr = datum_config.mining_save_submitblocks_dir,			.default_string[0] = "", .max_string_len = 256 },
+		.required = false, .ptr = datum_config.mining_save_submitblocks_dir,			.default_string[0] = "", .max_string_len = sizeof(datum_config.mining_save_submitblocks_dir) },
 	
 	// API/dashboard
+	{ .var_type = DATUM_CONF_STRING, 	.category = "api",	 		.name = "admin_password",			.description = "API password for actions/changes (username 'admin'; disabled if blank)",
+		.required = false, .ptr = datum_config.api_admin_password,						.default_string[0] = "", .max_string_len = sizeof(datum_config.api_admin_password) },
 	{ .var_type = DATUM_CONF_INT, 		.category = "api",	 		.name = "listen_port",				.description = "Port to listen for API/dashboard requests (0=disabled)",
 		.required = false, .ptr = &datum_config.api_listen_port, 						.default_int = 0 },
 	
 	// extra block submissions list
 	{ .var_type = DATUM_CONF_STRING_ARRAY, 	.category = "extra_block_submissions", 	.name = "urls",		.description = "Array of bitcoind RPC URLs to submit our blocks to directly.  Include auth info: http://user:pass@IP",
-		.required = false, .ptr = datum_config.extra_block_submissions_urls[0],		.max_string_len = 512 },
+		.required = false, .ptr = datum_config.extra_block_submissions_urls[0],		.max_string_len = sizeof(*datum_config.extra_block_submissions_urls) },
 	
 	// logger
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "logger", 		.name = "log_to_console",			.description = "Enable logging of messages to the console",
@@ -119,7 +124,7 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "logger", 		.name = "log_to_file",				.description = "Enable logging of messages to a file",
 		.required = false, .ptr = &datum_config.clog_to_file, 		.default_bool = false },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "logger", 		.name = "log_file",					.description = "Path to file to write log messages, when enabled",
-		.required = false, .ptr = datum_config.clog_file,			.default_string[0] = "", .max_string_len = 1023 },
+		.required = false, .ptr = datum_config.clog_file,			.default_string[0] = "", .max_string_len = sizeof(datum_config.clog_file) },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "logger", 		.name = "log_rotate_daily",			.description = "Rotate the message log file at midnight",
 		.required = false, .ptr = &datum_config.clog_rotate_daily, 		.default_bool = true },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "logger", 		.name = "log_calling_function",		.description = "Log the name of the calling function when logging",
@@ -131,11 +136,11 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	
 	// datum options
 	{ .var_type = DATUM_CONF_STRING, 	.category = "datum", 		.name = "pool_host",					.description = "Remote DATUM server host/ip to use for decentralized pooled mining (set to \"\" to disable pooled mining)",
-		.required = false, .ptr = datum_config.datum_pool_host,			.default_string[0] = "datum-beta1.mine.ocean.xyz", .max_string_len = 1023 },
+		.required = false, .ptr = datum_config.datum_pool_host,			.default_string[0] = "datum-beta1.mine.ocean.xyz", .max_string_len = sizeof(datum_config.datum_pool_host) },
 	{ .var_type = DATUM_CONF_INT, 		.category = "datum",		.name = "pool_port",					.description = "Remote DATUM server port",
 		.required = false, .ptr = &datum_config.datum_pool_port, .default_int = 28915 },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "datum", 		.name = "pool_pubkey",					.description = "Public key of the DATUM server for initiating encrypted connection. Get from secure location, or set to empty to auto-fetch.",
-		.required = false, .ptr = datum_config.datum_pool_pubkey,		.default_string[0] = "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003", .max_string_len = 1023 },
+		.required = false, .ptr = datum_config.datum_pool_pubkey,		.default_string[0] = "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003", .max_string_len = sizeof(datum_config.datum_pool_pubkey) },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_workers",			.description = "Pass stratum miner usernames as sub-worker names to the pool (pool_username.miner's username)",
 		.required = false, .ptr = &datum_config.datum_pool_pass_workers, 		.default_bool = true },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_full_users",			.description = "Pass stratum miner usernames as raw usernames to the pool (use if putting multiple payout addresses on miners behind this gateway)",
@@ -149,6 +154,21 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 };
 
 #define NUM_CONFIG_ITEMS (sizeof(datum_config_options) / sizeof(datum_config_options[0]))
+
+const T_DATUM_CONFIG_ITEM *datum_config_get_option_info(const char * const category, const size_t category_len, const char * const name, const size_t name_len) {
+	for (size_t i = 0; i < NUM_CONFIG_ITEMS; ++i) {
+		if (strncmp(category, datum_config_options[i].category, category_len)) continue;
+		if (datum_config_options[i].category[category_len]) continue;
+		if (strncmp(name, datum_config_options[i].name, name_len)) continue;
+		if (datum_config_options[i].name[name_len]) continue;
+		return &datum_config_options[i];
+	}
+	return NULL;
+}
+
+const T_DATUM_CONFIG_ITEM *datum_config_get_option_info2(const char * const category, const char * const name) {
+	return datum_config_get_option_info(category, strlen(category), name, strlen(name));
+}
 
 json_t *load_json_from_file(const char *file_path) {
 	json_error_t error;
@@ -221,8 +241,11 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 				return 1;
 			}
 			if (!json_is_string(item)) return -1;
-			strncpy((char *)c->ptr, json_string_value(item), c->max_string_len-1);
-			((char *)c->ptr)[c->max_string_len-1] = 0;
+			// check for overflow
+			int written = snprintf((char *)c->ptr, c->max_string_len, "%s", json_string_value(item));
+			if (written >= c->max_string_len) {
+				return -2;
+			}
 			return 1;
 		}
 		
@@ -251,6 +274,11 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 	return -1;
 }
 
+static void datum_config_opt_missing_error(const T_DATUM_CONFIG_ITEM * const opt) {
+	DLOG_ERROR("Required configuration option (%s.%s) not found in config file:", opt->category, opt->name);
+	DLOG_ERROR("--- Config description: \"%s\"", opt->description);
+}
+
 int datum_read_config(const char *conffile) {
 	json_t *config = NULL;
 	json_t *cat, *item;
@@ -275,8 +303,7 @@ int datum_read_config(const char *conffile) {
 		}
 		if ((!item) || json_is_null(item)) {
 			if (datum_config_options[i].required) {
-				DLOG_ERROR("Required configuration option (%s.%s) not found in config file:", datum_config_options[i].category, datum_config_options[i].name);
-				DLOG_ERROR("--- Config description: \"%s\"", datum_config_options[i].description);
+				datum_config_opt_missing_error(&datum_config_options[i]);
 				return 0;
 			} else {
 				datum_config_set_default(&datum_config_options[i]);
@@ -286,14 +313,21 @@ int datum_read_config(const char *conffile) {
 		
 		// item might be valid
 		j = datum_config_parse_value(&datum_config_options[i], item);
-		if (j != 1) {
+		if (j == -1) {
 			DLOG_ERROR("Could not parse configuration option %s.%s.  Type should be %s", datum_config_options[i].category, datum_config_options[i].name, (datum_config_options[i].var_type<DATUM_CONF_TYPES)?datum_conf_var_type_text[datum_config_options[i].var_type]:"UNKNOWN");
+			return -1;
+		} else if (j == -2) {
+			DLOG_ERROR("Configuration option %s.%s exceeds maximum length of %d", datum_config_options[i].category, datum_config_options[i].name, datum_config_options[i].max_string_len);
+			return -1;
 		}
 	}
 	
 	if (config) {
 		json_decref(config);
 	}
+	
+	// populate userpass for further reuse
+	snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
 	
 	// pass configuration options to the logger
 	datum_logger_config(datum_config.clog_to_file, datum_config.clog_to_console, datum_config.clog_level_console, datum_config.clog_level_file, datum_config.clog_calling_function, datum_config.clog_to_stderr, datum_config.clog_rotate_daily, datum_config.clog_file);
@@ -309,6 +343,38 @@ int datum_read_config(const char *conffile) {
 	}
 	if (datum_config.bitcoind_work_update_seconds > 120) {
 		datum_config.bitcoind_work_update_seconds = 120;
+	}
+	
+	if (datum_config.bitcoind_rpcuser[0]) {
+		if (!datum_config.bitcoind_rpcpassword[0]) {
+			datum_config_opt_missing_error(datum_config_get_option_info2("bitcoind", "rpcpassword"));
+			return 0;
+		}
+		snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+	} else if (datum_config.bitcoind_rpccookiefile[0]) {
+		update_rpc_cookie(&datum_config);
+	} else {
+		const T_DATUM_CONFIG_ITEM *opt;
+		DLOG_ERROR("Either bitcoind.rpcuser (and bitcoind.rpcpassword) or bitcoind.rpccookiefile is required.");
+		opt = datum_config_get_option_info2("bitcoind", "rpcuser");
+		DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
+		opt = datum_config_get_option_info2("bitcoind", "rpccookiefile");
+		DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
+		return 0;
+	}
+	
+	datum_config.api_admin_password_len = strlen(datum_config.api_admin_password);
+	if (datum_config.api_admin_password_len) {
+		static const char hash_tag[] = "DATUM Anti-CSRF Token";
+		const size_t data_max_sz = sizeof(hash_tag) + sizeof(datum_config.api_listen_port) + sizeof(datum_config.api_admin_password);
+		const size_t data_sz = sizeof(hash_tag) + sizeof(datum_config.api_listen_port) + datum_config.api_admin_password_len;
+		char data[data_max_sz];
+		strcpy(data, hash_tag);
+		memcpy(&data[sizeof(hash_tag)], &datum_config.api_listen_port, sizeof(datum_config.api_listen_port));
+		strcpy(&data[sizeof(hash_tag)+sizeof(datum_config.api_listen_port)], datum_config.api_admin_password);
+		unsigned char hash[32];
+		my_sha256(hash, data, data_sz);
+		hash2hex(hash, datum_config.api_csrf_token);
 	}
 	
 	if (datum_config.stratum_v1_max_threads > MAX_THREADS) {
