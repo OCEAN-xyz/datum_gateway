@@ -352,6 +352,9 @@ void datum_stratum_v1_socket_thread_client_new(T_DATUM_CLIENT_DATA *c) {
 	m->sdata = (T_DATUM_STRATUM_THREADPOOL_DATA *)c->datum_thread->app_thread_data;
 	m->stats.last_swap_tsms = m->stats.last_share_tsms;
 	
+	static uint64_t unique_id_ctr = 0;
+	m->unique_id = unique_id_ctr++;
+	
 	// set initial connection time
 	// if this is the first client on the thread, we won't have a loop_tsms yet
 	if (m->sdata->loop_tsms > 0) {
@@ -690,7 +693,7 @@ void datum_stratum_v1_socket_thread_loop(T_DATUM_THREAD_DATA *my) {
 void send_error_to_client(T_DATUM_CLIENT_DATA *c, uint64_t id, char *e) {
 	// "e" must be valid JSON string
 	char s[1024];
-	snprintf(s, 1023, "{\"error\":%s,\"id\":%"PRIu64",\"result\":null}\n", e, id);
+	snprintf(s, sizeof(s), "{\"error\":%s,\"id\":%"PRIu64",\"result\":null}\n", e, id);
 	datum_socket_send_string_to_client(c, s);
 }
 
@@ -1283,7 +1286,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	char s[256];
-	snprintf(s, 255, "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
+	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
 	datum_socket_send_string_to_client(c, s);
 	
 	// update connection totals
@@ -1370,15 +1373,15 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 		}
 	}
 	
-	i = snprintf(sa, 1023, "{\"error\":null,\"id\":%"PRIu64",\"result\":{", id);
+	i = snprintf(sa, sizeof(sa), "{\"error\":null,\"id\":%"PRIu64",\"result\":{", id);
 	if (new_vroll) {
-		i+= snprintf(&sa[i], 1023-i, "\"version-rolling\":true,\"version-rolling.mask\":\"%08x\"", m->extension_version_rolling_mask);
+		i+= snprintf(&sa[i], sizeof(sa)-i, "\"version-rolling\":true,\"version-rolling.mask\":\"%08x\"", m->extension_version_rolling_mask);
 	}
 	if (new_mdiff) {
 		// we don't currently support miner specified minimum difficulty.
-		i+= snprintf(&sa[i], 1023-i, ",\"minimum-difficulty\":false");
+		i+= snprintf(&sa[i], sizeof(sa)-i, ",\"minimum-difficulty\":false");
 	}
-	i+= snprintf(&sa[i], 1023-i, "}}\n");
+	i+= snprintf(&sa[i], sizeof(sa)-i, "}}\n");
 	
 	datum_socket_send_string_to_client(c, sa);
 	
@@ -1406,10 +1409,10 @@ int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 		}
 	}
 	
-	strncpy(m->last_auth_username, username_s, 191);
-	m->last_auth_username[191] = 0;
+	strncpy(m->last_auth_username, username_s, sizeof(m->last_auth_username) - 1);
+	m->last_auth_username[sizeof(m->last_auth_username)-1] = 0;
 	
-	snprintf(s, 255, "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
+	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
 	datum_socket_send_string_to_client(c, s);
 	
 	m->authorized = true;
@@ -1523,12 +1526,12 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	// new block work always is just a blank coinbase, for now
 	
 	if (quickdiff) {
-		snprintf(s, 511, "\"Q%s%2.2x\",\"%s\",\"", j->job_id, cbselect, j->prevhash);
+		snprintf(s, sizeof(s), "\"Q%s%2.2x\",\"%s\",\"", j->job_id, cbselect, j->prevhash);
 	} else {
 		if (!new_block) {
-			snprintf(s, 511, "\"%s%2.2x\",\"%s\",\"", j->job_id, cbselect, j->prevhash);
+			snprintf(s, sizeof(s), "\"%s%2.2x\",\"%s\",\"", j->job_id, cbselect, j->prevhash);
 		} else {
-			snprintf(s, 511, "\"N%s%2.2x\",\"%s\",\"", j->job_id, 255, j->prevhash); // empty coinbase for new block
+			snprintf(s, sizeof(s), "\"N%s%2.2x\",\"%s\",\"", j->job_id, 255, j->prevhash); // empty coinbase for new block
 			cb = &j->subsidy_only_coinbase;
 		}
 	}
@@ -1571,7 +1574,7 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 		// send empty merkle leafs
 		datum_socket_send_string_to_client(c, "[]");
 	}
-	snprintf(s, 511, ",\"%s\",\"%s\",\"%s\",", j->version, j->nbits, j->ntime);
+	snprintf(s, sizeof(s), ",\"%s\",\"%s\",\"%s\",", j->version, j->nbits, j->ntime);
 	datum_socket_send_string_to_client(c, s);
 	
 	// bunch of reasons we may need to discard old work
@@ -1594,7 +1597,7 @@ int send_mining_set_difficulty(T_DATUM_CLIENT_DATA *c) {
 		m->current_diff = datum_config.stratum_v1_vardiff_min;
 	}
 	
-	snprintf(s, 255, "{\"id\":null,\"method\":\"mining.set_difficulty\",\"params\":[%"PRIu64"]}\n", (uint64_t)m->current_diff);
+	snprintf(s, sizeof(s), "{\"id\":null,\"method\":\"mining.set_difficulty\",\"params\":[%"PRIu64"]}\n", (uint64_t)m->current_diff);
 	datum_socket_send_string_to_client(c, s);
 	
 	m->last_sent_diff = m->current_diff;
@@ -1712,7 +1715,7 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	m->sid_inv = ((sid>>24)&0xff) | (((sid>>16)&0xff)<<8) | (((sid>>8)&0xff)<<16) | ((sid&0xff)<<24);
 	
 	// tell them about all of this
-	snprintf(s, 1023, "{\"error\":null,\"id\":%"PRIu64",\"result\":[[[\"mining.notify\",\"%8.8x1\"],[\"mining.set_difficulty\",\"%8.8x2\"]],\"%8.8x\",8]}\n", id, sid, sid, sid);
+	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":[[[\"mining.notify\",\"%8.8x1\"],[\"mining.set_difficulty\",\"%8.8x2\"]],\"%8.8x\",8]}\n", id, sid, sid, sid);
 	datum_socket_send_string_to_client(c, s);
 	
 	// send them their current difficulty before sending a job
@@ -1983,14 +1986,14 @@ void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, i
 	}
 	s->prevhash[64] = 0;
 	
-	snprintf(s->version, 9, "%8.8x", block_template->version);
+	snprintf(s->version, sizeof(s->version), "%8.8x", block_template->version);
 	s->version_uint = block_template->version;
-	strncpy(s->nbits, block_template->bits, 9);
+	strncpy(s->nbits, block_template->bits, sizeof(s->nbits) - 1);
 	
 	// TODO: Should we use local time, and just verify is valid for the block?
 	// Perhaps as an option.
 	// The template's time is 100% safe, so we'll use that for now.
-	snprintf(s->ntime, 9, "%8.8llx", (unsigned long long)block_template->curtime);
+	snprintf(s->ntime, sizeof(s->ntime), "%8.8llx", (unsigned long long)block_template->curtime);
 	
 	// Set the coinbase value of this job based on the template
 	s->coinbase_value = block_template->coinbasevalue;
@@ -2070,7 +2073,7 @@ void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, i
 	}
 	
 	s->global_index = global_latest_stratum_job_index;
-	snprintf(s->job_id, 23, "%8.8x%2.2x%4.4x", (uint32_t)time(NULL), (uint8_t)stratum_job_next, (uint16_t)s->global_index ^ STRATUM_JOB_INDEX_XOR);
+	snprintf(s->job_id, sizeof(s->job_id), "%8.8x%2.2x%4.4x", (uint32_t)time(NULL), (uint8_t)stratum_job_next, (uint16_t)s->global_index ^ STRATUM_JOB_INDEX_XOR);
 	
 	global_cur_stratum_jobs[global_latest_stratum_job_index] = s;
 	pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
@@ -2087,7 +2090,6 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 	size_t i;
 	json_t *r;
 	CURL *tcurl;
-	char userpass[512];
 	int ret = 0;
 	bool free_submitblock_req = false;
 	char *s = NULL;
@@ -2155,17 +2157,22 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 	// for added security.  The thread above should already be submitting this block anyway.
 	if (datum_config.mining_save_submitblocks_dir[0] != 0) {
 		// save the block submission to a file named by the block's hash
-		FILE *f;
-		snprintf(userpass, 511, "%s/datum_submitblock_%s.json", datum_config.mining_save_submitblocks_dir, block_hash_hex);
-		userpass[511] = 0;
-		f = fopen(userpass, "w");
-		if (!f) {
-			DLOG_ERROR("Could not open %s for writing submitblock record to disk: %s!", userpass, strerror(errno));
+		char submitblockpath[384];
+		int n = snprintf(submitblockpath, sizeof(submitblockpath), "%s/datum_submitblock_%s.json", datum_config.mining_save_submitblocks_dir, block_hash_hex);
+		
+		if (n >= sizeof(submitblockpath)) {
+			DLOG_ERROR("Overflow in construction of submitblock path!");
 		} else {
-			if (!fwrite(submitblock_req, ptr-submitblock_req, 1, f)) {
-				DLOG_ERROR("Could not write to %s when writing submitblock record to disk: %s!", userpass, strerror(errno));
+			FILE *f;
+			f = fopen(submitblockpath, "w");
+			if (!f) {
+				DLOG_ERROR("Could not open %s for writing submitblock record to disk: %s!", submitblockpath, strerror(errno));
+			} else {
+				if (!fwrite(submitblock_req, ptr-submitblock_req, 1, f)) {
+					DLOG_ERROR("Could not write to %s when writing submitblock record to disk: %s!", submitblockpath, strerror(errno));
+				}
+				fclose(f);
 			}
-			fclose(f);
 		}
 	}
 	
@@ -2178,10 +2185,8 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 		return 0;
 	}
 	
-	sprintf(userpass, "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
-	
 	// make the call!
-	r = json_rpc_call(tcurl, datum_config.bitcoind_rpcurl, userpass, submitblock_req);
+	r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
 	curl_easy_cleanup(tcurl);
 	if (!r) {
 		// oddly, this means success here.

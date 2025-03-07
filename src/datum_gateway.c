@@ -132,6 +132,9 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 	
+	// Ignore SIGPIPE. This is instead handled gracefully by datum_sockets
+	signal(SIGPIPE, SIG_IGN);
+	
 	srand(time(NULL)); // Not used for anything secure, so this is fine.
 	
 	curl_global_init(CURL_GLOBAL_ALL);

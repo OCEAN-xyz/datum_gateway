@@ -211,6 +211,7 @@ typedef struct {
 
 typedef struct {
 	uint32_t sid, sid_inv;
+	uint64_t unique_id;
 	uint64_t connect_tsms;
 	char useragent[128];
 	char last_auth_username[192];

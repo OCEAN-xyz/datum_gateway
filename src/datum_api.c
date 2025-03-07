@@ -365,6 +365,94 @@ static void http_resp_prevent_caching(struct MHD_Response * const response) {
 	MHD_add_response_header(response, "Expires", "0");
 }
 
+static enum MHD_Result datum_api_formdata_to_json_cb(void * const cls, const enum MHD_ValueKind kind, const char * const key, const char * const filename, const char * const content_type, const char * const transfer_encoding, const char * const data, const uint64_t off, const size_t size) {
+	if (!key) return MHD_YES;
+	if (off) return MHD_YES;
+	
+	assert(cls);
+	json_t * const j = cls;
+	
+	json_object_set_new(j, key, json_stringn(data, size));
+	
+	return MHD_YES;
+}
+
+bool datum_api_formdata_to_json(struct MHD_Connection * const connection, char * const post, const int len, json_t * const j) {
+	struct MHD_PostProcessor * const pp = MHD_create_post_processor(connection, 32768, datum_api_formdata_to_json_cb, j);
+	if (!pp) {
+		return false;
+	}
+	if (MHD_YES != MHD_post_process(pp, post, len)) {
+		MHD_destroy_post_processor(pp);
+		return false;
+	}
+	MHD_destroy_post_processor(pp);
+	return true;
+}
+
+int datum_api_do_error(struct MHD_Connection * const connection, const unsigned int status_code) {
+	struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+	http_resp_prevent_caching(response);
+	int ret = MHD_queue_response(connection, status_code, response);
+	MHD_destroy_response(response);
+	return ret;
+}
+
+bool datum_api_check_admin_password_only(struct MHD_Connection * const connection, const char * const password) {
+	if (datum_secure_strequals(datum_config.api_admin_password, datum_config.api_admin_password_len, password) && datum_config.api_admin_password_len) {
+		return true;
+	}
+	DLOG_DEBUG("Wrong password in request");
+	datum_api_do_error(connection, MHD_HTTP_FORBIDDEN);
+	return false;
+}
+
+bool datum_api_check_admin_password_httponly(struct MHD_Connection * const connection) {
+	int ret;
+	
+	char * const username = MHD_digest_auth_get_username(connection);
+	const char * const realm = "DATUM Gateway";
+	if (username) {
+		ret = MHD_digest_auth_check2(connection, realm, username, datum_config.api_admin_password, 300, MHD_DIGEST_ALG_SHA256);
+		free(username);
+	} else {
+		ret = MHD_NO;
+	}
+	if (ret != MHD_YES) {
+		DLOG_DEBUG("Wrong password in HTTP authentication");
+		struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+		ret = MHD_queue_auth_fail_response2(connection, realm, datum_config.api_csrf_token, response, (ret == MHD_INVALID_NONCE) ? MHD_YES : MHD_NO, MHD_DIGEST_ALG_SHA256);
+		MHD_destroy_response(response);
+		return false;
+	}
+	
+	return true;
+}
+
+bool datum_api_check_admin_password(struct MHD_Connection * const connection, const json_t * const j) {
+	int ret;
+	
+	const json_t * const j_password = json_object_get(j, "password");
+	if (json_is_string(j_password)) {
+		return datum_api_check_admin_password_only(connection, json_string_value(j_password));
+	}
+	
+	// Only accept HTTP authentication if there's an anti-CSRF token
+	const json_t * const j_csrf = json_object_get(j, "csrf");
+	if (!json_is_string(j_csrf)) {
+		DLOG_DEBUG("Missing CSRF token in request");
+		datum_api_do_error(connection, MHD_HTTP_FORBIDDEN);
+		return false;
+	}
+	if (!datum_secure_strequals(datum_config.api_csrf_token, sizeof(datum_config.api_csrf_token)-1, json_string_value(j_csrf))) {
+		DLOG_DEBUG("Wrong CSRF token in request");
+		datum_api_do_error(connection, MHD_HTTP_FORBIDDEN);
+		return false;
+	}
+	
+	return datum_api_check_admin_password_httponly(connection);
+}
+
 static int datum_api_asset(struct MHD_Connection * const connection, const char * const mimetype, const char * const data, const size_t datasz) {
 	struct MHD_Response * const response = MHD_create_response_from_buffer(datasz, (void*)data, MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(response, "Content-Type", mimetype);
@@ -390,28 +478,43 @@ void datum_api_cmd_kill_client(int tid, int cid) {
 	}
 }
 
-static enum MHD_Result datum_api_cmd_formdata(void * const cls, const enum MHD_ValueKind kind, const char * const key, const char * const filename, const char * const content_type, const char * const transfer_encoding, const char * const data, const uint64_t off, const size_t size) {
-	assert(cls);
-	const char * * const redirect_p = cls;
-	if (!key) return MHD_YES;
-	if (off) return MHD_YES;
+void datum_api_cmd_kill_client2(const char * const data, const size_t size, const char ** const redirect_p) {
+	const char * const end = &data[size];
+	const char *underscore_pos = memchr(data, '_', size);
+	if (!underscore_pos) return;
+	const size_t tid_size = underscore_pos - data;
+	const int tid = datum_atoi_strict(data, tid_size);
+	const char *p = &underscore_pos[1];
+	underscore_pos = memchr(p, '_', end - p);
+	if (!underscore_pos) underscore_pos = end;
+	const int cid = datum_atoi_strict(p, underscore_pos - p);
 	
-	if (!strcmp(key, "empty_thread")) {
-		const int tid = datum_atoi_strict(data, size);
-		if (tid == -1) return MHD_YES;
-		datum_api_cmd_empty_thread(tid);
-		*redirect_p = "/threads";
-	} else if (!strcmp(key, "kill_client")) {
-		const char * const underscore_pos = memchr(data, '_', size);
-		if (!underscore_pos) return MHD_YES;
-		const size_t tid_size = underscore_pos - data;
-		const int tid = datum_atoi_strict(data, tid_size);
-		const int cid = datum_atoi_strict(&underscore_pos[1], size - tid_size - 1);
-		datum_api_cmd_kill_client(tid, cid);
-		*redirect_p = "/clients";
+	// Valid input; unconditionally redirect back to clients dashboard
+	*redirect_p = "/clients";
+	
+	if (tid < 0 || tid >= global_stratum_app->max_threads || cid < 0 || cid >= global_stratum_app->max_clients_thread) {
+		return;
 	}
 	
-	return MHD_YES;
+	if (underscore_pos != end) {
+		// Check it's the same client intended
+		p = &underscore_pos[1];
+		underscore_pos = memchr(p, '_', end - p);
+		if (!underscore_pos) underscore_pos = end;
+		const uint64_t connect_tsms = datum_atoi_strict_u64(p, underscore_pos - p);
+		const T_DATUM_MINER_DATA * const m = global_stratum_app->datum_threads[tid].client_data[cid].app_client_data;
+		if (connect_tsms != m->connect_tsms) {
+			DLOG_WARN("API Request to disconnect FORMER stratum client %d/%d (ignored; connect tsms req=%lu vs cur=%lu)", tid, cid, (unsigned long)connect_tsms, (unsigned long)m->connect_tsms);
+			return;
+		}
+		p = &underscore_pos[1];
+		const uint64_t unique_id = datum_atoi_strict_u64(p, end - p);
+		if (unique_id != m->unique_id) {
+			DLOG_WARN("API Request to disconnect FORMER stratum client %d/%d (ignored; unique id req=%lu vs cur=%lu)", tid, cid, (unsigned long)unique_id, (unsigned long)m->unique_id);
+			return;
+		}
+	}
+	datum_api_cmd_kill_client(tid, cid);
 }
 
 int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
@@ -431,6 +534,11 @@ int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
 			root = json_loadb(post, len, 0, &error);
 			if (root) {
 				if (json_is_object(root) && (cmd = json_object_get(root, "cmd"))) {
+					if (!datum_api_check_admin_password(connection, root)) {
+						json_decref(root);
+						return MHD_YES;
+					}
+					
 					if (json_is_string(cmd)) {
 						cstr = json_string_value(cmd);
 						DLOG_DEBUG("JSON CMD: %s",cstr);
@@ -466,21 +574,34 @@ int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
 				}
 			}
 		} else {
-			const char *redirect;
-			struct MHD_PostProcessor * const cmd_pp = MHD_create_post_processor(connection, 32768, datum_api_cmd_formdata, &redirect);
-			if (!cmd_pp) {
-err:
-				response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
-				http_resp_prevent_caching(response);
-				ret = MHD_queue_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, response);
-				MHD_destroy_response(response);
-				return ret;
+			root = json_object();
+			if (!datum_api_formdata_to_json(connection, post, len, root)) {
+				json_decref(root);
+				return datum_api_do_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR);
 			}
-			if (MHD_YES != MHD_post_process(cmd_pp, post, len) || !redirect) {
-				MHD_destroy_post_processor(cmd_pp);
-				goto err;
+			
+			if (!datum_api_check_admin_password(connection, root)) {
+				json_decref(root);
+				return MHD_YES;
 			}
-			MHD_destroy_post_processor(cmd_pp);
+			
+			const char *redirect = "/";
+			
+			param = json_object_get(root, "empty_thread");
+			if (param) {
+				const int tid = datum_atoi_strict(json_string_value(param), json_string_length(param));
+				if (tid != -1) {
+					datum_api_cmd_empty_thread(tid);
+					redirect = "/threads";
+				}
+			}
+			
+			param = json_object_get(root, "kill_client");
+			if (param) {
+				const char * const data = json_string_value(param);
+				const size_t size = json_string_length(param);
+				datum_api_cmd_kill_client2(data, size, &redirect);
+			}
 			
 			response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
 			http_resp_prevent_caching(response);
@@ -563,10 +684,12 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 		return MHD_NO;
 	}
 	
+	const bool have_admin = datum_config.api_admin_password_len;
+	
 	tsms = current_time_millis();
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_threads_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
 	for(j=0;j<global_stratum_app->max_threads;j++) {
 		thr = 0.0;
 		subs = 0;
@@ -590,11 +713,19 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 			}
 		}
 		if (conns) {
-			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD> <TD><button name='empty_thread' value='%d' onclick=\"sendPostRequest('/cmd', {cmd:'empty_thread',tid:%d}); return false;\">Disconnect All</button></TD></TR>", j, conns, subs, thr, j, j);
+			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD><TD><button ", j, conns, subs, thr);
+			if (have_admin) {
+				sz += snprintf(&output[sz], max_sz-1-sz, "name='empty_thread' value='%d' onclick=\"sendPostRequest('/cmd', {cmd:'empty_thread',tid:%d}); return false;\"", j, j);
+			} else {
+				sz += snprintf(&output[sz], max_sz-1-sz, "disabled");
+			}
+			sz += snprintf(&output[sz], max_sz-1-sz, ">Disconnect All</button></TD></TR>");
 		}
 	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form>");
-	sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>");
+	if (have_admin) {
+		sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){data.csrf='%s';fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>", datum_config.api_csrf_token);
+	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
@@ -629,7 +760,23 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	tsms = current_time_millis();
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>");
+	
+	if (!datum_config.api_admin_password_len) {
+		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access (not configured)");
+		sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
+		
+		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
+		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_prevent_caching(response);
+		ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+		MHD_destroy_response(response);
+		return ret;
+	}
+	if (!datum_api_check_admin_password_httponly(connection)) {
+		return MHD_YES;
+	}
+	
+	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
 	
 	for(j=0;j<global_stratum_app->max_threads;j++) {
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
@@ -688,13 +835,12 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 					sz += snprintf(&output[sz], max_sz-1-sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
 				}
 				
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TD><button name='kill_client' value='%d_%d' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d}); return false;\">Kick</button></TD></TR>", j, ii, j, ii);
+				sz += snprintf(&output[sz], max_sz-1-sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d,t:%lu,id:%lu}); return false;\">Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id, j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
 			}
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p>", thr);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>function sendPostRequest(url, data){data.csrf='%s';fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>", thr, datum_config.api_csrf_token);
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
 	// return the home page with some data and such
@@ -783,6 +929,27 @@ int datum_api_OK(struct MHD_Connection *connection) {
 	return ret;
 }
 
+int datum_api_testnet_fastforward(struct MHD_Connection * const connection) {
+	const char *time_str;
+	
+	time_str = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "password");
+	if (!datum_api_check_admin_password_only(connection, time_str)) {
+		return MHD_YES;
+	}
+	
+	// Get the time parameter from the URL query
+	time_str = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "ts");
+	
+	uint32_t t = -1000;
+	if (time_str != NULL) {
+		// Convert the time parameter to uint32_t
+		t = (int)strtoul(time_str, NULL, 10);
+	}
+	
+	datum_blocktemplates_notifynew("T", t);
+	return datum_api_OK(connection);
+}
+
 struct ConnectionInfo {
 	char *data;
 	size_t data_size;
@@ -806,7 +973,6 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 	struct ConnectionInfo *con_info = *con_cls;
 	int int_method = 0;
 	int uds = 0;
-	const char *time_str;
 	
 	if (strcmp(method, "GET") == 0) {
 		int_method = 1;
@@ -947,17 +1113,7 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 				return datum_api_thread_dashboard(connection);
 			}
 			if (!strcmp(url, "/testnet_fastforward")) {
-				// Get the time parameter from the URL query
-				time_str = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "ts");
-				
-				uint32_t t = -1000;
-				if (time_str != NULL) {
-					// Convert the time parameter to uint32_t
-					t = (int)strtoul(time_str, NULL, 10);
-				}
-				
-				datum_blocktemplates_notifynew("T", t);
-				return datum_api_OK(connection);
+				return datum_api_testnet_fastforward(connection);
 			}
 			break;
 		}
