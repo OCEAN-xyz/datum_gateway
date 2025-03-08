@@ -33,11 +33,14 @@
  *
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
@@ -537,10 +540,109 @@ int assign_to_thread(T_DATUM_SOCKET_APP *app, int fd) {
 	return 1;
 }
 
+const char *datum_sockets_setup_listen_sock(const int listen_sock, const struct sockaddr * const sa, const size_t sa_len) {
+	if (-1 == listen_sock) {
+		return "Could not create listening socket";
+	}
+	
+	datum_socket_setoptions(listen_sock);
+	
+	static const int reuse = 1;
+	if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0) {
+		return "setsockopt(SO_REUSEADDR) failed";
+	}
+	
+	if (bind(listen_sock, sa, sa_len) < 0) {
+		return "bind failed";
+	}
+	
+	if (listen(listen_sock, 10) < 0) {
+		return "listen failed";
+	}
+	
+	return NULL;
+}
+
+bool datum_sockets_setup_listening_sockets(const char * const purpose, const char * const addr, const uint16_t port, int * const out_socks, size_t * const inout_socks_n) {
+	assert(*inout_socks_n > 0);
+	if (addr && addr[0]) {
+		char port_str[6];
+		snprintf(port_str, sizeof(port_str), "%u", (unsigned int)port);
+		const struct addrinfo hints = {
+			.ai_family = AF_UNSPEC,
+			.ai_socktype = SOCK_STREAM,
+			.ai_protocol = 0,
+			.ai_flags = AI_PASSIVE | AI_NUMERICHOST | AI_NUMERICSERV,
+		};
+		struct addrinfo *res;
+		int err = getaddrinfo(addr, port_str, &hints, &res);
+		if (err) {
+			DLOG_FATAL("Failed to resolve listen address '%s' (%s): %s", purpose, addr, gai_strerror(err));
+			panic_from_thread(__LINE__);
+			return false;
+		}
+		*out_socks = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+		const char *errstr = datum_sockets_setup_listen_sock(*out_socks, res->ai_addr, res->ai_addrlen);
+		const int errno_saved = errno;
+		freeaddrinfo(res);
+		if (errstr) {
+			DLOG_FATAL("%s (%s): %s", errstr, purpose, strerror(errno_saved));
+			panic_from_thread(__LINE__);
+			return false;
+		}
+		*inout_socks_n = 1;
+	} else {
+		const struct sockaddr_in6 anyaddr6 = {
+			.sin6_family = AF_INET6,
+			.sin6_port = htons(port),
+			.sin6_addr = IN6ADDR_ANY_INIT,
+		};
+		out_socks[0] = socket(AF_INET6, SOCK_STREAM, 0);
+#if defined(IPPROTO_IPV6) && defined(IPV6_V6ONLY)
+		if (out_socks[0] != -1) {
+			static const int zero = 0;
+			setsockopt(out_socks[0], IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero));
+		}
+#endif
+		const char * const errstr6 = datum_sockets_setup_listen_sock(out_socks[0], (const struct sockaddr *)&anyaddr6, sizeof(anyaddr6));
+		const int errno6 = errno;
+		unsigned int socks_n = 1;
+		if (errstr6 && out_socks[0] != -1) {
+			close(out_socks[0]);
+			out_socks[0] = -1;
+			--socks_n;
+		}
+		
+		if (*inout_socks_n > socks_n) {
+			const struct sockaddr_in anyaddr4 = {
+				.sin_family = AF_INET,
+				.sin_port = htons(port),
+				.sin_addr.s_addr = INADDR_ANY,
+			};
+			out_socks[socks_n] = socket(AF_INET, SOCK_STREAM, 0);
+			const char *errstr = datum_sockets_setup_listen_sock(out_socks[socks_n], (const struct sockaddr *)&anyaddr4, sizeof(anyaddr4));
+			if (errstr && errstr6) {
+				const int errno4 = errno;
+				DLOG_FATAL("%s (IPv6): %s", errstr6, strerror(errno6));
+				DLOG_FATAL("%s (IPv4): %s", errstr, strerror(errno4));
+				panic_from_thread(__LINE__);
+				return false;
+			}
+			if (errstr && out_socks[socks_n] != -1) {
+				close(out_socks[socks_n]);
+				out_socks[socks_n] = -1;
+			} else {
+				++socks_n;
+			}
+		}
+		
+		*inout_socks_n = socks_n;
+	}
+	return true;
+}
+
 void *datum_gateway_listener_thread(void *arg) {
-	struct sockaddr_in serveraddr;
 	int i, ret;
-	int reuse = 1;
 	bool rejecting_now = false;
 	uint64_t last_reject_msg_tsms = 0, curtime_tsms = 0;
 	uint64_t reject_count = 0;
@@ -548,7 +650,7 @@ void *datum_gateway_listener_thread(void *arg) {
 	T_DATUM_SOCKET_APP *app = (T_DATUM_SOCKET_APP *)arg;
 	
 	struct epoll_event ev, events[MAX_EVENTS];
-	int listen_sock, conn_sock, nfds, epollfd;
+	int listen_socks[2], conn_sock, nfds, epollfd;
 	
 	if (!app) {
 		DLOG_FATAL("Called without application data structure. :(");
@@ -556,7 +658,7 @@ void *datum_gateway_listener_thread(void *arg) {
 		return NULL;
 	}
 	
-	DLOG_DEBUG("Setting up app '%s' on port %d. (T:%d/TC:%d/C:%d)", app->name, app->listen_port, app->max_threads, app->max_clients_thread, app->max_clients);
+	DLOG_DEBUG("Setting up app '%s' on address %s port %d. (T:%d/TC:%d/C:%d)", app->name, datum_config.stratum_v1_listen_addr[0] ? datum_config.stratum_v1_listen_addr : "(any)", app->listen_port, app->max_threads, app->max_clients_thread, app->max_clients);
 	
 	// we assume the caller sets up the thread data in some way
 	// don't clobber those pointers
@@ -577,36 +679,8 @@ void *datum_gateway_listener_thread(void *arg) {
 	
 	app->datum_active_threads = 0;
 	
-	listen_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (!listen_sock) {
-		DLOG_FATAL("Could get socket: %s", strerror(errno));
-		panic_from_thread(__LINE__);
-		return NULL;
-	}
-	
-	datum_socket_setoptions(listen_sock);
-	memset(&serveraddr, 0, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_port = htons(app->listen_port);
-	
-	// TODO: Add option to bind to specific IP per configuration!
-	serveraddr.sin_addr.s_addr = INADDR_ANY;
-	
-	if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0) {
-		DLOG_FATAL("setsockopt(SO_REUSEADDR) failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
-		return NULL;
-	}
-	
-	if(bind(listen_sock, (struct sockaddr*)&serveraddr, sizeof(serveraddr)) < 0) {
-		DLOG_FATAL("bind failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
-		return NULL;
-	}
-	
-	if (listen(listen_sock, 10) < 0) {
-		DLOG_FATAL("listen failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
+	size_t listen_socks_len = 2;
+	if (!datum_sockets_setup_listening_sockets("stratum", datum_config.stratum_v1_listen_addr, app->listen_port, listen_socks, &listen_socks_len)) {
 		return NULL;
 	}
 	
@@ -617,12 +691,15 @@ void *datum_gateway_listener_thread(void *arg) {
 		return NULL;
 	}
 	
-	ev.events = EPOLLIN;
-	ev.data.fd = listen_sock;
-	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listen_sock, &ev)<0) {
-		DLOG_FATAL("epoll_ctl failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
-		return NULL;
+	for (i = 0; i < 2; ++i) {
+		if (listen_socks[i] == -1) continue;
+		ev.events = EPOLLIN;
+		ev.data.fd = listen_socks[i];
+		if (epoll_ctl(epollfd, EPOLL_CTL_ADD, ev.data.fd, &ev) < 0) {
+			DLOG_FATAL("epoll_ctl failed: %s", strerror(errno));
+			panic_from_thread(__LINE__);
+			return NULL;
+		}
 	}
 	
 	DLOG_INFO("DATUM Socket listener thread active for '%s'", app->name);
@@ -641,8 +718,8 @@ void *datum_gateway_listener_thread(void *arg) {
 			}
 		}
 		for (int n = 0; n < nfds; ++n) {
-			if (events[n].data.fd == listen_sock) {
-				conn_sock = accept(listen_sock, NULL, NULL);
+			if (events[n].data.fd == listen_socks[0] || events[n].data.fd == listen_socks[1]) {
+				conn_sock = accept(events[n].data.fd, NULL, NULL);
 				if (conn_sock < 0) {
 					DLOG_ERROR("accept failed: %s", strerror(errno));
 					continue;
