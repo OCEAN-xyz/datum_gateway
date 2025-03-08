@@ -401,6 +401,21 @@ void *datum_gateway_template_thread(void *args) {
 		panic_from_thread(__LINE__);
 	}
 	
+	{
+		unsigned char dummy[64];
+		if (!addr_2_output_script(datum_config.mining_pool_address, &dummy[0], 64)) {
+			if (datum_config.api_modify_conf) {
+				DLOG_ERROR("Could not generate output script for pool addr! Perhaps invalid? Configure via API/dashboard.");
+			} else {
+				DLOG_FATAL("Could not generate output script for pool addr! Perhaps invalid? This is bad.");
+				panic_from_thread(__LINE__);
+			}
+		}
+		while (!addr_2_output_script(datum_config.mining_pool_address, &dummy[0], 64)) {
+			usleep(50000);
+		}
+	}
+	
 	if (datum_config.bitcoind_notify_fallback) {
 		// start getbestblockhash poller thread as a backup for notifications
 		DLOG_DEBUG("Starting fallback block notifier");

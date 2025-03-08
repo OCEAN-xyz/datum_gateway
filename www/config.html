@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>DATUM Gateway Configuration</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<style type="text/css">
+		.table-wrapper {
+			justify-content: center;
+		}
+		
+		.table-container {
+			max-width: 800px;
+		}
+		
+		button {
+			background-color: #444;
+			color: #3498db;
+			padding: 10px 20px;
+			margin: 5px;
+			border-radius: 5px;
+			text-decoration: none;
+			transition: background-color 0.3s, color 0.3s;
+			font-weight: bold;
+			font-size: large;
+		}
+		button[disabled] {
+			color: #777;
+			background-color: #400;
+		}
+		
+		.setting-row {
+			border-bottom: 1px solid #444;
+		}
+		
+		.setting-row:last-child {
+			border-bottom: none;
+		}
+		
+		.flex-row {
+			display: flex;
+			flex-direction: row;
+		}
+		
+		label.label {
+			padding: 10px;
+			background-color: #2a2a3b;
+			white-space: nowrap;
+		}
+		.flex-row input:not([type=checkbox]) {
+			flex: 1;
+		}
+		.flex-row input[type=checkbox] {
+			zoom: 2;
+		}
+		input,select {
+			color: white;
+			background-color: black;
+			z-index: 1;
+			padding: 0 10px;
+		}
+		input[readonly],input[disabled],select[readonly] {
+			color: grey;
+		}
+		label.tip {
+			display: block;
+			padding-left: 10px;
+			padding-right: 10px;
+			padding-top: 1px;
+			padding-bottom: 10px;
+			background-color: #2a2a3b;
+			font-size: 80%;
+			font-style: italic;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
+		</div>
+		<div class="menu-container">
+			<a href="/">Status</a>
+			<a href="/config" style="background-color: darkslategrey;">Config</a>
+			<a href="/clients">Clients</a>
+			<a href="/threads">Threads</a>
+			<a href="/coinbaser">Coinbaser</a>
+		</div>
+	</div>
+	
+	<form action='/config' method='post'>
+	<input type='hidden' name='csrf' value='${*CSRF_TOKEN}' />
+	<div class="tables-container">
+		<div style="margin-top: 20px; text-align: center;">
+			<button${disabled:*ro}>Save</button>
+			${msg:*ro}
+		</div>
+		
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Basic</h2>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="mining_pool_address" class="label">Bitcoin Address:</label>
+						<input maxlength="100" name="mining_pool_address" id="mining_pool_address" value="${mining_pool_address}"${*ro}></input>
+					</div>
+					<label for="mining_pool_address" class="tip">Mining rewards will be received by this Bitcoin address, by default.</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="username_behaviour" class="label">Send Miner Usernames To Pool:</label>
+						<select name="username_behaviour" id="username_behaviour"${*ro}>
+							<option value="datum_pool_pass_full_users"${selected:datum_pool_pass_full_users}${disabled:*ro}>Override Bitcoin Address</option>
+							<option value="datum_pool_pass_workers"${selected:*datum_pool_pass_workers}${disabled:*ro}>Send as worker names</option>
+							<option value="private"${selected:*username_behaviour_private}${disabled:*ro}>Keep private</option>
+						</select>
+					</div>
+					<label for="username_behaviour" class="tip">The username configured in miners can be handled a few different ways.</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="mining_coinbase_tag_secondary" class="label">Coinbase Tag:</label>
+						<input maxlength="${*mining_coinbase_tag_secondary_max}" name="mining_coinbase_tag_secondary" id="mining_coinbase_tag_secondary" value="${mining_coinbase_tag_secondary}"${*ro}></input>
+					</div>
+					<label for="coinbase_tag_secondary" id="coinbase_tag_secondary" class="tip">Arbitrary name displayed as the block creator on block explorers.</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="mining_coinbase_unique_id" class="label">Unique Gateway ID:</label>
+						<input maxlength="5" name="mining_coinbase_unique_id" id="mining_coinbase_unique_id" value="${mining_coinbase_unique_id}"${*ro}></input>
+					</div>
+					<label for="mining_coinbase_unique_id" class="tip">A number between 1 and 65535 that must be unique per Coinbase Tag.</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="reward_sharing" class="label">Collaborative reward sharing (pooled mining):</label>
+						<select name="reward_sharing" id="reward_sharing"${*ro}>
+							<option value="require"${selected:datum_pooled_mining_only}${disabled:*ro}>require (pooled mining only)</option>
+							<option value="prefer"${selected:*reward_sharing_prefer}${disabled:*ro}>prefer (failover to non-pooled)</option>
+							<option value="never"${selected:*reward_sharing_never}${disabled:*ro}>never (non-pooled only)</option>
+						</select>
+					</div>
+					<label for="reward_sharing" class="tip">You can share rewards and share in others' rewards - or only get rewarded when you find a block yourself.</label>
+				</div>
+			</div>
+		</div>
+		
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Pool</h2>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="datum_pool_host" class="label">Host:</label>
+						<input maxlength="1023" name="datum_pool_host" id="datum_pool_host" value="${*datum_pool_host}"${*ro}></input>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="datum_pool_port" class="label">Port:</label>
+						<input maxlength="5" name="datum_pool_port" id="datum_pool_port" value="${datum_pool_port}"${*ro}></input>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="datum_pool_pubkey" class="label">Pubkey:</label>
+						<input maxlength="1023" name="datum_pool_pubkey" id="datum_pool_pubkey" value="${datum_pool_pubkey}"${*ro}></input>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="table-wrapper">
+			<div class="table-container">
+				<h2>Advanced</h2>
+				<input type="hidden" name="checkboxes" value="stratum_fingerprint_miners datum_always_pay_self"></input>
+				<div class="setting-row">
+					<div class="flex-row">
+						<input type="checkbox" name="stratum_fingerprint_miners" id="stratum_fingerprint_miners" value="1"${checked:stratum_fingerprint_miners}${disabled:*ro}></input>
+						<label for="stratum_fingerprint_miners" class="label" style="flex:1">Fingerprint and workaround known miner bugs</label>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<input type="checkbox" name="datum_always_pay_self" id="datum_always_pay_self" value="1"${checked:datum_always_pay_self}${disabled:*ro}></input>
+						<label for="datum_always_pay_self" class="label" style="flex:1">Always include your own "Bitcoin Address" above in generated payouts if possible</label>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="bitcoind_work_update_seconds" class="label">Typical interval between job updates:</label>
+						<input maxlength="3" name="bitcoind_work_update_seconds" id="bitcoind_work_update_seconds" value="${bitcoind_work_update_seconds}"${*ro}></input>
+					</div>
+					<label for="bitcoind_work_update_seconds" class="tip">5-120 seconds. 40 suggested.</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="bitcoind_rpcurl" class="label">bitcoind RPC URL:</label>
+						<input maxlength="128" name="bitcoind_rpcurl" id="bitcoind_rpcurl" value="${bitcoind_rpcurl}"${*ro}></input>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="bitcoind_rpcuser" class="label">bitcoind RPC username:</label>
+						<input maxlength="128" name="bitcoind_rpcuser" id="bitcoind_rpcuser" value="${bitcoind_rpcuser}"${*ro}></input>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="bitcoind_rpcpassword" class="label">bitcoind RPC password:</label>
+						<input maxlength="128" name="bitcoind_rpcpassword" id="bitcoind_rpcpassword" placeholder="****************" type="password"${*ro}></input>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<div style="margin-bottom: 20px; text-align: center;">
+			<button${disabled:*ro}>Save</button>
+			${msg:*ro}
+		</div>
+	</div>
+	</form>
+</body>
+</html>

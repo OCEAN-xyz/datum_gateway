@@ -48,6 +48,7 @@ typedef struct {
 } T_DATUM_API_DASH_VARS;
 
 typedef void (*DATUM_API_VarFunc)(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata);
+typedef size_t (*DATUM_API_VarFillFunc)(const char *var_start, size_t var_name_len, char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata);
 
 typedef struct {
 	const char *var_name;

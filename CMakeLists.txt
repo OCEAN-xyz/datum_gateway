@@ -27,6 +27,9 @@ set(WEB_RESOURCES
 	www/home.html
 	www/clients_top.html
 	www/coinbaser_top.html
+	www/config.html
+	www/config_errors.html
+	www/config_restart.html
 	www/threads_top.html
 	www/foot.html
 	www/assets/style.css

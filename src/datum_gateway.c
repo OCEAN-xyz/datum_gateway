@@ -61,6 +61,8 @@
 #include "datum_coinbaser.h"
 #include "datum_protocol.h"
 
+const char *datum_gateway_config_filename = NULL;
+
 // ARGP stuff
 const char *argp_program_version = "datum_gateway " DATUM_PROTOCOL_VERSION;
 const char *argp_program_bug_address = "<jason@ocean.xyz>";
@@ -102,7 +104,11 @@ void handle_sigusr1(int sig) {
 	datum_blocktemplates_notifynew(NULL, 0);
 }
 
-int main(int argc, char **argv) {
+const char * const *datum_argv;
+
+int main(const int argc, const char * const * const argv) {
+	datum_argv = argv;
+	
 	struct arguments arguments;
 	pthread_t pthread_datum_stratum_v1;
 	pthread_t pthread_datum_gateway_template;
@@ -141,7 +147,7 @@ int main(int argc, char **argv) {
 	datum_utils_init();
 	
 	arguments.config_file = "datum_gateway_config.json";  // Default config file
-	if (argp_parse(&argp, argc, argv, 0, 0, &arguments) != 0) {
+	if (argp_parse(&argp, argc, datum_deepcopy_charpp(argv), 0, 0, &arguments) != 0) {
 		DLOG_FATAL("Error parsing arguments. Check --help");
 		exit(1);
 	}
@@ -150,6 +156,7 @@ int main(int argc, char **argv) {
 		DLOG_FATAL("Error reading config file. Check --help");
 		exit(1);
 	}
+	datum_gateway_config_filename = arguments.config_file;
 	
 	// Initialize logger thread
 	datum_logger_init();
