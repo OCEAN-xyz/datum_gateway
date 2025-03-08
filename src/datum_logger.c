@@ -42,6 +42,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <signal.h>
 #include <string.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -57,6 +58,7 @@
 const char *level_text[] = { "  ALL", "DEBUG", " INFO", " WARN", "ERROR", "FATAL" };
 
 volatile bool datum_logger_initialized = false;
+volatile bool log_reopen_signal = false;
 
 // configurable options
 bool log_to_file = false;
@@ -389,6 +391,20 @@ void * datum_logger_thread(void *ptr) {
 			}
 		}
 		
+		if (log_reopen_signal && log_to_file && log_handle) {
+			log_reopen_signal = false;
+			DLOG(DLOG_LEVEL_DEBUG, "Reopening log file");
+			
+			fclose(log_handle);
+			
+			log_handle = fopen(log_file, "a");
+			if (!log_handle) {
+				DLOG(DLOG_LEVEL_FATAL, "Could not reopen log file (%s): %s!", log_file, strerror(errno));
+				panic_from_thread(__LINE__);
+			}
+			log_file_opened = time(NULL);
+		}
+		
 		if ((log_rotate_daily) && (log_to_file) && (log_handle)) {
 			if (next_log_rotate < (ets/1000000ULL)) {
 				DLOG(DLOG_LEVEL_INFO, "Rotating log file!");
@@ -435,7 +451,16 @@ void * datum_logger_thread(void *ptr) {
 	return NULL;
 }
 
+void datum_logger_hup_signal(int) {
+	log_reopen_signal = true;
+}
+
 int datum_logger_init(void) {
+	const struct sigaction hup_sigaction = { .sa_handler = datum_logger_hup_signal, };
+	if (0 != sigaction(SIGHUP, &hup_sigaction, NULL)) {
+		DLOG_ERROR("Failed to setup SIGHUP handler: %s", strerror(errno));
+	}
+	
 	pthread_t pthread_datum_logger_thread;
 	
 	pthread_create(&pthread_datum_logger_thread, NULL, datum_logger_thread, NULL);
