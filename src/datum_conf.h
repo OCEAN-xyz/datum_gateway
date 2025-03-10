@@ -43,6 +43,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <jansson.h>
+
 #define DATUM_CONF_BOOL 1
 #define DATUM_CONF_INT 2
 #define DATUM_CONF_STRING 3
@@ -55,10 +57,14 @@ typedef struct {
 	char name[64];
 	char description[512];
 	int var_type;
-	int max_string_len;
-	int default_int;
-	bool default_bool;
-	const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+	union {
+		int default_int;
+		bool default_bool;
+		struct {
+			int max_string_len;
+			const char *default_string[DATUM_CONFIG_MAX_ARRAY_ENTRIES];
+		};
+	};
 	
 	void *ptr;
 	
@@ -103,6 +109,8 @@ typedef struct {
 	size_t api_admin_password_len;
 	char api_csrf_token[65];
 	int api_listen_port;
+	bool api_modify_conf;
+	json_t *config_json;
 	
 	int extra_block_submissions_count;
 	char extra_block_submissions_urls[DATUM_MAX_BLOCK_SUBMITS][DATUM_MAX_SUBMIT_URL_LEN];

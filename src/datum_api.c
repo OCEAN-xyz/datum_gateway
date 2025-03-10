@@ -37,6 +37,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <microhttpd.h>
@@ -49,6 +50,8 @@
 #include "datum_api.h"
 #include "datum_blocktemplates.h"
 #include "datum_conf.h"
+#include "datum_gateway.h"
+#include "datum_jsonrpc.h"
 #include "datum_utils.h"
 #include "datum_stratum.h"
 #include "datum_sockets.h"
@@ -251,28 +254,40 @@ DATUM_API_VarEntry var_entries[] = {
 	{NULL, NULL} // Mark the end of the array
 };
 
-DATUM_API_VarFunc datum_api_find_var_func(const char *var_name) {
+DATUM_API_VarFunc datum_api_find_var_func(const char * const var_start, const size_t var_name_len) {
 	for (int i = 0; var_entries[i].var_name != NULL; i++) {
-		if (strcmp(var_entries[i].var_name, var_name) == 0) {
+		if (strncmp(var_entries[i].var_name, var_start, var_name_len) == 0 && !var_entries[i].var_name[var_name_len]) {
 			return var_entries[i].func;
 		}
 	}
 	return NULL; // Variable not found
 }
 
-void datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const T_DATUM_API_DASH_VARS *vardata) {
+size_t datum_api_fill_var(const char * const var_start, const size_t var_name_len, char * const replacement, const size_t replacement_max_len, const T_DATUM_API_DASH_VARS * const vardata) {
+	DATUM_API_VarFunc func = datum_api_find_var_func(var_start, var_name_len);
+	if (!func) {
+		DLOG_ERROR("%s: Unknown variable '%.*s'", __func__, (int)var_name_len, var_start);
+		return 0;
+	}
+	
+	// Skip running STRATUM_JOB functions if there's no sjob
+	if (var_start[8] == 'J' && !vardata->sjob) {
+		// Leave blank for now
+		return 0;
+	}
+	
+	assert(replacement_max_len > 0);
+	replacement[0] = 0;
+	func(replacement, replacement_max_len, vardata);
+	return strlen(replacement);
+}
+
+size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_size, const DATUM_API_VarFillFunc var_fill_func, const T_DATUM_API_DASH_VARS *vardata) {
 	const char* p = input;
 	size_t output_len = 0;
 	size_t var_name_len = 0;
-	char var_name[256];
-	char replacement[256];
-	size_t replacement_len;
-	size_t remaining;
-	size_t to_copy;
 	const char *var_start;
 	const char *var_end;
-	size_t total_var_len;
-	char temp_var[260];
 	
 	while (*p && output_len < max_output_size - 1) {
 		if (strncmp(p, "${", 2) == 0) {
@@ -280,47 +295,17 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 			var_start = p;
 			var_end = strchr(p, '}');
 			if (!var_end) {
-				// No closing '}', copy rest of the input to output
-				remaining = strlen(p);
-				to_copy = (remaining < max_output_size - output_len - 1) ? remaining : max_output_size - output_len - 1;
-				strncpy(&output[output_len], p, to_copy);
-				output_len += to_copy;
+				DLOG_ERROR("%s: Missing closing } for variable", __func__);
 				break;
 			}
 			var_name_len = var_end - var_start;
 			
-			if (var_name_len >= sizeof(var_name)-1) {
-				output[output_len] = 0;
-				return;
-			}
-			strncpy(var_name, var_start, var_name_len);
-			var_name[var_name_len] = 0;
-			
-			DATUM_API_VarFunc func = datum_api_find_var_func(var_name);
-			if (func) {
-				// Skip running STRATUM_JOB functions if there's no sjob
-				if (var_name[8] == 'J' && !vardata->sjob) {
-					// Leave blank for now
-				} else {
-					replacement[0] = 0;
-					func(replacement, sizeof(replacement), vardata);
-					replacement_len = strlen(replacement);
-					if (replacement_len) {
-						to_copy = (replacement_len < max_output_size - output_len - 1) ? replacement_len : max_output_size - output_len - 1;
-						strncpy(&output[output_len], replacement, to_copy);
-						output_len += to_copy;
-					}
-				}
-				output[output_len] = 0;
-			} else {
-				// Not sure what this is... so just leave it
-				total_var_len = var_name_len + 3;
-				snprintf(temp_var, sizeof(temp_var), "${%s}", var_name);
-				to_copy = (total_var_len < max_output_size - output_len - 1) ? total_var_len : max_output_size - output_len - 1;
-				strncpy(&output[output_len], temp_var, to_copy);
-				output_len += to_copy;
-				output[output_len] = 0;
-			}
+			char * const replacement = &output[output_len];
+			size_t replacement_max_len = max_output_size - output_len;
+			if (replacement_max_len > 256) replacement_max_len = 256;
+			const size_t replacement_len = var_fill_func(var_start, var_name_len, replacement, replacement_max_len, vardata);
+			output_len += replacement_len;
+			output[output_len] = 0;
 			p = var_end + 1; // Move past '}'
 		} else {
 			output[output_len++] = *p++;
@@ -329,6 +314,8 @@ void datum_api_fill_vars(const char *input, char *output, size_t max_output_size
 	}
 	
 	output[output_len] = 0;
+	
+	return output_len;
 }
 
 size_t strncpy_html_escape(char *dest, const char *src, size_t n) {
@@ -890,6 +877,564 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	return ret;
 }
 
+size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_len, char * const replacement, const size_t replacement_max_len, const T_DATUM_API_DASH_VARS * const vardata) {
+	const char *colon_pos = memchr(var_start, ':', var_name_len);
+	const char *var_start_2 = colon_pos ? &colon_pos[1] : var_start;
+	const char * const var_end = &var_start[var_name_len];
+	const size_t var_name_len_2 = var_end - var_start_2;
+	const char * const underscore_pos = memchr(var_start_2, '_', var_name_len_2);
+	int val;
+	if (var_name_len_2 == 3 && 0 == strncmp(var_start_2, "*ro", 3)) {
+		val = !datum_config.api_modify_conf;
+		if (!colon_pos) {
+			var_start = "readonly:";
+			colon_pos = &var_start[8];
+		}
+	} else if (var_name_len_2 == 24 && 0 == strncmp(var_start_2, "*datum_pool_pass_workers", 24)) {
+		val = datum_config.datum_pool_pass_workers && !datum_config.datum_pool_pass_full_users;
+	} else if (var_name_len_2 == 16 && 0 == strncmp(var_start_2, "*datum_pool_host", 16)) {
+		const char *s = NULL;
+		if (datum_config.datum_pool_host[0]) {
+			s = datum_config.datum_pool_host;
+		} else if (datum_config.config_json) {
+			const json_t * const config = datum_config.config_json;
+			json_t *j = json_object_get(config, "datum");
+			if (j) j = json_is_object(j) ? json_object_get(j, "pool_host(old)") : NULL;
+			if (j && json_is_string(j) && json_string_length(j) <= 1023) {
+				s = json_string_value(j);
+			}
+		}
+		if (!s) {
+			const T_DATUM_CONFIG_ITEM * const cfginfo = datum_config_get_option_info("datum", 5, "pool_host", 9);
+			s = cfginfo->default_string[0];
+		}
+		size_t copy_sz = strlen(s);
+		if (copy_sz >= replacement_max_len) copy_sz = replacement_max_len - 1;
+		memcpy(replacement, s, copy_sz);
+		return copy_sz;
+	} else if (var_name_len_2 == 27 && 0 == strncmp(var_start_2, "*username_behaviour_private", 27)) {
+		val = !(datum_config.datum_pool_pass_workers || datum_config.datum_pool_pass_full_users);
+	} else if (var_name_len_2 == 22 && 0 == strncmp(var_start_2, "*reward_sharing_prefer", 22)) {
+		val = (!datum_config.datum_pooled_mining_only) && datum_config.datum_pool_host[0];
+	} else if (var_name_len_2 == 21 && 0 == strncmp(var_start_2, "*reward_sharing_never", 21)) {
+		val = (!datum_config.datum_pooled_mining_only) && !datum_config.datum_pool_host[0];
+	} else if (var_name_len_2 == 34 && 0 == strncmp(var_start_2, "*mining_coinbase_tag_secondary_max", 34)) {
+		val = 88 - strlen(datum_config.mining_coinbase_tag_primary);
+		if (val > 60) val = 60;
+	} else if (var_name_len_2 == 11 && 0 == strncmp(var_start_2, "*CSRF_TOKEN", 11)) {
+		size_t copy_sz = strlen(datum_config.api_csrf_token);
+		if (copy_sz >= replacement_max_len) copy_sz = replacement_max_len - 1;
+		memcpy(replacement, datum_config.api_csrf_token, copy_sz);
+		return copy_sz;
+	} else if (underscore_pos) {
+		const T_DATUM_CONFIG_ITEM * const item = datum_config_get_option_info(var_start_2, underscore_pos - var_start_2, &underscore_pos[1], var_end - &underscore_pos[1]);
+		if (item) {
+			switch (item->var_type) {
+				case DATUM_CONF_INT: {
+					val = *((int *)item->ptr);
+					break;
+				}
+				case DATUM_CONF_BOOL: {
+					val = *((bool *)item->ptr);
+					if ((!colon_pos) && replacement_max_len > 5) {
+						const size_t len = val ? 4 : 5;
+						memcpy(replacement, val ? "true" : "false", len);
+						return len;
+					}
+					break;
+				}
+				case DATUM_CONF_STRING: {
+					const char * const s = (char *)item->ptr;
+					if (colon_pos) {
+						DLOG_ERROR("%s: '%.*s' modifier not implemented for %s", __func__, (int)(colon_pos - var_start), var_start, "DATUM_CONF_STRING");
+						break;
+					}
+					size_t copy_sz = strlen(s);
+					if (copy_sz >= replacement_max_len) copy_sz = replacement_max_len - 1;
+					memcpy(replacement, s, copy_sz);
+					return copy_sz;
+				}
+				case DATUM_CONF_STRING_ARRAY: {
+					DLOG_ERROR("%s: %s not implemented", __func__, "DATUM_CONF_STRING_ARRAY");
+					break;
+				}
+			}
+		} else {
+			DLOG_ERROR("%s: '%.*s' not implemented", __func__, (int)(var_end - var_start_2), var_start_2);
+			return 0;
+		}
+	} else {
+		DLOG_ERROR("%s: '%.*s' not implemented", __func__, (int)(var_end - var_start_2), var_start_2);
+		return 0;
+	}
+	
+	assert(replacement_max_len > 0);
+	
+	if (colon_pos) {
+		if (0 == strncmp(var_start, "readonly:", 9) || 0 == strncmp(var_start, "selected:", 9) || 0 == strncmp(var_start, "checked:", 8) || 0 == strncmp(var_start, "disabled:", 9)) {
+			size_t attr_len;
+			if (val) {
+				attr_len = colon_pos - var_start;
+				if (attr_len + 2 > replacement_max_len) attr_len = replacement_max_len - 2;
+				replacement[0] = ' ';
+				memcpy(&replacement[1], var_start, attr_len);
+				++attr_len;
+			} else {
+				attr_len = 0;
+			}
+			return attr_len;
+		} else if (0 == strncmp(var_start, "msg:", 4)) {
+			if (val) {
+				static const char * const msg = "<br/><em>Config file disallows editing</em>";
+				const size_t len = strlen(msg);
+				memcpy(replacement, msg, len);
+				return len;
+			} else {
+				return 0;
+			}
+		} else {
+			DLOG_ERROR("%s: '%.*s' modifier not implemented", __func__, (int)(colon_pos - var_start), var_start);
+			return 0;
+		}
+	}
+	
+	return snprintf(replacement, replacement_max_len, "%d", val);
+}
+
+int datum_api_config_dashboard(struct MHD_Connection *connection) {
+	struct MHD_Response *response;
+	size_t sz = 0, max_sz = 0;
+	int ret;
+	char *output = NULL;
+	
+	max_sz = www_config_html_sz * 2;
+	output = malloc(max_sz);
+	if (!output) {
+		return MHD_NO;
+	}
+	
+	sz += datum_api_fill_vars(www_config_html, output, max_sz, datum_api_fill_config_var, NULL);
+	
+	response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
+	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_prevent_caching(response);
+	ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+	MHD_destroy_response(response);
+	return ret;
+}
+
+#ifndef JSON_PRESERVE_ORDER
+#define JSON_PRESERVE_ORDER 0
+#endif
+
+// Only modifies config_json; writing is done later
+void datum_api_json_modify_new(const char * const category, const char * const key, json_t * const val) {
+	json_t * const config = datum_config.config_json;
+	assert(config);
+	
+	json_t *j = json_object_get(config, category);
+	if (!j) {
+		j = json_object();
+		json_object_set_new(config, category, j);
+	}
+	json_object_set_new(j, key, val);
+}
+
+bool datum_api_json_write() {
+	json_t * const config = datum_config.config_json;
+	assert(config);
+	assert(datum_gateway_config_filename);
+	
+	char buf[0x100];
+	int rv = snprintf(buf, sizeof(buf) - 4, "%s", datum_gateway_config_filename);
+	assert(rv > 0);
+	strcpy(&buf[rv], ".new");
+	
+	if (json_dump_file(config, buf, JSON_PRESERVE_ORDER | JSON_INDENT(4))) {
+		DLOG_ERROR("Failed to write new config to %s", buf);
+		return false;
+	}
+	if (rename(buf, datum_gateway_config_filename)) {
+		DLOG_ERROR("Failed to rename new config %s to %s", buf, datum_gateway_config_filename);
+		return false;
+	}
+	DLOG_INFO("Wrote new config to %s", datum_gateway_config_filename);
+	return true;
+}
+
+struct datum_api_config_set_status {
+	json_t *errors;
+	bool modified_config;
+	bool need_restart;
+};
+
+// This does several steps:
+// - If the value is unchanged, return true without doing anything
+// - Validate the value without changing anything
+// - Change the runtime dataum_config (and ensure it goes live)
+// - Modify the config file
+// If anything fails (including validation), errors is appended and false is returned
+bool datum_api_config_set(const char * const key, const char * const val, struct datum_api_config_set_status * const status) {
+	json_t * const errors = status->errors;
+	if (0 == strcmp(key, "mining_pool_address")) {
+		if (0 == strcmp(val, datum_config.mining_pool_address)) return true;
+		unsigned char dummy[64];
+		if (!addr_2_output_script(val, &dummy[0], 64)) {
+			json_array_append_new(errors, json_string_nocheck("Invalid Bitcoin Address"));
+			return false;
+		}
+		strcpy(datum_config.mining_pool_address, val);
+		datum_api_json_modify_new("mining", "pool_address", json_string(val));
+	} else if (0 == strcmp(key, "username_behaviour")) {
+		if (0 == strcmp(val, "datum_pool_pass_full_users")) {
+			if (datum_config.datum_pool_pass_full_users) return true;
+			datum_config.datum_pool_pass_full_users = true;
+			// datum_pool_pass_workers doesn't matter with datum_pool_pass_full_users enabled
+		} else if (0 == strcmp(val, "datum_pool_pass_workers")) {
+			if (datum_config.datum_pool_pass_workers && !datum_config.datum_pool_pass_full_users) return true;
+			datum_config.datum_pool_pass_full_users = false;
+			datum_config.datum_pool_pass_workers = true;
+		} else if (0 == strcmp(val, "private")) {
+			if (!(datum_config.datum_pool_pass_workers || datum_config.datum_pool_pass_full_users)) return true;
+			datum_config.datum_pool_pass_full_users = false;
+			datum_config.datum_pool_pass_workers = false;
+		} else {
+			json_array_append_new(errors, json_string_nocheck("Invalid option for \"Send Miner Usernames To Pool\""));
+			return false;
+		}
+		datum_api_json_modify_new("datum", "pool_pass_full_users", json_boolean(datum_config.datum_pool_pass_full_users));
+		if (!datum_config.datum_pool_pass_full_users) {
+			datum_api_json_modify_new("datum", "pool_pass_workers", json_boolean(datum_config.datum_pool_pass_workers));
+		}
+	} else if (0 == strcmp(key, "mining_coinbase_tag_secondary")) {
+		if (0 == strcmp(val, datum_config.mining_coinbase_tag_secondary)) return true;
+		size_t len_limit = 88 - strlen(datum_config.mining_coinbase_tag_primary);
+		if (len_limit > 60) len_limit = 60;
+		if (strlen(val) > len_limit) {
+			json_array_append_new(errors, json_string_nocheck("Coinbase Tag is too long"));
+			return false;
+		}
+		strcpy(datum_config.mining_coinbase_tag_secondary, val);
+		datum_api_json_modify_new("mining", "coinbase_tag_secondary", json_string(val));
+	} else if (0 == strcmp(key, "mining_coinbase_unique_id")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.coinbase_unique_id) return true;
+		if (val_int > 65535 || val_int < 0) {
+			json_array_append_new(errors, json_string_nocheck("Unique Gateway ID must be between 0 and 65535"));
+			return false;
+		}
+		datum_config.coinbase_unique_id = val_int;
+		datum_api_json_modify_new("mining", "coinbase_unique_id", json_integer(val_int));
+	} else if (0 == strcmp(key, "reward_sharing")) {
+		json_t * const config = datum_config.config_json;
+		assert(config);
+		
+		bool want_datum_pool_host = false;
+		if (0 == strcmp(val, "require")) {
+			if (datum_config.datum_pool_host[0] && datum_config.datum_pooled_mining_only) return true;
+			datum_config.datum_pooled_mining_only = true;
+			want_datum_pool_host = true;
+		} else if (0 == strcmp(val, "prefer")) {
+			if (datum_config.datum_pool_host[0] && !datum_config.datum_pooled_mining_only) return true;
+			datum_config.datum_pooled_mining_only = false;
+			want_datum_pool_host = true;
+		} else if (0 == strcmp(val, "never")) {
+			if (!(datum_config.datum_pool_host[0] || datum_config.datum_pooled_mining_only)) return true;
+			datum_config.datum_pooled_mining_only = false;
+			datum_config.datum_pool_host[0] = '\0';
+			
+			// Only copy the old value if it's in the config file
+			json_t *j = json_object_get(config, "datum");
+			if (j) j = json_is_object(j) ? json_object_get(j, "pool_host") : NULL;
+			if (j) {
+				datum_api_json_modify_new("datum", "pool_host(old)", json_incref(j));
+			}
+			
+			datum_api_json_modify_new("datum", "pool_host", json_string_nocheck(""));
+		} else {
+			json_array_append_new(errors, json_string_nocheck("Invalid option for \"Collaborative reward sharing\""));
+			return false;
+		}
+		if (want_datum_pool_host && !datum_config.datum_pool_host[0]) {
+			json_t *j = json_object_get(config, "datum");
+			if (j) j = json_is_object(j) ? json_object_get(j, "pool_host(old)") : NULL;
+			if (j && json_is_string(j) && json_string_length(j) <= 1023) {
+				strcpy(datum_config.datum_pool_host, json_string_value(j));
+				json_object_del(j, "pool_host(old)");
+				datum_api_json_modify_new("datum", "pool_host", json_string(datum_config.datum_pool_host));
+			} else {
+				const T_DATUM_CONFIG_ITEM * const cfginfo = datum_config_get_option_info("datum", 5, "pool_host", 9);
+				strcpy(datum_config.datum_pool_host, cfginfo->default_string[0]);
+				
+				// Avoiding using null here because older versions handled it poorly
+				json_t *j = json_object_get(config, "datum");
+				if (j) json_object_del(j, "pool_host");
+			}
+		}
+		datum_api_json_modify_new("datum", "pooled_mining_only", json_boolean(datum_config.datum_pooled_mining_only));
+		// TODO: apply change without restarting
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "datum_pool_host")) {
+		if (0 == strcmp(val, datum_config.datum_pool_host)) return true;
+		if (strlen(val) > 1023) {
+			json_array_append_new(errors, json_string_nocheck("Pool Host is too long"));
+			return false;
+		}
+		if (datum_config.datum_pool_host[0]) {
+			strcpy(datum_config.datum_pool_host, val);
+			datum_api_json_modify_new("datum", "pool_host", json_string(val));
+			// TODO: apply change without restarting
+			// TODO: switch pools smoother (keep old connection alive for share submissions until those jobs expire)
+			status->need_restart = true;
+		} else {
+			json_t * const config = datum_config.config_json;
+			assert(config);
+			json_t *j = json_object_get(config, "datum");
+			if (j) j = json_is_object(j) ? json_object_get(j, "pool_host(old)") : NULL;
+			const T_DATUM_CONFIG_ITEM * const cfginfo = datum_config_get_option_info("datum", 5, "pool_host", 9);
+			// Avoid setting the default host in the config file, unless something else was already there
+			if (0 != strcmp(val, cfginfo->default_string[0]) || json_is_string(j)) {
+				datum_api_json_modify_new("datum", "pool_host(old)", json_string(val));
+			}
+		}
+	} else if (0 == strcmp(key, "datum_pool_port")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.datum_pool_port) return true;
+		if (val_int > 65535 || val_int < 1) {
+			json_array_append_new(errors, json_string_nocheck("Pool Port must be between 1 and 65535"));
+			return false;
+		}
+		datum_config.datum_pool_port = val_int;
+		datum_api_json_modify_new("datum", "pool_port", json_integer(val_int));
+		// TODO: apply change without restarting
+		// TODO: switch pools smoother (keep old connection alive for share submissions until those jobs expire)
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "datum_pool_pubkey")) {
+		if (0 == strcmp(val, datum_config.datum_pool_pubkey)) return true;
+		if (strlen(val) > 1023) {
+			json_array_append_new(errors, json_string_nocheck("Pool Pubkey is too long"));
+			return false;
+		}
+		strcpy(datum_config.datum_pool_pubkey, val);
+		datum_api_json_modify_new("datum", "pool_pubkey", json_string(val));
+		// TODO: apply change without restarting
+		// TODO: switch pools smoother (keep old connection alive for share submissions until those jobs expire)
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "stratum_fingerprint_miners")) {
+		bool val_bool;
+		if (!datum_str_to_bool_strict(val, &val_bool)) {
+			json_array_append_new(errors, json_string_nocheck("\"Fingerprint and workaround known miner bugs\" must be 0 or 1"));
+			return false;
+		}
+		if (val_bool == datum_config.stratum_v1_fingerprint_miners) return true;
+		datum_config.stratum_v1_fingerprint_miners = val_bool;
+		datum_api_json_modify_new("stratum", "fingerprint_miners", json_boolean(val_bool));
+		// TODO: apply change to connected miners?
+	} else if (0 == strcmp(key, "datum_always_pay_self")) {
+		bool val_bool;
+		if (!datum_str_to_bool_strict(val, &val_bool)) {
+			json_array_append_new(errors, json_string_nocheck("\"Always pay self\" must be 0 or 1"));
+			return false;
+		}
+		if (val_bool == datum_config.datum_always_pay_self) return true;
+		datum_config.datum_always_pay_self = val_bool;
+		datum_api_json_modify_new("datum", "always_pay_self", json_boolean(val_bool));
+	} else if (0 == strcmp(key, "bitcoind_work_update_seconds")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.bitcoind_work_update_seconds) return true;
+		if (val_int > 120 || val_int < 5) {
+			json_array_append_new(errors, json_string_nocheck("bitcoind work update interval must be between 5 and 120"));
+			return false;
+		}
+		datum_config.bitcoind_work_update_seconds = val_int;
+		datum_api_json_modify_new("bitcoind", "work_update_seconds", json_integer(val_int));
+		if (datum_config.bitcoind_work_update_seconds >= datum_config.datum_protocol_global_timeout - 5) {
+			datum_config.datum_protocol_global_timeout = val_int + 5;
+			datum_api_json_modify_new("datum", "protocol_global_timeout", json_integer(val_int + 5));
+		}
+		// TODO: apply change without restarting (and don't interfere with existing jobs)
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "bitcoind_rpcurl")) {
+		if (0 == strcmp(val, datum_config.bitcoind_rpcurl)) return true;
+		if (strlen(val) > 128) {
+			json_array_append_new(errors, json_string_nocheck("bitcoind RPC URL is too long"));
+			return false;
+		}
+		strcpy(datum_config.bitcoind_rpcurl, val);
+		datum_api_json_modify_new("bitcoind", "rpcurl", json_string(val));
+	} else if (0 == strcmp(key, "bitcoind_rpcuser")) {
+		if (0 == strcmp(val, datum_config.bitcoind_rpcuser)) return true;
+		if (strlen(val) > 128) {
+			json_array_append_new(errors, json_string_nocheck("bitcoind RPC user is too long"));
+			return false;
+		}
+		strcpy(datum_config.bitcoind_rpcuser, val);
+		datum_api_json_modify_new("bitcoind", "rpcuser", json_string(val));
+		update_rpc_auth(&datum_config);
+	} else if (0 == strcmp(key, "bitcoind_rpcpassword")) {
+		if (0 == strcmp(val, datum_config.bitcoind_rpcpassword)) return true;
+		if (!val[0]) return true;  // no password change
+		if (strlen(val) > 128) {
+			json_array_append_new(errors, json_string_nocheck("bitcoind RPC password is too long"));
+			return false;
+		}
+		strcpy(datum_config.bitcoind_rpcpassword, val);
+		datum_api_json_modify_new("bitcoind", "rpcpassword", json_string(val));
+		update_rpc_auth(&datum_config);
+	} else {
+		char err[0x100];
+		snprintf(err, sizeof(err), "Unknown setting '%s'", key);
+		json_array_append_new(errors, json_string_nocheck(err));
+		DLOG_ERROR("%s: '%s' not implemented", __func__, key);
+		return false;
+	}
+	status->modified_config = true;
+	return true;
+}
+
+static const char datum_api_config_errors_fmt[] = "<div class='err'>%s</div>";
+
+size_t datum_api_fill_config_errors(const char *var_start, const size_t var_name_len, char * const replacement, const size_t replacement_max_len, const T_DATUM_API_DASH_VARS * const vardata) {
+	const json_t * const errors = (void*)vardata;
+	size_t index, sz = 0;
+	json_t *j_it;
+	
+	json_array_foreach(errors, index, j_it) {
+		sz += snprintf(&replacement[sz], replacement_max_len, datum_api_config_errors_fmt, json_string_value(j_it));
+	}
+	
+	return sz;
+}
+
+void *datum_restart_thread(void *ptr) {
+	// Give logger some time
+	usleep(500000);
+	
+	// Wait for the response to actually get delivered
+	// FIXME: css/svg/etc might fail (we don't support caching them yet)
+	struct MHD_Daemon * const mhd = ptr;
+	MHD_quiesce_daemon(mhd);
+	while (MHD_get_daemon_info(mhd, MHD_DAEMON_INFO_CURRENT_CONNECTIONS)->num_connections > 0) {
+		usleep(100);
+	}
+	MHD_stop_daemon(mhd);
+	
+	datum_reexec();
+	abort();  // impossible to get here
+}
+
+int datum_api_config_post(struct MHD_Connection * const connection, char * const post, const int len) {
+	struct MHD_Response *response;
+	int ret;
+	const char *key;
+	json_t *j_it;
+	
+	if (!datum_config.api_modify_conf) {
+		return datum_api_do_error(connection, MHD_HTTP_FORBIDDEN);
+	}
+	
+	json_t * const j = json_object();
+	if (!datum_api_formdata_to_json(connection, post, len, j)) {
+		json_decref(j);
+		return datum_api_do_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR);
+	}
+	
+	if (!datum_api_check_admin_password(connection, j)) {
+		json_decref(j);
+		return MHD_YES;
+	}
+	json_object_del(j, "csrf");
+	json_object_del(j, "password");
+	
+	{
+		// Unchecked checkboxes are simply omitted, so a hidden field is used to convey them
+		const json_t * const j_checkboxes = json_object_get(j, "checkboxes");
+		const char * const checkboxes = json_string_value(j_checkboxes);
+		const size_t checkboxes_len = json_string_length(j_checkboxes);
+		const char *p = checkboxes;
+		char buf[0x100];
+		while (p[0] != '\0') {
+			const char *p2 = strchr(p, ' ');
+			if (!p2) p2 = &checkboxes[checkboxes_len];
+			const size_t i_len = p2 - p;
+			if (i_len < sizeof(buf)) {
+				memcpy(buf, p, i_len);
+				buf[i_len] = '\0';
+				
+				json_t * const j_cb = json_object_get(j, buf);
+				if ((!j_cb) || json_is_null(j_cb)) {
+					json_object_set_new_nocheck(j, buf, json_string_nocheck("0"));
+				}
+			}
+			p = *p2 ? &p2[1] : p2;
+		}
+		json_object_del(j, "checkboxes");
+	}
+	
+	json_t * const errors = json_array();
+	struct datum_api_config_set_status status = {
+		.errors = errors,
+	};
+	json_object_foreach(j, key, j_it) {
+		datum_api_config_set(key, json_string_value(j_it), &status);
+	}
+	
+	json_decref(j);
+	
+	if (status.modified_config) {
+		if (!datum_api_json_write()) {
+			if (status.need_restart) {
+				json_array_append_new(errors, json_string_nocheck("Error writing new config file (changes will be lost)"));
+			} else {
+				json_array_append_new(errors, json_string_nocheck("Error writing new config file (changes will be lost at restart)"));
+			}
+		}
+	}
+	
+	if (json_array_size(errors) > 0) {
+		if (status.need_restart) {
+			json_array_insert_new(errors, 0, json_string_nocheck("NOTE: Other changes require a gateway restart. Please wait a few seconds before trying again."));
+		}
+		
+		size_t index, max_sz;
+		max_sz = www_config_errors_html_sz;
+		json_array_foreach(errors, index, j_it) {
+			max_sz += json_string_length(j_it) + sizeof(datum_api_config_errors_fmt);
+		}
+		
+		char * const output = malloc(max_sz);
+		if (!output) {
+			return MHD_NO;
+		}
+		const size_t sz = datum_api_fill_vars(www_config_errors_html, output, max_sz, datum_api_fill_config_errors, (void*)errors);
+		
+		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
+		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_prevent_caching(response);
+	} else if (status.need_restart) {
+		response = MHD_create_response_from_buffer(www_config_restart_html_sz, (void*)www_config_restart_html, MHD_RESPMEM_PERSISTENT);
+		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_prevent_caching(response);
+	} else {
+		response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+		http_resp_prevent_caching(response);
+		MHD_add_response_header(response, "Location", "/config");
+	}
+	json_decref(errors);
+
+	ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+	MHD_destroy_response(response);
+	
+	if (status.need_restart) {
+		DLOG_INFO("Config change requires restarting gateway, proceeding");
+		struct MHD_Daemon * const mhd = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_DAEMON)->daemon;
+		pthread_t pthread_datum_restart_thread;
+		pthread_create(&pthread_datum_restart_thread, NULL, datum_restart_thread, mhd);
+	}
+	
+	return ret;
+}
+
 int datum_api_homepage(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
@@ -944,7 +1489,7 @@ int datum_api_homepage(struct MHD_Connection *connection) {
 	}
 	
 	output[0] = 0;
-	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, &vardata);
+	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, datum_api_fill_var, &vardata);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (strlen(output), (void *) output, MHD_RESPMEM_MUST_COPY);
@@ -1124,6 +1669,13 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 			}
 			if (!strcmp(url, "/coinbaser")) {
 				return datum_api_coinbaser(connection);
+			}
+			if (!strcmp(url, "/config")) {
+				if (int_method == 2 && con_info) {
+					return datum_api_config_post(connection, con_info->data, con_info->data_size);
+				} else {
+					return datum_api_config_dashboard(connection);
+				}
 			}
 			if ((int_method==2) && (!strcmp(url, "/cmd"))) {
 				if (con_info) {

@@ -250,6 +250,14 @@ bool update_rpc_cookie(global_config_t * const cfg) {
 	return true;
 }
 
+void update_rpc_auth(global_config_t * const cfg) {
+	if (datum_config.bitcoind_rpccookiefile[0] && !cfg->bitcoind_rpcuser[0]) {
+		update_rpc_cookie(cfg);
+	} else {
+		snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+	}
+}
+
 json_t *bitcoind_json_rpc_call(CURL * const curl, global_config_t * const cfg, const char * const rpc_req) {
 	long http_resp_code = -1;
 	json_t *j = json_rpc_call_full(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req, NULL, &http_resp_code);
