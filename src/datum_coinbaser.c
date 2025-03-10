@@ -307,7 +307,7 @@ void generate_coinbase_txns_for_stratum_job_subtypebysize(T_DATUM_STRATUM_JOB *s
 	// append the default_witness_commitment
 	cb2idx[coinbase_index] += sprintf(&s->coinbase[coinbase_index].coinb2[cb2idx[coinbase_index]], "0000000000000000%2.2x%s", (unsigned char)strlen(s->block_template->default_witness_commitment)>>1, s->block_template->default_witness_commitment);
 	// lock time
-	cb2idx[coinbase_index] += sprintf(&s->coinbase[coinbase_index].coinb2[cb2idx[coinbase_index]], "00000000");
+	cb2idx[coinbase_index] += sprintf(&s->coinbase[coinbase_index].coinb2[cb2idx[coinbase_index]], "%8.8lx", (unsigned long)__builtin_bswap32((uint32_t)(s->height - 1)));
 }
 
 int datum_stratum_coinbase_fit_to_template(int max_sz, int fixed_bytes, T_DATUM_STRATUM_JOB *s) {
@@ -455,7 +455,7 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	// append the default_witness_commitment
 	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "0000000000000000%2.2x%s", (unsigned char)strlen(s->block_template->default_witness_commitment)>>1, s->block_template->default_witness_commitment);
 	// lock time
-	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "00000000");
+	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "%8.8lx", (unsigned long)__builtin_bswap32((uint32_t)(s->height - 1)));
 	
 	if (new_block) {
 		// Append the subsidy-only payout to the subsidy_only_coinbase
@@ -661,7 +661,7 @@ void generate_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool empty_o
 	// append the default_witness_commitment
 	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "0000000000000000%2.2x%s", (unsigned char)strlen(s->block_template->default_witness_commitment)>>1, s->block_template->default_witness_commitment);
 	// lock time
-	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "00000000");
+	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "%8.8lx", (unsigned long)__builtin_bswap32((uint32_t)(s->height - 1)));
 	
 	if (empty_only) {
 		// Append the subsidy-only payout to the subsidy_only_coinbase
