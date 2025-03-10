@@ -486,9 +486,18 @@ bool datum_api_check_admin_password(struct MHD_Connection * const connection, co
 	return datum_api_check_admin_password_httponly(connection);
 }
 
-static int datum_api_asset(struct MHD_Connection * const connection, const char * const mimetype, const char * const data, const size_t datasz) {
+static int datum_api_asset(struct MHD_Connection * const connection, const char * const mimetype, const char * const data, const size_t datasz, const char * const etag) {
+	const char * const if_none_match_header = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "If-None-Match");
+	if (if_none_match_header && 0 == strcmp(if_none_match_header, etag)) {
+		struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+		MHD_add_response_header(response, "Etag", etag);
+		int ret = MHD_queue_response(connection, MHD_HTTP_NOT_MODIFIED, response);
+		MHD_destroy_response(response);
+		return ret;
+	}
 	struct MHD_Response * const response = MHD_create_response_from_buffer(datasz, (void*)data, MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(response, "Content-Type", mimetype);
+	MHD_add_response_header(response, "Etag", etag);
 	const int ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
 	MHD_destroy_response (response);
 	return ret;
@@ -1109,11 +1118,11 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 		
 		case 'a': {
 			if (!strcmp(url, "/assets/icons/datum_logo.svg")) {
-				return datum_api_asset(connection, "image/svg+xml", www_assets_icons_datum_logo_svg, www_assets_icons_datum_logo_svg_sz);
+				return datum_api_asset(connection, "image/svg+xml", www_assets_icons_datum_logo_svg, www_assets_icons_datum_logo_svg_sz, www_assets_icons_datum_logo_svg_etag);
 			} else if (!strcmp(url, "/assets/icons/favicon.ico")) {
-				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz);
+				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz, www_assets_icons_favicon_ico_etag);
 			} else if (!strcmp(url, "/assets/style.css")) {
-				return datum_api_asset(connection, "text/css", www_assets_style_css, www_assets_style_css_sz);
+				return datum_api_asset(connection, "text/css", www_assets_style_css, www_assets_style_css_sz, www_assets_style_css_etag);
 			}
 			break;
 		}
@@ -1137,7 +1146,7 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 		
 		case 'f': {
 			if (!strcmp(url, "/favicon.ico")) {
-				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz);
+				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz, www_assets_icons_favicon_ico_etag);
 			}
 			break;
 		}
