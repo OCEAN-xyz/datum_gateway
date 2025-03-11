@@ -24,6 +24,7 @@ add_executable(datum_gateway
 install(TARGETS datum_gateway DESTINATION bin)
 
 set(WEB_RESOURCES
+	www/auth_failed.html
 	www/home.html
 	www/clients_top.html
 	www/coinbaser_top.html
