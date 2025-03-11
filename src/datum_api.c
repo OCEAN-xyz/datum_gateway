@@ -939,7 +939,7 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 	const char * const underscore_pos = memchr(var_start_2, '_', var_name_len_2);
 	int val;
 	if (var_name_len_2 == 3 && 0 == strncmp(var_start_2, "*ro", 3)) {
-		val = !datum_config.api_modify_conf;
+		val = !(datum_config.api_modify_conf && datum_config.api_admin_password_len);
 		if (!colon_pos) {
 			var_start = "readonly:";
 			colon_pos = &var_start[8];
