@@ -807,7 +807,9 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form>");
 	if (have_admin) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "<script>function sendPostRequest(url, data){data.csrf='%s';fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>", datum_config.api_csrf_token);
+		sz += snprintf(&output[sz], max_sz-1-sz, "<script>");
+		sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
+		sz += snprintf(&output[sz], max_sz-1-sz, "</script>");
 	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
@@ -919,8 +921,9 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>function sendPostRequest(url, data){data.csrf='%s';fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}</script>", thr, datum_config.api_csrf_token);
-	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>", thr);
+	sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
+	sz += snprintf(&output[sz], max_sz-1-sz, "</script>%s", www_foot_html);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
