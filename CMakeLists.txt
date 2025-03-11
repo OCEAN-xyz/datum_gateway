@@ -44,6 +44,15 @@ pkg_check_modules(MICROHTTPD REQUIRED libmicrohttpd)
 pkg_check_modules(SODIUM REQUIRED libsodium)
 find_package(Threads REQUIRED)
 
+if(NOT LINUX)
+	pkg_check_modules(EPOLL_SHIM REQUIRED epoll-shim)
+	find_library(LIBARGP argp)
+
+	if(NOT LIBARGP)
+		  message(FATAL_ERROR "argp library not found")
+	endif()
+endif()
+
 set(POW_LIBS "")
 include(CheckLibraryExists)
 check_library_exists(m pow "" LIBM)
@@ -67,6 +76,7 @@ add_custom_command(
 	VERBATIM
 )
 
+if(LINUX)
 target_include_directories(datum_gateway
 	PRIVATE
 	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
@@ -98,3 +108,43 @@ target_compile_options(datum_gateway
 	${JANSSON_CFLAGS} ${JANSSON_CFLAGS_OTHER}
 	${SODIUM_CFLAGS} ${SODIUM_CFLAGS_OTHER}
 )
+
+else()
+target_include_directories(datum_gateway
+	PRIVATE
+	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+	${CURL_INCLUDE_DIRS}
+	${MICROHTTPD_INCLUDE_DIRS}
+	${JANSSON_INCLUDE_DIRS}
+	${SODIUM_INCLUDE_DIRS}
+	${EPOLL_SHIM_INCLUDE_DIRS}
+)
+target_link_directories(datum_gateway
+	PUBLIC
+	${CURL_LIBRARY_DIRS}
+	${MICROHTTPD_LIBRARY_DIRS}
+	${JANSSON_LIBRARY_DIRS}
+	${SODIUM_LIBRARY_DIRS}
+	${EPOLL_SHIM_LIBRARY_DIRS}
+)
+target_link_libraries(datum_gateway
+	PUBLIC
+	${POW_LIBS}
+	Threads::Threads
+	${CURL_LIBRARIES} ${CURL_LDFLAGS} ${CURL_LDFLAGS_OTHER}
+	${MICROHTTPD_LIBRARIES} ${MICROHTTPD_LDFLAGS} ${MICROHTTPD_LDFLAGS_OTHER}
+	${JANSSON_LIBRARIES} ${JANSSON_LDFLAGS} ${JANSSON_LDFLAGS_OTHER}
+	${SODIUM_LIBRARIES} ${SODIUM_LDFLAGS} ${SODIUM_LDFLAGS_OTHER}
+	${EPOLL_SHIM_LIBRARIES} ${EPOLL_SHIM_LDFLAGS} ${EPOLL_SHIM_LDFLAGS_OTHER}
+	${LIBARGP}
+)
+target_compile_options(datum_gateway
+	PUBLIC
+	${CURL_CFLAGS} ${CURL_CFLAGS_OTHER}
+	${MICROHTTPD_CFLAGS} ${MICROHTTPD_CFLAGS_OTHER}
+	${JANSSON_CFLAGS} ${JANSSON_CFLAGS_OTHER}
+	${SODIUM_CFLAGS} ${SODIUM_CFLAGS_OTHER}
+	${EPOLL_SHIM_CFLAGS} ${EPOLL_SHIM_CFLAGS_OTHER}
+)
+
+endif()
