@@ -846,7 +846,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
 	
 	if (!datum_config.api_admin_password_len) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access (not configured)");
+		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access (add \"admin_password\" to \"api\" section of config file)");
 		sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 		
 		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
@@ -1039,7 +1039,7 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 			return attr_len;
 		} else if (0 == strncmp(var_start, "msg:", 4)) {
 			if (val) {
-				static const char * const msg = "<br/><em>Config file disallows editing</em>";
+				static const char * const msg = "<br /><em>Config file disallows editing (set \"admin_password\" and \"modify_conf\" in \"api\" section of config file)</em>";
 				const size_t len = strlen(msg);
 				memcpy(replacement, msg, len);
 				return len;
