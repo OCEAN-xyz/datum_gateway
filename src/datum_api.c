@@ -796,7 +796,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
 	
 	if (!datum_config.api_admin_password_len) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access (not configured)");
+		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access. If you've upgraded from an older version, you may not have an admin password configured. It is now required to access sensitive portions of the dashboard/API.");
 		sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 		
 		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
