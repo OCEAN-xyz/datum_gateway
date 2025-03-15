@@ -49,7 +49,7 @@
 
 global_config_t datum_config;
 
-const char *datum_conf_var_type_text[] = { "N/A", "boolean", "integer", "string", "string_array" };
+const char *datum_conf_var_type_text[] = { "boolean", "integer", "string", "string_array" };
 
 const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	// Bitcoind configs
@@ -212,8 +212,6 @@ void datum_config_set_default(const T_DATUM_CONFIG_ITEM *c) {
 			((char *)c->ptr)[0] = 0;
 			break;
 		}
-		
-		default: break;
 	}
 }
 
@@ -273,8 +271,6 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 			((char (*)[1024])c->ptr)[i][0] = 0;
 			return 1;
 		}
-		
-		default: break;
 	}
 	
 	return -1;
@@ -320,7 +316,7 @@ int datum_read_config(const char *conffile) {
 		// item might be valid
 		j = datum_config_parse_value(&datum_config_options[i], item);
 		if (j == -1) {
-			DLOG_ERROR("Could not parse configuration option %s.%s.  Type should be %s", datum_config_options[i].category, datum_config_options[i].name, (datum_config_options[i].var_type<DATUM_CONF_TYPES)?datum_conf_var_type_text[datum_config_options[i].var_type]:"UNKNOWN");
+			DLOG_ERROR("Could not parse configuration option %s.%s.  Type should be %s", datum_config_options[i].category, datum_config_options[i].name, datum_conf_var_type_text[datum_config_options[i].var_type]);
 			return -1;
 		} else if (j == -2) {
 			DLOG_ERROR("Configuration option %s.%s exceeds maximum length of %d", datum_config_options[i].category, datum_config_options[i].name, datum_config_options[i].max_string_len);
@@ -490,7 +486,7 @@ void datum_gateway_help(void) {
 		if (p < 0) p = 0;
 		if (p > 62) p = 62;
 		paddots[p] = 0;
-		printf("        \"%s\": %s %s (%s", datum_config_options[i].name, paddots, datum_config_options[i].description, (datum_config_options[i].var_type<DATUM_CONF_TYPES)?datum_conf_var_type_text[datum_config_options[i].var_type]:"UNKNOWN");
+		printf("        \"%s\": %s %s (%s", datum_config_options[i].name, paddots, datum_config_options[i].description, datum_conf_var_type_text[datum_config_options[i].var_type]);
 		paddots[p] = '.';
 		if (datum_config_options[i].required) {
 			printf(", REQUIRED)\n");

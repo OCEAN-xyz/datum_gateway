@@ -45,18 +45,18 @@
 
 #include <jansson.h>
 
-#define DATUM_CONF_BOOL 1
-#define DATUM_CONF_INT 2
-#define DATUM_CONF_STRING 3
-#define DATUM_CONF_STRING_ARRAY 4
-
-#define DATUM_CONF_TYPES 5
+enum datum_conf_vartype {
+	DATUM_CONF_BOOL,
+	DATUM_CONF_INT,
+	DATUM_CONF_STRING,
+	DATUM_CONF_STRING_ARRAY,
+};
 
 typedef struct {
 	char category[32];
 	char name[64];
 	char description[512];
-	int var_type;
+	enum datum_conf_vartype var_type;
 	union {
 		int default_int;
 		bool default_bool;
