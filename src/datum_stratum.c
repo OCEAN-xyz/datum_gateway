@@ -934,8 +934,13 @@ bool stratum_get_job(const T_DATUM_MINER_DATA * const m, const json_t * const jo
 		return false;
 	}
 	
-	*out_job_diff = m->stratum_job_diffs[*out_job_index];
-	*out_job_target = m->stratum_job_targets[*out_job_index];
+	if (*out_quickdiff) {
+		*out_job_diff = m->quickdiff_value;
+		*out_job_target = m->quickdiff_target;
+	} else {
+		*out_job_diff = m->stratum_job_diffs[*out_job_index];
+		*out_job_target = m->stratum_job_targets[*out_job_index];
+	}
 	
 	*out_coinbase_index = hex2bin_uchar(&job_id_s[0xE]);
 	if (*out_coinbase_index >= MAX_COINBASE_TYPES) {
@@ -1103,10 +1108,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		} else {
 			pk_u16le(full_cb_txn, cb->coinb1_len - 2, 0xAEBB);
 		}
-		full_cb_txn[job->target_pot_index] = floorPoT(m->quickdiff_value);
-	} else {
-		full_cb_txn[job->target_pot_index] = floorPoT(job_diff);
 	}
+	full_cb_txn[job->target_pot_index] = floorPoT(job_diff);
 	
 	if ((job->merklebranch_count) && (!empty_work)) {
 		// hash the CB txn
@@ -1205,7 +1208,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		
 		if (job->is_datum_job) {
 			// submit via DATUM
-			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, quickdiff ? m->quickdiff_value : job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
+			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
 		}
 	}
 	
@@ -1236,8 +1239,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	// check if share beats miner's work target
-	const uint8_t * const work_target = quickdiff ? m->quickdiff_target : job_target;
-	if (compare_hashes(share_hash, work_target) > 0) {
+	if (compare_hashes(share_hash, job_target) > 0) {
 		// bad target diff
 		send_rejected_high_hash_error(c, id);
 		m->share_count_rejected++;
@@ -1267,7 +1269,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	if (!was_block) {
 		if (job->is_datum_job) {
 			// submit via DATUM
-			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, quickdiff ? m->quickdiff_value : job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
+			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
 		}
 	}
 	
@@ -1276,14 +1278,14 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	datum_socket_send_string_to_client(c, s);
 	
 	// update connection totals
-	m->share_diff_accepted += quickdiff ? m->quickdiff_value : job_diff;
+	m->share_diff_accepted += job_diff;
 	m->share_count_accepted++;
 	
 	// update since-snap totals
 	m->share_count_since_snap++;
-	m->share_diff_since_snap += quickdiff ? m->quickdiff_value : job_diff;
+	m->share_diff_since_snap += job_diff;
 	
-	stratum_update_miner_stats_accepted(c, quickdiff ? m->quickdiff_value : job_diff);
+	stratum_update_miner_stats_accepted(c, job_diff);
 	stratum_update_vardiff(c,false);
 	
 	return 0;
