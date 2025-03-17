@@ -1242,24 +1242,13 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	// check if share beats miner's work target
-	if (!quickdiff) {
-		// check against job+connection target
-		if (compare_hashes(share_hash, m->stratum_job_targets[g_job_index]) > 0) {
-			// bad target diff
-			send_rejected_high_hash_error(c, id);
-			m->share_count_rejected++;
-			m->share_diff_rejected+=m->stratum_job_diffs[g_job_index];
-			return 0;
-		}
-	} else {
-		// check against quickdiff target instead
-		if (compare_hashes(share_hash, m->quickdiff_target) > 0) {
-			// bad target diff
-			send_rejected_high_hash_error(c, id);
-			m->share_count_rejected++;
-			m->share_diff_rejected+=m->stratum_job_diffs[g_job_index];
-			return 0;
-		}
+	const uint8_t * const work_target = quickdiff ? m->quickdiff_target : m->stratum_job_targets[g_job_index];
+	if (compare_hashes(share_hash, work_target) > 0) {
+		// bad target diff
+		send_rejected_high_hash_error(c, id);
+		m->share_count_rejected++;
+		m->share_diff_rejected+=m->stratum_job_diffs[g_job_index];
+		return 0;
 	}
 	
 	// check if stale
