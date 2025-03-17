@@ -963,9 +963,6 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	
 	json_t *username;
 	json_t *extranonce2;
-	json_t *ntime;
-	json_t *nonce;
-	json_t *vroll;
 	
 	T_DATUM_STRATUM_JOB *job = NULL;
 	
@@ -1013,15 +1010,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// construct block header
 	bver = job->version_uint;
 	if (m->extension_version_rolling) {
-		vroll = json_array_get(params_obj, 5);
-		if (!vroll) {
-			// version rolling requested, but missing from this work submission
-			send_bad_version_error(c,id);
-			m->share_count_rejected++;
-			m->share_diff_rejected += job_diff;
-			return 0;
-		}
-		vroll_s = json_string_value(vroll);
+		vroll_s = json_string_value(json_array_get(params_obj, 5));
 		if (!vroll_s) {
 			// couldn't get string
 			send_bad_version_error(c,id);
@@ -1050,25 +1039,13 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// need to get the extranonce together
 	pk_u32le(extranonce_bin, 0, m->sid_inv);
 	extranonce2 = json_array_get(params_obj, 2);
-	if (!extranonce2) {
+	if (json_string_length(extranonce2) != 16) {
 		send_unknown_work_error(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
 	}
 	extranonce2_s = json_string_value(extranonce2);
-	if (!extranonce2_s) {
-		send_unknown_work_error(c, id);
-		m->share_count_rejected++;
-		m->share_diff_rejected += job_diff;
-		return 0;
-	}
-	if (strlen(extranonce2_s) != 16) {
-		send_unknown_work_error(c, id);
-		m->share_count_rejected++;
-		m->share_diff_rejected += job_diff;
-		return 0;
-	}
 	for(i=0;i<8;i++) {
 		extranonce_bin[i+4] = hex2bin_uchar(&extranonce2_s[i<<1]);
 	}
@@ -1123,14 +1100,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	// 68 - 71 = ntime
-	ntime = json_array_get(params_obj, 3);
-	if (!ntime) {
-		send_unknown_work_error(c, id);
-		m->share_count_rejected++;
-		m->share_diff_rejected += job_diff;
-		return 0;
-	}
-	ntime_s = json_string_value(ntime);
+	ntime_s = json_string_value(json_array_get(params_obj, 3));
 	if (!ntime_s) {
 		send_unknown_work_error(c, id);
 		m->share_count_rejected++;
@@ -1145,14 +1115,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	memcpy(&block_header[72], &job->nbits_bin[0], sizeof(uint32_t));
 	
 	// 76 - 79 = nonce
-	nonce = json_array_get(params_obj, 4);
-	if (!nonce) {
-		send_unknown_work_error(c, id);
-		m->share_count_rejected++;
-		m->share_diff_rejected += job_diff;
-		return 0;
-	}
-	nonce_s = json_string_value(nonce);
+	nonce_s = json_string_value(json_array_get(params_obj, 4));
 	if (!nonce_s) {
 		send_unknown_work_error(c, id);
 		m->share_count_rejected++;
