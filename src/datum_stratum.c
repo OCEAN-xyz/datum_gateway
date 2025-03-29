@@ -693,47 +693,11 @@ void datum_stratum_v1_socket_thread_loop(T_DATUM_THREAD_DATA *my) {
 	}
 }
 
-void send_error_to_client(T_DATUM_CLIENT_DATA *c, uint64_t id, char *e) {
-	// "e" must be valid JSON string
+void send_error_to_client(T_DATUM_CLIENT_DATA * const c, const uint64_t id, const int code, const char * const e) {
+	// "e" must be valid JSON string _content_ (eg, no double quotes)
 	char s[1024];
-	snprintf(s, sizeof(s), "{\"error\":%s,\"id\":%"PRIu64",\"result\":null}\n", e, id);
+	snprintf(s, sizeof(s), "{\"error\":[%d,\"%s\",null],\"id\":%"PRIu64",\"result\":null}\n", code, e, id);
 	datum_socket_send_string_to_client(c, s);
-}
-
-static inline void send_unknown_work_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[20,\"unknown-work\",null]");
-}
-
-static inline void send_rejected_high_hash_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[23,\"high-hash\",null]");
-}
-
-static inline void send_rejected_stale(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[21,\"stale-work\",null]");
-}
-
-static inline void send_rejected_time_too_old(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[21,\"time-too-old\",null]");
-}
-
-static inline void send_rejected_time_too_new(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[21,\"time-too-new\",null]");
-}
-
-static inline void send_rejected_stale_block(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[21,\"stale-prevblk\",null]");
-}
-
-static inline void send_rejected_hnotzero_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[23,\"H-not-zero\",null]");
-}
-
-static inline void send_bad_version_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[23,\"bad-version\",null]");
-}
-
-static inline void send_rejected_duplicate(T_DATUM_CLIENT_DATA *c, uint64_t id) {
-	send_error_to_client(c, id, "[22,\"duplicate\",null]");
 }
 
 uint32_t get_new_session_id(T_DATUM_CLIENT_DATA *c) {
@@ -1002,7 +966,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	uint64_t job_diff;
 	const uint8_t *job_target;
 	if (!stratum_get_job(m, json_array_get(params_obj, 1), &job, &g_job_index, &quickdiff, &empty_work, &job_diff, &job_target, &coinbase_index)) {
-		send_unknown_work_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_INVALID, "unknown-work");
 		++m->share_count_rejected;
 		m->share_diff_rejected += job_diff;
 	}
@@ -1013,7 +977,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		vroll_s = json_string_value(json_array_get(params_obj, 5));
 		if (!vroll_s) {
 			// couldn't get string
-			send_bad_version_error(c,id);
+			send_error_to_client(c, id, STRATUM_SHARE_HIGHHASH, "bad-version");
 			m->share_count_rejected++;
 			m->share_diff_rejected += job_diff;
 			return 0;
@@ -1021,7 +985,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		vroll_uint = strtoul(vroll_s, NULL, 16);
 		if ((vroll_uint & m->extension_version_rolling_mask) != vroll_uint) {
 			// tried to roll bits we didn't approve
-			send_bad_version_error(c,id);
+			send_error_to_client(c, id, STRATUM_SHARE_HIGHHASH, "bad-version");
 			m->share_count_rejected++;
 			m->share_diff_rejected += job_diff;
 			return 0;
@@ -1040,7 +1004,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	pk_u32le(extranonce_bin, 0, m->sid_inv);
 	extranonce2 = json_array_get(params_obj, 2);
 	if (json_string_length(extranonce2) != 16) {
-		send_unknown_work_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_INVALID, "unknown-work");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1058,7 +1022,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	if (!cb) {
-		send_unknown_work_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_INVALID, "unknown-work");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1102,7 +1066,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// 68 - 71 = ntime
 	ntime_s = json_string_value(json_array_get(params_obj, 3));
 	if (!ntime_s) {
-		send_unknown_work_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_INVALID, "unknown-work");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1117,7 +1081,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// 76 - 79 = nonce
 	nonce_s = json_string_value(json_array_get(params_obj, 4));
 	if (!nonce_s) {
-		send_unknown_work_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_INVALID, "unknown-work");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1131,7 +1095,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	if (upk_u32le(share_hash, 28) != 0) {
 		// H-not-zero
 		//LOG_PRINTF("HIGH HASH: %8.8lx", (unsigned long)upk_u32le(share_hash, 28));
-		send_rejected_hnotzero_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_HIGHHASH, "H-not-zero");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1179,7 +1143,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// we'll still reject the share, though, even if it's a block. *trollface*
 	if (job->is_stale_prevblock) {
 		// share is from a stale job
-		send_rejected_stale_block(c, id);
+		send_error_to_client(c, id, STRATUM_JOB_NOT_FOUND, "stale-prevblk");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1188,14 +1152,14 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// check if ntime is within bounds for a valid block
 	// we'll do this after we try and potential blocks found with bad times, just in case
 	if (ntime_val < job->block_template->mintime) {
-		send_rejected_time_too_old(c, id);
+		send_error_to_client(c, id, STRATUM_JOB_NOT_FOUND, "time-too-old");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
 	}
 	
 	if (ntime_val > (job->block_template->curtime + 7200)) {
-		send_rejected_time_too_new(c, id);
+		send_error_to_client(c, id, STRATUM_JOB_NOT_FOUND, "time-too-new");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1204,7 +1168,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// check if share beats miner's work target
 	if (compare_hashes(share_hash, job_target) > 0) {
 		// bad target diff
-		send_rejected_high_hash_error(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_HIGHHASH, "high-hash");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1213,7 +1177,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// check if stale
 	if (m->sdata->loop_tsms > (job->tsms + ((datum_config.stratum_v1_share_stale_seconds + datum_config.bitcoind_work_update_seconds) * 1000))) {
 		// share is from a stale job
-		send_rejected_stale(c, id);
+		send_error_to_client(c, id, STRATUM_JOB_NOT_FOUND, "stale-work");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1222,7 +1186,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// check if duplicate submission
 	// if this is a quickdiff share, invert ntime here as a way to prevent unlikely collisions.
 	if (datum_stratum_check_for_dupe(m->sdata, nonce_val, g_job_index, quickdiff?(~ntime_val):(ntime_val), bver, &extranonce_bin[0])) {
-		send_rejected_duplicate(c, id);
+		send_error_to_client(c, id, STRATUM_SHARE_DUPLICATE, "duplicate");
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
 		return 0;
@@ -1767,7 +1731,7 @@ int datum_stratum_v1_socket_thread_client_cmd(T_DATUM_CLIENT_DATA *c, char *line
 			[[fallthrough]];
 		}
 		default: {
-			send_error_to_client(c, id, "[-3,\"Method not found\",null]");
+			send_error_to_client(c, id, JSONRPC_METHOD_NOT_FOUND, "Method not found");
 			json_decref(j);
 			return 0;
 		}
