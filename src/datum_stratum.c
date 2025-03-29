@@ -700,6 +700,11 @@ void send_error_to_client(T_DATUM_CLIENT_DATA * const c, const uint64_t id, cons
 	datum_socket_send_string_to_client(c, s);
 }
 
+static int send_method_not_found(T_DATUM_CLIENT_DATA * const c, const uint64_t id, json_t * const params_obj) {
+	send_error_to_client(c, id, JSONRPC_METHOD_NOT_FOUND, "Method not found");
+	return 0;
+}
+
 uint32_t get_new_session_id(T_DATUM_CLIENT_DATA *c) {
 	// K.I.S.S. --- Session ID is just the thread ID and client ID, XOR with our constant.
 	// This will always be unique for every client connected to the server.
@@ -1651,6 +1656,8 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	return 0;
 }
 
+typedef int (*datum_stratum_method_func_typ)(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj);
+
 int datum_stratum_v1_socket_thread_client_cmd(T_DATUM_CLIENT_DATA *c, char *line) {
 	json_t *j ,*method_obj, *id_obj, *params_obj;
 	json_error_t err = { };
@@ -1699,43 +1706,38 @@ int datum_stratum_v1_socket_thread_client_cmd(T_DATUM_CLIENT_DATA *c, char *line
 		return -5;
 	}
 	
-	method = json_string_value(method_obj);
-	
-	if (method[0] == 0) {
-		json_decref(j);
-		return -7;
-	}
-	
-	switch (method[0]) {
-		case 'm': {
-			if (!strcmp(method, "mining.submit")) {
-				i = client_mining_submit(c, id, params_obj);
-				json_decref(j);
-				return i;
+	datum_stratum_method_func_typ func = send_method_not_found;
+	if (json_string_length(method_obj) >= 13) {
+		method = json_string_value(method_obj);
+		
+		switch (method[10]) {
+			case 'm': {
+				if (!strcmp(method, "mining.submit")) {
+					func = client_mining_submit;
+				}
+				break;
+			case 'f':
+				if (!strcmp(method, "mining.configure")) {
+					func = client_mining_configure;
+				}
+				break;
+			case 's':
+				if (!strcmp(method, "mining.subscribe")) {
+					func = client_mining_subscribe;
+				}
+				break;
+			case 'h':
+				if (!strcmp(method, "mining.authorize")) {
+					func = client_mining_authorize;
+				}
+				break;
 			}
-			if (!strcmp(method, "mining.configure")) {
-				i = client_mining_configure(c, id, params_obj);
-				json_decref(j);
-				return i;
-			}
-			if (!strcmp(method, "mining.subscribe")) {
-				i = client_mining_subscribe(c, id, params_obj);
-				json_decref(j);
-				return i;
-			}
-			if (!strcmp(method, "mining.authorize")) {
-				i = client_mining_authorize(c, id, params_obj);
-				json_decref(j);
-				return i;
-			}
-			[[fallthrough]];
-		}
-		default: {
-			send_error_to_client(c, id, JSONRPC_METHOD_NOT_FOUND, "Method not found");
-			json_decref(j);
-			return 0;
 		}
 	}
+	
+	i = func(c, id, params_obj);
+	json_decref(j);
+	return i;
 }
 
 void stratum_job_merkle_root_calc(T_DATUM_STRATUM_JOB *s, unsigned char *coinbase_txn_hash, unsigned char *merkle_root_output) {
