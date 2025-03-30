@@ -1692,16 +1692,16 @@ int datum_stratum_v1_socket_thread_client_cmd(T_DATUM_CLIENT_DATA *c, char *line
 		return -4;
 	}
 	
-	// enforce that id must be an integer.  might not be 100% to spec, but is sane and nothing known violates this.
-	// allowing arbitrary non-integer things here is a potential DoS vector.
-	if (!json_is_integer(id_obj)) {
-		json_decref(j);
-		return -4;
-	}
-	
 	// TODO: avoid round trip: just pass position/size into input string
 	id_ser = json_dumps(id_obj, JSON_COMPACT | JSON_ENCODE_ANY);
 	const size_t id_ser_len = strlen(id_ser);
+	
+	// limit length of serialised id to avoid potential DoS
+	if (id_ser_len > MAX_SERIALISED_JSONRPC_ID_LENGTH) {
+		free(id_ser);
+		json_decref(j);
+		return -4;
+	}
 	
 	if (!(params_obj = json_object_get(j, "params"))) {
 		free(id_ser);

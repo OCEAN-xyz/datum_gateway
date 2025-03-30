@@ -46,6 +46,8 @@
 	#include "datum_blocktemplates.h"
 #endif
 
+#define MAX_SERIALISED_JSONRPC_ID_LENGTH 0x40
+
 #define MAX_STRATUM_JOBS 256
 
 #define MAX_COINBASE_TYPES 6
