@@ -2034,7 +2034,7 @@ void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, i
 	return;
 }
 
-int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t coinbase_txn_size, T_DATUM_STRATUM_JOB *job, T_DATUM_STRATUM_THREADPOOL_DATA *sdata, const char *block_hash_hex, bool empty_work) {
+int assembleBlockAndSubmit(const uint8_t * const block_header, const uint8_t * const coinbase_txn, const size_t coinbase_txn_size, const T_DATUM_STRATUM_JOB * const job, T_DATUM_STRATUM_THREADPOOL_DATA * const sdata, const char * const block_hash_hex, const bool empty_work) {
 	// TODO: Also submit directly to bitcoin P2P
 	char *submitblock_req = NULL;
 	char *ptr = NULL;
