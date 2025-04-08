@@ -36,5 +36,96 @@
 #include <assert.h>
 #include "datum_utils.h"
 
+void datum_utils_test_strtoi_strict_2d2(void) {
+	const char *s, *endptr;
+	assert(datum_strtoi_strict_2d2("", 0, NULL) == -1);
+	assert(datum_strtoi_strict_2d2("", 0, &endptr) == -1);
+	s = "0";
+	assert(datum_strtoi_strict_2d2(s, 1, NULL) == 0);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 1, &endptr) == 0);
+	assert(endptr == &s[1]);
+	assert(datum_strtoi_strict_2d2(s, 2, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 2, &endptr) == 0);
+	assert(endptr == &s[1]);
+	s = "0x";
+	assert(datum_strtoi_strict_2d2(s, 2, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 2, &endptr) == 0);
+	assert(endptr == &s[1]);
+	assert(datum_strtoi_strict_2d2(s, 1, NULL) == 0);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 1, &endptr) == 0);
+	assert(endptr == &s[1]);
+	s = "0.1";
+	assert(datum_strtoi_strict_2d2(s, 1, NULL) == 0);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 1, &endptr) == 0);
+	assert(endptr == &s[1]);
+	assert(datum_strtoi_strict_2d2(s, 2, NULL) == 0);
+	assert(datum_strtoi_strict_2d2(s, 2, &endptr) == 0);
+	assert(endptr == &s[2]);
+	assert(datum_strtoi_strict_2d2(s, 3, NULL) == 10);
+	assert(datum_strtoi_strict_2d2(s, 3, &endptr) == 10);
+	assert(endptr == &s[3]);
+	assert(datum_strtoi_strict_2d2(s, 4, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 4, &endptr) == 10);
+	assert(endptr == &s[3]);
+	s = "0.02";
+	assert(datum_strtoi_strict_2d2(s, 3, NULL) == 0);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 3, &endptr) == 0);
+	assert(endptr == &s[3]);
+	assert(datum_strtoi_strict_2d2(s, 4, NULL) == 2);
+	assert(datum_strtoi_strict_2d2(s, 4, &endptr) == 2);
+	assert(endptr == &s[4]);
+	assert(datum_strtoi_strict_2d2(s, 5, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 5, &endptr) == 2);
+	assert(endptr == &s[4]);
+	s = ".02";
+	assert(datum_strtoi_strict_2d2(s, 2, NULL) == 0);
+	assert(datum_strtoi_strict_2d2(s, 2, &endptr) == 0);
+	assert(endptr == &s[2]);
+	assert(datum_strtoi_strict_2d2(s, 3, NULL) == 2);
+	assert(datum_strtoi_strict_2d2(s, 3, &endptr) == 2);
+	assert(endptr == &s[3]);
+	assert(datum_strtoi_strict_2d2(s, 4, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 4, &endptr) == 2);
+	assert(endptr == &s[3]);
+	s = "12.34";
+	assert(datum_strtoi_strict_2d2(s, 0, NULL) == -1);
+	assert(datum_strtoi_strict_2d2(s, 1, NULL) == 100);
+	assert(datum_strtoi_strict_2d2(s, 1, &endptr) == 100);
+	assert(endptr == &s[1]);
+	assert(datum_strtoi_strict_2d2(s, 2, NULL) == 1200);
+	assert(datum_strtoi_strict_2d2(s, 2, &endptr) == 1200);
+	assert(endptr == &s[2]);
+	assert(datum_strtoi_strict_2d2(s, 3, NULL) == 1200);
+	assert(datum_strtoi_strict_2d2(s, 3, &endptr) == 1200);
+	assert(endptr == &s[3]);
+	assert(datum_strtoi_strict_2d2(s, 4, NULL) == 1230);
+	assert(datum_strtoi_strict_2d2(s, 4, &endptr) == 1230);
+	assert(endptr == &s[4]);
+	assert(datum_strtoi_strict_2d2(s, 5, NULL) == 1234);
+	assert(datum_strtoi_strict_2d2(s, 5, &endptr) == 1234);
+	assert(endptr == &s[5]);
+	assert(datum_strtoi_strict_2d2(s, 6, NULL) == -1);
+	endptr = NULL;
+	assert(datum_strtoi_strict_2d2(s, 6, &endptr) == 1234);
+	assert(endptr == &s[5]);
+	s = "2.345";
+	assert(datum_strtoi_strict_2d2(s, 5, NULL) == -1);
+	assert(datum_strtoi_strict_2d2(s, 5, &endptr) == -1);
+	s = "2.34.5";
+	assert(datum_strtoi_strict_2d2(s, 6, NULL) == -1);
+	assert(datum_strtoi_strict_2d2(s, 6, &endptr) == 234);
+	assert(endptr == &s[4]);
+}
+
 void datum_utils_tests(void) {
+	datum_utils_test_strtoi_strict_2d2();
 }

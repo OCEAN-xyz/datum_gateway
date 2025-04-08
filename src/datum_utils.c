@@ -747,6 +747,43 @@ int datum_atoi_strict(const char * const s, const size_t size) {
 	return (ret == UINT64_MAX || ret > INT_MAX) ? -1 : ret;
 }
 
+// Parses NN.NN (inclusive of 100.00) to a fixed-point hundredths int
+// Uses a fixed-size buffer; positive only; digits (and optional decimal point) only
+// Returns -1 on failure
+int datum_strtoi_strict_2d2(const char * const s, const size_t size, const char ** const endptr) {
+	if (!size) return -1;
+	assert(s);
+	int ret = 0, d = -1;
+	size_t i;
+	for (i = 0; i < size; ++i) {
+		if (s[i] == '.') {
+			if (d != -1) break;
+			d = 0;
+			continue;
+		}
+		if (s[i] < '0' || s[i] > '9') break;
+		if (d != -1) {
+			++d;
+			if (d > 2) return -1;
+		}
+		int digit = s[i] - '0';
+		if (ret > (INT_MAX - digit) / 10) return -1;
+		ret = (ret * 10) + digit;
+	}
+	if (i == 0) return -1;
+	if (endptr) {
+		*endptr = &s[i];
+	} else if (i != size) {
+		return -1;
+	}
+	if (d == 1) {
+		ret *= 10;
+	} else if (d != 2) {
+		ret *= 100;
+	}
+	return ret;
+}
+
 // Currently accepts 0 and 1 only, but may add more later
 // Returns true if valid, actual value in *out
 bool datum_str_to_bool_strict(const char * const s, bool * const out) {

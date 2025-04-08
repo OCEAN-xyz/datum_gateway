@@ -75,6 +75,7 @@ uint64_t datum_siphash(const void *src, uint64_t sz, const unsigned char key[16]
 uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char key[16]);
 uint64_t datum_atoi_strict_u64(const char *s, size_t size);
 int datum_atoi_strict(const char *s, size_t size);
+int datum_strtoi_strict_2d2(const char *s, size_t size, const char **endptr);
 bool datum_str_to_bool_strict(const char *s, bool *out);
 char **datum_deepcopy_charpp(const char * const *p);
 void datum_reexec();
