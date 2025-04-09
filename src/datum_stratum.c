@@ -955,6 +955,7 @@ bool stratum_get_job(const T_DATUM_MINER_DATA * const m, const json_t * const jo
 // Format: address%nn[.n][%address%nn[.n][...]]
 const char *datum_stratum_relevant_username(const char *username_s, char * const username_buf, const size_t username_buf_sz, const uint16_t share_rnd) {
 	uint16_t base = 0;
+	int n = 0;
 	
 	while (true) {
 		const char * const percent_pos = strchr(username_s, '%');
@@ -966,7 +967,7 @@ const char *datum_stratum_relevant_username(const char *username_s, char * const
 		if (*endptr != '\0' && *endptr != '%') return username_s;
 		
 		const uint32_t split_threshold = base + (uint32_t)per * 0x10000 / 10000;
-		if (share_rnd < split_threshold) {
+		if (share_rnd < split_threshold || split_threshold + n > 0xffff) {
 			snprintf(username_buf, username_buf_sz, "%.*s", (int)(percent_pos - username_s), username_s);
 			return username_buf;
 		}
@@ -975,6 +976,7 @@ const char *datum_stratum_relevant_username(const char *username_s, char * const
 		if (*endptr == '\0') return datum_config.mining_pool_address;
 		username_s = &endptr[1];
 		base = split_threshold;
+		++n;
 	}
 }
 
