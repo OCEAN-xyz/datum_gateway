@@ -1174,7 +1174,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		}
 	}
 	
-	if (strchr(username_s, '%')) {
+	if (datum_config.stratum_v1_split_username && strchr(username_s, '%')) {
 		const uint16_t share_rnd = upk_u16le(share_hash, 0);
 		username_s = datum_stratum_relevant_username(username_s, username_buf, sizeof(username_buf), share_rnd);
 	}

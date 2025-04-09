@@ -174,7 +174,13 @@
 		<div class="table-wrapper">
 			<div class="table-container">
 				<h2>Advanced</h2>
-				<input type="hidden" name="checkboxes" value="stratum_fingerprint_miners datum_always_pay_self"></input>
+				<input type="hidden" name="checkboxes" value="stratum_fingerprint_miners stratum_split_username datum_always_pay_self"></input>
+				<div class="setting-row">
+					<div class="flex-row">
+						<input type="checkbox" name="stratum_split_username" id="stratum_split_username" value="1"${checked:stratum_split_username}${disabled:*ro}></input>
+						<label for="stratum_split_username" class="label" style="flex:1">Parse usernames to divide share submissions across multiple DATUM users</label>
+					</div>
+				</div>
 				<div class="setting-row">
 					<div class="flex-row">
 						<input type="checkbox" name="stratum_fingerprint_miners" id="stratum_fingerprint_miners" value="1"${checked:stratum_fingerprint_miners}${disabled:*ro}></input>
