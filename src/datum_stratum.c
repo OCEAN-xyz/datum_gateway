@@ -1313,10 +1313,7 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	
 	json_t *p1, *p2, *t;
 	const char *s, *s2;
-	char sx[1024];
 	char sa[1024];
-	int sxl = 0;
-	sx[0] = 0;
 	int i;
 	
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
@@ -1343,6 +1340,7 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 					if (!strcmp("version-rolling", s)) {
 						new_vroll = true;
 						m->extension_version_rolling = true;
+						m->extension_version_rolling_need_to_send_mask = true;
 						m->extension_version_rolling_mask = 0x1fffe000;
 						m->extension_version_rolling_bits = 16;
 						t = json_object_get(p2, "version-rolling.mask");
@@ -1352,8 +1350,6 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 								m->extension_version_rolling_mask = strtoul(s2, NULL, 16) & m->extension_version_rolling_mask;
 							}
 						}
-						
-						sxl = sprintf(&sx[sxl], "{\"id\":null,\"method\":\"mining.set_version_mask\",\"params\":[\"%08x\"]}\n", m->extension_version_rolling_mask);
 					}
 					break;
 				}
@@ -1381,10 +1377,6 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	i+= snprintf(&sa[i], 1023-i, "}}\n");
 	
 	datum_socket_send_string_to_client(c, sa);
-	
-	if (sxl) {
-		datum_socket_send_string_to_client(c, sx);
-	}
 	
 	return 0;
 }
@@ -1459,6 +1451,12 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	//			true // clean_jobs
 	//		]
 	//	}
+	
+	if (m->extension_version_rolling_need_to_send_mask) {
+		snprintf(s, sizeof(s), "{\"id\":null,\"method\":\"mining.set_version_mask\",\"params\":[\"%08x\"]}\n", m->extension_version_rolling_mask);
+		datum_socket_send_string_to_client(c, s);
+		m->extension_version_rolling_need_to_send_mask = false;
+	}
 	
 	// let's not conflict the two special types of work. empty block is more important than changing vardiff quickly
 	if (new_block) {

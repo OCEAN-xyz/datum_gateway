@@ -216,6 +216,7 @@ typedef struct {
 	char last_auth_username[192];
 	
 	bool extension_version_rolling;
+	bool extension_version_rolling_need_to_send_mask;
 	uint32_t extension_version_rolling_mask;
 	unsigned char extension_version_rolling_bits;
 	
