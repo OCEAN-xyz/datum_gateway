@@ -1611,6 +1611,12 @@ void datum_stratum_fingerprint_by_UA(T_DATUM_MINER_DATA *m) {
 		return;
 	}
 	
+	if (strstr(m->useragent, "Antminer S21+/") == m->useragent) {
+		// Mar 12 firmware kills the connection if we send a version mask update before authentication completes (eg, before notify), and also doesn't need it anyway
+		m->extension_version_rolling_need_to_send_mask = false;
+		return;
+	}
+	
 	// the ePIC control boards can handle almost any size coinbase
 	// UA starts with: PowerPlay-BM/
 	if (strstr(m->useragent, "PowerPlay-BM/") == m->useragent) {
