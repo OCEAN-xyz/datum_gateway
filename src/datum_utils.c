@@ -555,7 +555,7 @@ bool strncpy_workerchars(char *out, const char *in, size_t maxlen) {
 	out[0] = 0;
 	while((in[i] != 0) && (maxlen > 1)) {
 		c = in[i];
-		if ((isalnum(c)) || (c == '.') || (c == '-') || (c == '_') || (c == '=') || (c == '@') || (c == ',')) {
+		if (isalnum(c) || strchr(".-_=@,", c)) {
 			out[j] = c;
 			j++;
 			maxlen--;
@@ -582,7 +582,7 @@ bool strncpy_uachars(char *out, const char *in, size_t maxlen) {
 	out[0] = 0;
 	while((in[i] != 0) && (maxlen > 1)) {
 		c = in[i];
-		if ((isalnum(c)) || (c == '.') || (c == '-') || (c == '_') || (c == '=') || (c == '@') || (c == ',') || (c == ' ') || (c == '|') || (c == '/') || (c == '|') || (c == ':') || (c == '<') || (c == '>') || (c == '\'') || (c == ';')) {
+		if (isalnum(c) || strchr(".-_=@, |/:<>';", c)) {
 			out[j] = c;
 			j++;
 			maxlen--;
