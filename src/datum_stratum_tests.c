@@ -51,16 +51,16 @@ void datum_stratum_relevant_username_tests() {
 	s = "";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == s);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == s);
-	s = "abc%def";
+	s = "abc~def";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == s);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == s);
-	s = "abc%0%def";
+	s = "abc~0~def";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == &s[6]);
-	s = "abc%0%def%ghi";
+	s = "abc~0~def~ghi";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == &s[6]);
-	s = "abc%0%def%0%ghi";
+	s = "abc~0~def~0~ghi";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == &s[12]);
-	s = "abc%0%def%1%ghi";
+	s = "abc~0~def~1~ghi";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "def"));
 	memset(buf, 5, 5);
@@ -68,7 +68,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "def"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x28f) == &s[12]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[12]);
-	s = "abc%1%def%1%ghi";
+	s = "abc~1~def~1~ghi";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
 	memset(buf, 5, 5);
@@ -81,7 +81,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "def"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x51e) == &s[12]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[12]);
-	s = "abc%1%def%1%ghi%1";
+	s = "abc~1~def~1~ghi~1";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
 	memset(buf, 5, 5);
@@ -99,7 +99,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "ghi"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x7ad) == pool_addr);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == pool_addr);
-	s = "abc%.01%def";
+	s = "abc~.01~def";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
 	memset(buf, 5, 5);
@@ -107,7 +107,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "abc"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 6) == &s[8]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[8]);
-	s = "abc%55.%def";
+	s = "abc~55.~def";
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
@@ -116,7 +116,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "abc"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x8ccc) == &s[8]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[8]);
-	s = "abc%55.55%def";
+	s = "abc~55.55~def";
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
@@ -125,7 +125,7 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "abc"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x8e35) == &s[10]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[10]);
-	s = "abc%99.99%def";
+	s = "abc~99.99~def";
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
@@ -134,18 +134,18 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "abc"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xfff9) == &s[10]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[10]);
-	s = "abc%100%def";
+	s = "abc~100~def";
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
 	assert(!strcmp(buf, "abc"));
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == buf);
 	assert(!strcmp(buf, "abc"));
-	s = "a%10%b%10%c%10%d%10%e%10%f%10%g%10%h%10%i%10%j%10";
+	s = "a~10~b~10~c~10~d~10~e~10~f~10~g~10~h~10~i~10~j~10";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == buf);
 	assert(!strcmp(buf, "j"));
 	memset(buf, 5, 5);
-	s = "a%10%b%10%c%10%d%10%e%10%f%10%g%10%h%10%i%10%j%10%k";
+	s = "a~10~b~10~c~10~d~10~e~10~f~10~g~10~h~10~i~10~j~10~k";
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == buf);
 	assert(!strcmp(buf, "j"));
 }

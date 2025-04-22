@@ -59,6 +59,8 @@
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
 
+#define DATUM_USERNAME_SPLIT_DELIMITER '~'
+
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
 int stratum_job_next = 0;
@@ -952,19 +954,19 @@ bool stratum_get_job(const T_DATUM_MINER_DATA * const m, const json_t * const jo
 	return true;
 }
 
-// Format: address%nn[.n][%address%nn[.n][...]]
+// Format: address~nn[.n][~address~nn[.n][...]]
 const char *datum_stratum_relevant_username(const char *username_s, char * const username_buf, const size_t username_buf_sz, const uint16_t share_rnd) {
 	uint16_t base = 0;
 	int n = 0;
 	
 	while (true) {
-		const char * const percent_pos = strchr(username_s, '%');
+		const char * const percent_pos = strchr(username_s, DATUM_USERNAME_SPLIT_DELIMITER);
 		if (!percent_pos) return username_s;
 		
 		const char *endptr;
 		const int per = datum_strtoi_strict_2d2(&percent_pos[1], strlen(&percent_pos[1]), &endptr);
 		if (per < 0) return username_s;
-		if (*endptr != '\0' && *endptr != '%') return username_s;
+		if (*endptr != '\0' && *endptr != DATUM_USERNAME_SPLIT_DELIMITER) return username_s;
 		
 		const uint32_t split_threshold = base + (uint32_t)per * 0x10000 / 10000;
 		if (share_rnd < split_threshold || split_threshold + n > 0xffff) {
@@ -1176,7 +1178,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		}
 	}
 	
-	if (datum_config.stratum_v1_split_username && strchr(username_s, '%')) {
+	if (datum_config.stratum_v1_split_username && strchr(username_s, DATUM_USERNAME_SPLIT_DELIMITER)) {
 		const uint16_t share_rnd = upk_u16le(share_hash, 0);
 		username_s = datum_stratum_relevant_username(username_s, username_buf, sizeof(username_buf), share_rnd);
 	}
