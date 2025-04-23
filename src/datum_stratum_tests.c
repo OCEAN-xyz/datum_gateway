@@ -107,6 +107,15 @@ void datum_stratum_relevant_username_tests() {
 	assert(!strcmp(buf, "abc"));
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 6) == &s[8]);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[8]);
+	s = "abc~55~def";
+	memset(buf, 5, 5);
+	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
+	assert(!strcmp(buf, "abc"));
+	memset(buf, 5, 5);
+	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x8ccb) == buf);
+	assert(!strcmp(buf, "abc"));
+	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0x8ccc) == &s[7]);
+	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0xffff) == &s[7]);
 	s = "abc~55.~def";
 	memset(buf, 5, 5);
 	assert(datum_stratum_relevant_username(s, buf, sizeof(buf), 0) == buf);
