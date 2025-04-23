@@ -977,6 +977,7 @@ const char *datum_stratum_relevant_username(const char *username_s, char * const
 		// move on to the next split
 		if (*endptr == '\0') return datum_config.mining_pool_address;
 		username_s = &endptr[1];
+		if (username_s[0] == '\0') return datum_config.mining_pool_address;
 		base = split_threshold;
 		++n;
 	}
