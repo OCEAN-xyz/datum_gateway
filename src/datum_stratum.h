@@ -46,6 +46,8 @@
 	#include "datum_blocktemplates.h"
 #endif
 
+#define MAX_SERIALISED_JSONRPC_ID_LENGTH 0x40
+
 #define MAX_STRATUM_JOBS 256
 
 #define MAX_COINBASE_TYPES 6
@@ -100,6 +102,16 @@
 ////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////
+
+enum stratum_error_codes {
+	JSONRPC_METHOD_NOT_FOUND = -3,
+	STRATUM_SHARE_INVALID = 20,
+	STRATUM_JOB_NOT_FOUND = 21,
+	STRATUM_SHARE_DUPLICATE = 22,
+	STRATUM_SHARE_HIGHHASH = 23,
+	STRATUM_SHARE_BAD_WORKER = 24,
+	STRATUM_NOT_SUBSCRIBED = 25,
+};
 
 typedef struct {
 	char coinb1[STRATUM_COINBASE1_MAX_LEN];
