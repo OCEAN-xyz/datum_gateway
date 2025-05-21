@@ -127,7 +127,9 @@ typedef struct {
 	bool clog_to_stderr;
 	bool clog_rotate_daily;
 	char clog_file[1024];
-	
+
+	int datum_page_refresh_seconds;
+
 	char datum_pool_host[1024];
 	int datum_pool_port;
 	bool datum_pool_pass_workers;

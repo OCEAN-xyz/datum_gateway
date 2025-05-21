@@ -177,6 +177,10 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.datum_pooled_mining_only, 	.default_bool = true },
 	{ .var_type = DATUM_CONF_INT, 		.category = "datum", 		.name = "protocol_global_timeout",		.description = "If no valid messages are received from the DATUM server in this many seconds, give up and try to reconnect",
 		.required = false, .ptr = &datum_config.datum_protocol_global_timeout, 	.default_int = 60 },
+
+	// status page refresh
+	{ .var_type = DATUM_CONF_INT, 		.category = "page_refresh",		.name = "time_out_in_secs",					.description = "Refresh status page interval",
+		.required = false, .ptr = &datum_config.datum_page_refresh_seconds, .default_int = 5 },
 };
 
 #define NUM_CONFIG_ITEMS (sizeof(datum_config_options) / sizeof(datum_config_options[0]))
