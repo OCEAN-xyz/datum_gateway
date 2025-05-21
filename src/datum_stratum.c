@@ -122,7 +122,6 @@ void datum_stratum_v1_shutdown_all(void) {
 	}
 	
 	DLOG_INFO("Sent disconnect request for all stratum clients to %u threads.", shutdown_threads);
-	return;
 }
 
 // Started as its own pthread during startup
@@ -854,7 +853,6 @@ void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
 		// adjust diff upward a tick
 		m->current_diff = m->current_diff << 1;
 		reset_vardiff_stats(c);
-		return;
 	}
 	
 	// nothing to do yet
