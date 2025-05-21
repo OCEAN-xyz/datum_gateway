@@ -24,13 +24,7 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e95e4d8c-93b7-4125-9008-57d0ec3bd9c1" name="Changes" comment="Add pthreads includes to linux cross-platform io header">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake-build-debug/.ninja_deps" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/.ninja_deps" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake-build-debug/.ninja_log" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/.ninja_log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmake-build-debug/Testing/Temporary/LastTest.log" beforeDir="false" afterPath="$PROJECT_DIR$/cmake-build-debug/Testing/Temporary/LastTest.log" afterDir="false" />
-    </list>
+    <list default="true" id="e95e4d8c-93b7-4125-9008-57d0ec3bd9c1" name="Changes" comment="Local ide changes" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -105,7 +99,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1747836978279</updated>
-      <workItem from="1747836980331" duration="2295000" />
+      <workItem from="1747836980331" duration="2657000" />
     </task>
     <task id="LOCAL-00001" summary="Add pthreads includes to linux cross-platform io header">
       <option name="closed" value="true" />
@@ -115,7 +109,23 @@
       <option name="project" value="LOCAL" />
       <updated>1747838931634</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Updates the .gitignore file">
+      <option name="closed" value="true" />
+      <created>1747839459190</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1747839459190</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Local ide changes">
+      <option name="closed" value="true" />
+      <created>1747839663299</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1747839663299</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -139,6 +149,8 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Add pthreads includes to linux cross-platform io header" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add pthreads includes to linux cross-platform io header" />
+    <MESSAGE value="Updates the .gitignore file" />
+    <MESSAGE value="Local ide changes" />
+    <option name="LAST_COMMIT_MESSAGE" value="Local ide changes" />
   </component>
 </project>
