@@ -1839,7 +1839,6 @@ void stratum_job_merkle_root_calc(T_DATUM_STRATUM_JOB *s, unsigned char *coinbas
 	}
 	
 	memcpy(merkle_root_output, next, 32);
-	return;
 }
 
 void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
