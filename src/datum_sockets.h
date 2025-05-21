@@ -181,7 +181,7 @@ int assign_to_thread(T_DATUM_SOCKET_APP *app, int fd);
 void *datum_threadpool_thread(void *arg);
 
 static inline void datum_socket_thread_client_count_decrement(T_DATUM_THREAD_DATA *my, int cid_who_left, bool not_already_locked) {
-	// compiler will optimize the if's away in most cases, since this is inline
+	// compiler will optimize this away in most cases, since this is inline
 	if (not_already_locked) pthread_mutex_lock(&my->thread_data_lock);
 	
 	// decrement connected client count for the thread

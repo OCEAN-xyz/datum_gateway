@@ -34,17 +34,17 @@
  */
 
 // DATUM Client protocol implementation
-// Encrypted and on the wire has 7.999 bits of entropy per byte in testing. completely uncompressable.
+// Encrypted and on the wire has 7.999 bits of entropy per byte in testing. completely uncompressed.
 
 // TODO: Clean this up and break up various functions
 // TODO: Generalize encryption related operations vs repeated code
 // TODO: Implement versioning on the protocol for feature lists
-// TODO: Add pool-side assistance with startup to ensure that the client's node is fully sync'd with the network
+// TODO: Add pool-side assistance with startup to ensure that the client's node is fully synced with the network
 // TODO: Optionally allow pool to suggest node peers
 // TODO: Implement graceful negotiation of chain forks
-// TODO: Implement preciousblock for pool blocks not found by the client
+// TODO: Implement precious block for pool blocks not found by the client
 // TODO: Handle network failures that aren't immediately obvious more gracefully (like not receiving responses to server commands)
-// TODO: Implement resuiming of work without allowing one client to cause duplicate work for another
+// TODO: Implement resuming of work without allowing one client to cause duplicate work for another
 
 #include <sodium.h>
 #include <stdatomic.h>
