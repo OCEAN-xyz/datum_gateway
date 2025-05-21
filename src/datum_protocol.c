@@ -58,7 +58,13 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-#include <sys/epoll.h>
+#include "datum_cross_platform_io.h"
+#ifdef __APPLE__
+#include <sys/event.h>  // macOS uses kqueue instead of epoll
+#include <mach/mach_time.h>
+#else
+#include <sys/epoll.h>  // Linux-specific
+#endif
 #include <time.h>
 #include <sys/time.h>
 #include <pthread.h>
@@ -293,7 +299,7 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		return 0;
 	}
 	
-	rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+	rc = portable_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
 	if (rc != 0) {
 		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex after 5 seconds... bug?");
 		return 0;
@@ -1453,7 +1459,12 @@ void *datum_protocol_client(void *args) {
 	int sockfd = -1;
 	int epollfd, nfds;
 	int flag = 1;
+#ifdef __linux__
 	struct epoll_event ev, events[MAX_DATUM_CLIENT_EVENTS];
+#elif  __APPLE__
+	struct kevent ev, events[MAX_DATUM_CLIENT_EVENTS];
+#endif
+
 	struct timeval start, now;
 	int ret,i,n;
 	datum_protocol_client_active = 1;
@@ -1566,23 +1577,26 @@ void *datum_protocol_client(void *args) {
 	}
 	
 	// Set up epoll
-	if ((epollfd = epoll_create1(0)) == -1) {
+#ifdef __linux__
+	if ((epollfd = datum_io_create(0)) == -1) {
+#elif __APPLE__
+	if ((epollfd = datum_io_create()) == -1) {
+#endif
+
 		DLOG_FATAL("epoll_create1(...) error: %s",strerror(errno));
 		close(sockfd);
 		datum_protocol_client_active = 0;
 		return NULL;
 	}
-	
-	ev.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-	ev.data.fd = sockfd;
-	
-	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
+
+	if (datum_io_add(epollfd, sockfd, &ev) == -1) {
 		DLOG_FATAL("epoll_ctl(...) error: %s",strerror(errno));
 		close(sockfd);
 		close(epollfd);
 		datum_protocol_client_active = 0;
 		return NULL;
 	}
+
 	i = 0;
 	datum_last_accepted_share_tsms = 0;
 	datum_last_accepted_share_local_tsms = 0;
@@ -1673,9 +1687,13 @@ void *datum_protocol_client(void *args) {
 		}
 		
 		if (break_again) break;
-		
-		nfds = epoll_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5);  // Wait for 5ms
-		
+
+#ifdef __linux__
+		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5);  // Wait for 5ms
+#elif __APPLE__
+		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5000);  // Wait for 5ms
+#endif
+
 		if (nfds == -1 && errno != EINTR) {
 			DLOG_FATAL("epoll_wait(...) error: %s",strerror(errno));
 			break;
@@ -1684,12 +1702,20 @@ void *datum_protocol_client(void *args) {
 		if (nfds <= 0) {
 			continue;  // Timeout, nothing happened
 		}
-		
+#ifdef __linux__
 		if (events[0].events & (EPOLLERR | EPOLLHUP)) {
+#elif __APPLE__
+		if (events[0].flags & EVFILT_EXCEPT) {
+#endif
+
 			int err = 0;
 			socklen_t errlen = sizeof(err);
-			
-			if (getsockopt(events[0].data.fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == 0) {
+#ifdef __linux__
+			int fd = events[0].data.fd;
+#elif __APPLE__
+			int fd = events[0].ident;
+#endif
+			if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == 0) {
 				if (err != 0) {
 					DLOG_ERROR("Socket error: %s", strerror(err));
 				} else {
@@ -1700,8 +1726,12 @@ void *datum_protocol_client(void *args) {
 			}
 			break;
 		}
-		
+
+#ifdef __linux__
 		if (events[0].events & EPOLLIN) {
+#elif __APPLE__
+		if (events[0].flags & EV_ADD) {
+#endif
 			// data to receive
 			break_again = false;
 			// Receive the header, followed by any data specified by the header

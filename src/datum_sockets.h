@@ -40,7 +40,12 @@
 	#include "datum_blocktemplates.h"
 #endif
 
-#include <sys/epoll.h>
+#ifdef __APPLE__
+#include <sys/event.h>  // macOS uses kqueue instead of epoll
+#include <mach/mach_time.h>
+#else
+#include <sys/epoll.h>  // Linux-specific
+#endif
 #include <pthread.h>
 
 typedef struct T_DATUM_THREAD_DATA T_DATUM_THREAD_DATA;
@@ -148,8 +153,12 @@ typedef struct T_DATUM_THREAD_DATA {
 	
 	int connected_clients;
 	int next_open_client_index;
-	
+#ifdef __linux__
 	struct epoll_event ev, events[MAX_CLIENTS_THREAD*2];
+#elif __APPLE__
+	struct kevent ev, events[MAX_CLIENTS_THREAD*2];
+#endif
+
 	int epollfd;
 	
 	// information for this socket application

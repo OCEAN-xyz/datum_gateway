@@ -17,6 +17,14 @@ option(ENABLE_API "Build API support." ON)
 
 include(GNUInstallDirs)
 
+if(APPLE)
+	add_definitions(-D__APPLE__)
+	set(PLATFORM_SOURCES src/platform_macos.c)
+elseif(UNIX)
+	add_definitions(-D__LINUX__)
+	set(PLATFORM_SOURCES src/platform_linux.c)
+endif()
+
 add_executable(datum_gateway
 	src/datum_blocktemplates.c
 	src/datum_coinbaser.c
@@ -34,6 +42,7 @@ add_executable(datum_gateway
 	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
+		src/datum_cross_platform_io.h
 )
 install(TARGETS datum_gateway DESTINATION bin)
 

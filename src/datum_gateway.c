@@ -47,7 +47,7 @@
 #include <jansson.h>
 #include <inttypes.h>
 #include <curl/curl.h>
-#include <argp.h>
+#include <getopt.h>
 #include <signal.h>
 
 #include "datum_gateway.h"
@@ -66,45 +66,6 @@ const char *datum_gateway_config_filename = NULL;
 // ARGP stuff
 const char *argp_program_version = "datum_gateway " DATUM_PROTOCOL_VERSION;
 const char *argp_program_bug_address = "<jason@ocean.xyz>";
-static char doc[] = "Decentralized Alternative Templates for Universal Mining - Pool Gateway";
-static char args_doc[] = "";
-static struct argp_option options[] = {
-	{"help", '?', 0, 0, "Show custom help", 0},
-	{"example-conf", 0x100, NULL, 0, "Print an example configuration JSON file", 0},
-	{"usage", '?', 0, 0, "Show custom help", 0},
-	{"config", 'c', "FILE", 0, "Configuration JSON file"},
-	{0}
-};
-
-struct arguments {
-	char *config_file;
-};
-
-static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-	struct arguments *arguments = state->input;
-	switch (key) {
-		case '?': {
-			datum_print_banner();
-			datum_gateway_help(state->argv[0]);
-			exit(0);
-			break;
-		}
-		case 'c': {
-			arguments->config_file = arg;
-			break;
-		}
-		case 0x100:  // example-conf
-			datum_gateway_example_conf();
-			exit(0);
-			break;
-		default:
-			return ARGP_ERR_UNKNOWN;
-	}
-	return 0;
-}
-
-static struct argp argp = {options, parse_opt, args_doc, doc};
-// END ARGP Stuff
 
 void datum_print_banner(void) {
 	printf("\n **************************************************************************\n");
@@ -114,16 +75,25 @@ void datum_print_banner(void) {
 	fflush(stdout);
 }
 
+void print_help(const char *prog_name) {
+	datum_print_banner();
+	printf("Usage: %s [OPTIONS]\n", prog_name);
+	printf("Options:\n");
+	printf("  -c, --config FILE      Use specified configuration file (default: datum_gateway_config.json)\n");
+	printf("      --example-conf     Print an example configuration JSON file\n");
+	printf("  -h, --help             Show this help message\n");
+}
+
 void handle_sigusr1(int sig) {
 	datum_blocktemplates_notifynew(NULL, 0);
 }
 
 const char * const *datum_argv;
 
-int main(const int argc, const char * const * const argv) {
-	datum_argv = argv;
+int main(int argc, char *argv[]) {
+
+	datum_argv = (const char * const * const)argv;
 	
-	struct arguments arguments;
 	pthread_t pthread_datum_stratum_v1;
 	pthread_t pthread_datum_gateway_template;
 	int i;
@@ -154,20 +124,46 @@ int main(const int argc, const char * const * const argv) {
 	
 	curl_global_init(CURL_GLOBAL_ALL);
 	datum_utils_init();
-	
-	arguments.config_file = "datum_gateway_config.json";  // Default config file
-	if (argp_parse(&argp, argc, datum_deepcopy_charpp(argv), 0, 0, &arguments) != 0) {
-		datum_print_banner();
-		DLOG_FATAL("Error parsing arguments. Check --help");
-		exit(1);
+
+	char *config_file = "datum_gateway_config.json";  // Default config file
+
+	static struct option long_options[] = {
+		{"config", required_argument, 0, 'c'},
+		{"example-conf", no_argument, 0, 1000},
+		{"help", no_argument, 0, 'h'},
+		{0, 0, 0, 0}
+	};
+
+	int opt;
+	int option_index = 0;
+	while ((opt = getopt_long(argc, argv, "c:h", long_options, &option_index)) != -1) {
+		switch (opt) {
+		case 'c':
+			config_file = optarg;
+			break;
+		case 'h':
+			DLOG_FATAL("Error parsing arguments. Check --help");
+			print_help(argv[0]);
+			exit(0);
+			break;
+		case 1000:
+			datum_gateway_example_conf();
+			exit(0);
+			break;
+		default:
+			DLOG_FATAL("Error parsing arguments. Check --help");
+			print_help(argv[0]);
+			exit(1);
+		}
 	}
+
 	datum_print_banner();
 	
-	if (datum_read_config(arguments.config_file) != 1) {
+	if (datum_read_config(config_file) != 1) {
 		DLOG_FATAL("Error reading config file. Check --help");
 		exit(1);
 	}
-	datum_gateway_config_filename = arguments.config_file;
+	datum_gateway_config_filename = config_file;
 	
 	// Initialize logger thread
 	datum_logger_init();

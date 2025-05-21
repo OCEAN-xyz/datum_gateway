@@ -43,7 +43,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <fcntl.h>
-#include <sys/epoll.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -60,6 +59,7 @@
 #include "datum_protocol.h"
 #include "datum_utils.h"
 #include "datum_sockets.h"
+#include "datum_cross_platform_io.h"
 
 int datum_active_threads = 0;
 int datum_active_clients = 0;
@@ -105,8 +105,12 @@ void *datum_threadpool_thread(void *arg) {
 		panic_from_thread(__LINE__);
 		return 0;
 	}
-	
-	my->epollfd = epoll_create1(EPOLL_CLOEXEC);
+#ifdef __linux__
+	my->epollfd = datum_io_create(EPOLL_CLOEXEC);
+#elif __APPLE__
+	my->epollfd = datum_io_create();
+#endif
+
 	if (my->epollfd < 0) {
 		DLOG_FATAL("could not epoll_create!");
 		panic_from_thread(__LINE__);
@@ -143,9 +147,15 @@ void *datum_threadpool_thread(void *arg) {
 					my->client_data[i].out_buf = 0;
 					
 					// add to epoll for this thread
-					my->ev.events = EPOLLIN  | EPOLLONESHOT | EPOLLERR; // | EPOLLRDHUP
+#ifdef __linux__
+					my->ev.events = EPOLLIN  | EPOLLONESHOT | EPOLLERR;
 					my->ev.data.u64 = i; // store client index... duh
-					if (epoll_ctl(my->epollfd, EPOLL_CTL_ADD, my->client_data[i].fd, &my->ev) < 0) {
+#elif __APPLE__
+					my->ev.flags = EV_ADD | EV_ONESHOT | EV_ERROR;
+					my->ev.data = i;
+#endif
+					if (datum_io_add(my->epollfd, my->client_data[i].fd, &my->ev) < 0) {
+
 						DLOG_ERROR("epoll_ctl add failed: %s", strerror(errno));
 						close(my->client_data[i].fd); // Close the file descriptor on error
 						
@@ -169,7 +179,7 @@ void *datum_threadpool_thread(void *arg) {
 			DLOG_WARN("Executing command to empty thread (%d clients)",my->connected_clients);
 			for (j = 0; j < my->app->max_clients_thread; j++) {
 				if (my->client_data[j].fd != 0) {
-					epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[j].fd, NULL);
+					datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
 					close(my->client_data[j].fd);
 					
 					// call closed client function, if any
@@ -182,7 +192,7 @@ void *datum_threadpool_thread(void *arg) {
 			for (j = 0; j < my->app->max_clients_thread; j++) {
 				if ((my->client_data[j].fd != 0) && (my->client_data[j].kill_request)) {
 					my->client_data[j].kill_request = false;
-					epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[j].fd, NULL);
+					datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
 					close(my->client_data[j].fd);
 					
 					// call closed client function, if any
@@ -216,7 +226,7 @@ void *datum_threadpool_thread(void *arg) {
 					}
 				} else {
 					if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
-						epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[j].fd, NULL);
+						datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
 						close(my->client_data[j].fd);
 						
 						// call closed client function, if any
@@ -229,7 +239,7 @@ void *datum_threadpool_thread(void *arg) {
 		}
 		
 		// check if we have any data to read from any existing clients
-		nfds = epoll_wait(my->epollfd, my->events, MAX_EVENTS, 7);
+		nfds = datum_io_wait(my->epollfd, my->events, MAX_EVENTS, 7);
 		if (nfds < 0) {
 			if (errno != EINTR) {
 				DLOG_ERROR("epoll_wait returned %d", nfds);
@@ -239,8 +249,12 @@ void *datum_threadpool_thread(void *arg) {
 		}
 		if (nfds) {
 			for(i=0;i<nfds;i++) {
+#ifdef __linux__
 				cidx = my->events[i].data.u64;
-				
+#elif __APPLE__
+				cidx = my->events[i].data;
+#endif
+
 				if (cidx >= 0) {
 					n = recv(my->client_data[cidx].fd, &my->client_data[cidx].buffer[my->client_data[cidx].in_buf], CLIENT_BUFFER - 1 - my->client_data[cidx].in_buf, MSG_DONTWAIT);
 					if (n <= 0) {
@@ -251,7 +265,7 @@ void *datum_threadpool_thread(void *arg) {
 						} else {
 							// an error occurred or the client closed the connection
 							DLOG_DEBUG("Thread %03d epoll --- Closing fd %d (n=%d) errno=%d (%s) (req bytes: %d)", my->thread_id, my->client_data[cidx].fd, n, errno, strerror(errno), CLIENT_BUFFER - 1 - my->client_data[cidx].in_buf);
-							epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[cidx].fd, NULL);
+							datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
 							close(my->client_data[cidx].fd);
 							
 							// call closed client function, if any
@@ -273,7 +287,7 @@ void *datum_threadpool_thread(void *arg) {
 							j = my->app->client_cmd_func(&my->client_data[cidx], start_line);
 							if (j < 0) {
 								//LOG_PRINTF("Thread %03d --- Closing fd %d (client_cmd_func returned %d)", my->thread_id, my->client_data[cidx].fd, j);
-								epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[cidx].fd, NULL);
+								datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
 								close(my->client_data[cidx].fd);
 								
 								// call closed client function, if any
@@ -302,8 +316,7 @@ void *datum_threadpool_thread(void *arg) {
 							// buffer overrun. lose the data. will probably break things, so punt the client. this shouldn't happen with sane clients.
 							my->client_data[cidx].in_buf = 0;
 							my->client_data[cidx].buffer[0] = 0;
-							
-							epoll_ctl(my->epollfd, EPOLL_CTL_DEL, my->client_data[cidx].fd, NULL);
+							datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
 							close(my->client_data[cidx].fd);
 							
 							// call closed client function, if any
@@ -316,9 +329,14 @@ void *datum_threadpool_thread(void *arg) {
 				
 				if (my->client_data[cidx].fd > 0) {
 					// re-add to epoll for this client
+#ifdef __linux__
 					my->ev.events = EPOLLIN | EPOLLONESHOT;
 					my->ev.data.u64 = cidx; // store client index... duh
-					if (epoll_ctl(my->epollfd, EPOLL_CTL_MOD, my->client_data[cidx].fd, &my->ev) < 0) {
+#elif __APPLE__
+					my->ev.flags = EV_ADD | EV_ONESHOT;
+					my->ev.data = cidx; // store client index... duh
+#endif
+					if (datum_io_modify(my->epollfd, my->client_data[cidx].fd, &my->ev) < 0) {
 						// if this fails, there's probably some bad things happening.  In any case, we can't continue serving this client so we should punt them.
 						DLOG_ERROR("epoll_ctl mod for client %d", cidx);
 						close(my->client_data[cidx].fd); // Close the file descriptor on error
@@ -356,9 +374,14 @@ void clean_thread_data(T_DATUM_THREAD_DATA *d, T_DATUM_SOCKET_APP *app) {
 	
 	// clear polling events
 	// TODO: dynamic allocation of buffers
+#ifdef __linux__
 	memset(&d->ev, 0, sizeof(struct epoll_event));
 	memset(d->events, 0, sizeof(struct epoll_event) * MAX_CLIENTS_THREAD*2);
-	
+#elif __APPLE__
+	memset(&d->ev, 0, sizeof(struct kevent));
+	memset(d->events, 0, sizeof(struct kevent) * MAX_CLIENTS_THREAD*2);
+#endif
+
 	// init the mutex
 	ret = pthread_mutex_init(&d->thread_data_lock, NULL);
 	if (ret) {
@@ -648,8 +671,13 @@ void *datum_gateway_listener_thread(void *arg) {
 	uint64_t reject_count = 0;
 	
 	T_DATUM_SOCKET_APP *app = (T_DATUM_SOCKET_APP *)arg;
-	
+
+#ifdef __linux__
 	struct epoll_event ev, events[MAX_EVENTS];
+#elif __APPLE__
+	struct kevent ev, events[MAX_EVENTS];
+#endif
+
 	int listen_socks[2], conn_sock, nfds, epollfd;
 	
 	if (!app) {
@@ -684,8 +712,13 @@ void *datum_gateway_listener_thread(void *arg) {
 		return NULL;
 	}
 	if (listen_socks_len < 2) listen_socks[1] = -1;
-	
-	epollfd = epoll_create1(0);
+
+#ifdef __linux__
+	epollfd = datum_io_create(0);
+#elif __APPLE__
+	epollfd = datum_io_create();
+#endif
+
 	if (epollfd < 0) {
 		DLOG_FATAL("epoll_create1 failed: %s", strerror(errno));
 		panic_from_thread(__LINE__);
@@ -694,9 +727,17 @@ void *datum_gateway_listener_thread(void *arg) {
 	
 	for (i = 0; i < 2; ++i) {
 		if (listen_socks[i] == -1) continue;
+#ifdef __linux__
+		uintptr_t f_desc = listen_socks[i];
 		ev.events = EPOLLIN;
-		ev.data.fd = listen_socks[i];
-		if (epoll_ctl(epollfd, EPOLL_CTL_ADD, ev.data.fd, &ev) < 0) {
+		ev.data.fd = f_desc;
+#elif __APPLE__
+		uintptr_t f_desc = listen_socks[i];
+		ev.ident = f_desc;
+		ev.filter = EVFILT_READ;
+#endif
+
+		if (datum_io_add(epollfd, f_desc, &ev) < 0) {
 			DLOG_FATAL("epoll_ctl failed: %s", strerror(errno));
 			panic_from_thread(__LINE__);
 			return NULL;
@@ -706,7 +747,7 @@ void *datum_gateway_listener_thread(void *arg) {
 	DLOG_INFO("DATUM Socket listener thread active for '%s'", app->name);
 	
 	for (;;) {
-		nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
+		nfds = datum_io_wait(epollfd, events, MAX_EVENTS, 100);
 		if (nfds) {
 			if (datum_config.datum_pooled_mining_only && (!datum_protocol_is_active())) {
 				curtime_tsms = current_time_millis(); // we only need this if we're rejecting connections
@@ -719,8 +760,13 @@ void *datum_gateway_listener_thread(void *arg) {
 			}
 		}
 		for (int n = 0; n < nfds; ++n) {
-			if (events[n].data.fd == listen_socks[0] || events[n].data.fd == listen_socks[1]) {
-				conn_sock = accept(events[n].data.fd, NULL, NULL);
+#ifdef __linux__
+			uintptr_t f_desc = events[n].data.fd;
+#elif __APPLE__
+			uintptr_t f_desc = events[n].ident;
+#endif
+			if (f_desc == listen_socks[0] || f_desc == listen_socks[1]) {
+				conn_sock = accept(f_desc, NULL, NULL);
 				if (conn_sock < 0) {
 					DLOG_ERROR("accept failed: %s", strerror(errno));
 					continue;

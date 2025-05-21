@@ -169,4 +169,17 @@ extern uint64_t datum_rejected_share_diff;
 #define DATUM_POW_SHARE_RESPONSE_ACCEPTED_TENTATIVELY 0x55
 #define DATUM_POW_SHARE_RESPONSE_REJECTED 0x66
 
+// datum_platform_io.h
+#ifdef __linux__
+#include <sys/epoll.h>
+#define IO_EVENT_READ  EPOLLIN
+#define IO_EVENT_ERROR (EPOLLERR | EPOLLHUP)
+#define IO_HANDLE int
+#elif defined(__APPLE__)
+#include <sys/event.h>
+#define IO_EVENT_READ  EVFILT_READ
+#define IO_EVENT_ERROR EVFILT_EXCEPT
+#define IO_HANDLE int
+#endif
+
 #endif
