@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <pthread/pthread.h>
+#include <pthread.h>
 #define IO_HANDLE int
 #define IO_EVENT_READ EVFILT_READ
 #define IO_EVENT_ERROR EVFILT_EXCEPT
@@ -65,7 +65,7 @@ static inline int portable_mutex_timedlock(pthread_mutex_t *mutex, const struct 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <pthread/pthread.h>
+#include <pthread.h>
 #define IO_HANDLE int
 #define IO_EVENT_READ EPOLLIN
 #define IO_EVENT_ERROR (EPOLLERR | EPOLLHUP)
