@@ -29,8 +29,8 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5f9447cf-816e-4642-aad2-b86d20ea0c0d" name="Changes" comment="macOS support">
-      <change beforePath="$PROJECT_DIR$/src/datum_gateway.c" beforeDir="false" afterPath="$PROJECT_DIR$/src/datum_gateway.c" afterDir="false" />
+    <list default="true" id="5f9447cf-816e-4642-aad2-b86d20ea0c0d" name="Changes" comment="macOS support removes the use of auto -&gt; char *">
+      <change beforePath="$PROJECT_DIR$/src/datum_cross_platform_io.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/datum_cross_platform_io.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -131,7 +131,7 @@
       <workItem from="1747432544023" duration="1556000" />
       <workItem from="1747434346699" duration="961000" />
       <workItem from="1747777107896" duration="3208000" />
-      <workItem from="1747794858469" duration="12939000" />
+      <workItem from="1747794858469" duration="13331000" />
     </task>
     <task id="LOCAL-00001" summary="macOS support">
       <option name="closed" value="true" />
@@ -141,7 +141,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747808032078</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="macOS support removes the use of auto -&gt; char *">
+      <option name="closed" value="true" />
+      <created>1747808481111</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1747808481111</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -177,6 +185,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="macOS support" />
-    <option name="LAST_COMMIT_MESSAGE" value="macOS support" />
+    <MESSAGE value="macOS support removes the use of auto -&gt; char *" />
+    <option name="LAST_COMMIT_MESSAGE" value="macOS support removes the use of auto -&gt; char *" />
   </component>
 </project>

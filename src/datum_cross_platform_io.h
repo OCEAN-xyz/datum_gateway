@@ -94,7 +94,7 @@ static int datum_io_wait(IO_HANDLE epfd, struct epoll_event* events, int max_eve
     return epoll_wait(epfd, events, max_events, timeout_ms);
 }
 
-int portable_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *timeout) {
+static int portable_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *timeout) {
     return pthread_mutex_timedlock(mutex, timeout);
 }
 
