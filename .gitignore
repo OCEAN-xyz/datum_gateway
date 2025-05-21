@@ -2,11 +2,12 @@ CMakeCache.txt
 CMakeFiles
 Makefile
 cmake_install.cmake
-
+cmake-build-debug
+cmake-build-release
 git_version.h
 web_resources.h
 datum_gateway
-
+.idea
 *.conf
 *.json
 !doc/example_datum_gateway_config.json
