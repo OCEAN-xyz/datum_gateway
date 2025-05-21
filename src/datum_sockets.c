@@ -179,7 +179,7 @@ void *datum_threadpool_thread(void *arg) {
 			DLOG_WARN("Executing command to empty thread (%d clients)",my->connected_clients);
 			for (j = 0; j < my->app->max_clients_thread; j++) {
 				if (my->client_data[j].fd != 0) {
-					datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
+					datum_io_delete(my->epollfd, my->client_data[j].fd, NULL);
 					close(my->client_data[j].fd);
 					
 					// call closed client function, if any
@@ -192,7 +192,7 @@ void *datum_threadpool_thread(void *arg) {
 			for (j = 0; j < my->app->max_clients_thread; j++) {
 				if ((my->client_data[j].fd != 0) && (my->client_data[j].kill_request)) {
 					my->client_data[j].kill_request = false;
-					datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
+					datum_io_delete(my->epollfd, my->client_data[j].fd, NULL);
 					close(my->client_data[j].fd);
 					
 					// call closed client function, if any
@@ -226,7 +226,7 @@ void *datum_threadpool_thread(void *arg) {
 					}
 				} else {
 					if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
-						datum_io_delete(my->epollfd, my->client_data[j].fd, nullptr);
+						datum_io_delete(my->epollfd, my->client_data[j].fd, NULL);
 						close(my->client_data[j].fd);
 						
 						// call closed client function, if any
@@ -265,7 +265,7 @@ void *datum_threadpool_thread(void *arg) {
 						} else {
 							// an error occurred or the client closed the connection
 							DLOG_DEBUG("Thread %03d epoll --- Closing fd %d (n=%d) errno=%d (%s) (req bytes: %d)", my->thread_id, my->client_data[cidx].fd, n, errno, strerror(errno), CLIENT_BUFFER - 1 - my->client_data[cidx].in_buf);
-							datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
+							datum_io_delete(my->epollfd, my->client_data[cidx].fd, NULL);
 							close(my->client_data[cidx].fd);
 							
 							// call closed client function, if any
@@ -287,7 +287,7 @@ void *datum_threadpool_thread(void *arg) {
 							j = my->app->client_cmd_func(&my->client_data[cidx], start_line);
 							if (j < 0) {
 								//LOG_PRINTF("Thread %03d --- Closing fd %d (client_cmd_func returned %d)", my->thread_id, my->client_data[cidx].fd, j);
-								datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
+								datum_io_delete(my->epollfd, my->client_data[cidx].fd, NULL);
 								close(my->client_data[cidx].fd);
 								
 								// call closed client function, if any
@@ -316,7 +316,7 @@ void *datum_threadpool_thread(void *arg) {
 							// buffer overrun. lose the data. will probably break things, so punt the client. this shouldn't happen with sane clients.
 							my->client_data[cidx].in_buf = 0;
 							my->client_data[cidx].buffer[0] = 0;
-							datum_io_delete(my->epollfd, my->client_data[cidx].fd, nullptr);
+							datum_io_delete(my->epollfd, my->client_data[cidx].fd, NULL);
 							close(my->client_data[cidx].fd);
 							
 							// call closed client function, if any
