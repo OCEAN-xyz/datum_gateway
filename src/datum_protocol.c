@@ -1690,7 +1690,7 @@ void *datum_protocol_client(void *args) {
 
 #ifdef __linux__
 		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5);  // Wait for 5ms
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5000);  // Wait for 5ms
 #endif
 
@@ -1729,7 +1729,7 @@ void *datum_protocol_client(void *args) {
 
 #ifdef __linux__
 		if (events[0].events & EPOLLIN) {
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 		if (events[0].flags & EV_ADD) {
 #endif
 			// data to receive
