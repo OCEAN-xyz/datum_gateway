@@ -150,11 +150,9 @@ int main(int argc, char *argv[]) {
 			DLOG_FATAL("Error parsing arguments. Check --help");
 			print_help(argv[0]);
 			exit(0);
-			break;
 		case 1000:
 			datum_gateway_example_conf();
 			exit(0);
-			break;
 		default:
 			DLOG_FATAL("Error parsing arguments. Check --help");
 			print_help(argv[0]);
