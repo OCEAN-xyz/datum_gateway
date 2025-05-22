@@ -23,7 +23,6 @@ jobs:
           - alpine:latest
           - archlinux:latest
           - clearlinux:latest
-          - gentoo/stage3:musl-hardened
           - gentoo/stage3:hardened
         config:
           - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=gcc"
