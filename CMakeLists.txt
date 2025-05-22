@@ -17,9 +17,17 @@ option(ENABLE_API "Build API support." ON)
 
 include(GNUInstallDirs)
 
-if(APPLE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	add_definitions(-D__APPLE__)
 	set(PLATFORM_SOURCES src/platform_macos.c)
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "OpenBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "DragonFly")
+	add_definitions(-D__BSD__)
+	set(PLATFORM_SOURCES src/platform_bsd.c)
+
 elseif(UNIX)
 	add_definitions(-D__LINUX__)
 	set(PLATFORM_SOURCES src/platform_linux.c)

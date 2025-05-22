@@ -125,6 +125,11 @@ int main(int argc, char *argv[]) {
 	curl_global_init(CURL_GLOBAL_ALL);
 	datum_utils_init();
 
+	if (strcmp(argv[1], "--version") == 0) {
+		printf("datum_gateway %s\n", DATUM_PROTOCOL_VERSION);
+		return 0;
+	}
+
 	char *config_file = "datum_gateway_config.json";  // Default config file
 
 	static struct option long_options[] = {

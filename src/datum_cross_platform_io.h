@@ -3,7 +3,7 @@
 #ifndef DATUM_CROSS_PLATFORM_IO_H
 #define DATUM_CROSS_PLATFORM_IO_H
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__BSD__)
 #include <sys/event.h>
 #include <sys/time.h>
 #include <unistd.h>
