@@ -50,7 +50,7 @@ add_executable(datum_gateway
 	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
-		src/datum_cross_platform_io.h
+	src/datum_cross_platform_io.h
 )
 install(TARGETS datum_gateway DESTINATION bin)
 
