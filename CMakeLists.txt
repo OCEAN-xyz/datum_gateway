@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.11)
 
 project(DATUM VERSION 0.3.1 LANGUAGES C)
 
