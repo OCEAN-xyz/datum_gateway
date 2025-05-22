@@ -107,7 +107,7 @@ void *datum_threadpool_thread(void *arg) {
 	}
 #ifdef __linux__
 	my->epollfd = datum_io_create(EPOLL_CLOEXEC);
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	my->epollfd = datum_io_create();
 #endif
 
@@ -150,7 +150,7 @@ void *datum_threadpool_thread(void *arg) {
 #ifdef __linux__
 					my->ev.events = EPOLLIN  | EPOLLONESHOT | EPOLLERR;
 					my->ev.data.u64 = i; // store client index... duh
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 					my->ev.flags = EV_ADD | EV_ONESHOT | EV_ERROR;
 					my->ev.data = i;
 #endif
@@ -251,7 +251,7 @@ void *datum_threadpool_thread(void *arg) {
 			for(i=0;i<nfds;i++) {
 #ifdef __linux__
 				cidx = my->events[i].data.u64;
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 				cidx = my->events[i].data;
 #endif
 
@@ -332,7 +332,7 @@ void *datum_threadpool_thread(void *arg) {
 #ifdef __linux__
 					my->ev.events = EPOLLIN | EPOLLONESHOT;
 					my->ev.data.u64 = cidx; // store client index... duh
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 					my->ev.flags = EV_ADD | EV_ONESHOT;
 					my->ev.data = cidx; // store client index... duh
 #endif
@@ -377,7 +377,7 @@ void clean_thread_data(T_DATUM_THREAD_DATA *d, T_DATUM_SOCKET_APP *app) {
 #ifdef __linux__
 	memset(&d->ev, 0, sizeof(struct epoll_event));
 	memset(d->events, 0, sizeof(struct epoll_event) * MAX_CLIENTS_THREAD*2);
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	memset(&d->ev, 0, sizeof(struct kevent));
 	memset(d->events, 0, sizeof(struct kevent) * MAX_CLIENTS_THREAD*2);
 #endif
@@ -674,7 +674,7 @@ void *datum_gateway_listener_thread(void *arg) {
 
 #ifdef __linux__
 	struct epoll_event ev, events[MAX_EVENTS];
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	struct kevent ev, events[MAX_EVENTS];
 #endif
 
@@ -715,7 +715,7 @@ void *datum_gateway_listener_thread(void *arg) {
 
 #ifdef __linux__
 	epollfd = datum_io_create(0);
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	epollfd = datum_io_create();
 #endif
 
@@ -731,7 +731,7 @@ void *datum_gateway_listener_thread(void *arg) {
 		uintptr_t f_desc = listen_socks[i];
 		ev.events = EPOLLIN;
 		ev.data.fd = f_desc;
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 		uintptr_t f_desc = listen_socks[i];
 		ev.ident = f_desc;
 		ev.filter = EVFILT_READ;
@@ -762,7 +762,7 @@ void *datum_gateway_listener_thread(void *arg) {
 		for (int n = 0; n < nfds; ++n) {
 #ifdef __linux__
 			uintptr_t f_desc = events[n].data.fd;
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 			uintptr_t f_desc = events[n].ident;
 #endif
 			if (f_desc == listen_socks[0] || f_desc == listen_socks[1]) {

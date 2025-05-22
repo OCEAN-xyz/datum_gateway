@@ -59,7 +59,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include "datum_cross_platform_io.h"
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__BSD__)
 #include <sys/event.h>  // macOS uses kqueue instead of epoll
 #include <mach/mach_time.h>
 #else
@@ -1461,7 +1461,7 @@ void *datum_protocol_client(void *args) {
 	int flag = 1;
 #ifdef __linux__
 	struct epoll_event ev, events[MAX_DATUM_CLIENT_EVENTS];
-#elif  __APPLE__
+#elif  defined(__APPLE__) || defined(__BSD__)
 	struct kevent ev, events[MAX_DATUM_CLIENT_EVENTS];
 #endif
 
@@ -1579,7 +1579,7 @@ void *datum_protocol_client(void *args) {
 	// Set up epoll
 #ifdef __linux__
 	if ((epollfd = datum_io_create(0)) == -1) {
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	if ((epollfd = datum_io_create()) == -1) {
 #endif
 
@@ -1704,7 +1704,7 @@ void *datum_protocol_client(void *args) {
 		}
 #ifdef __linux__
 		if (events[0].events & (EPOLLERR | EPOLLHUP)) {
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 		if (events[0].flags & EVFILT_EXCEPT) {
 #endif
 
@@ -1712,7 +1712,7 @@ void *datum_protocol_client(void *args) {
 			socklen_t errlen = sizeof(err);
 #ifdef __linux__
 			int fd = events[0].data.fd;
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 			int fd = events[0].ident;
 #endif
 			if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == 0) {

@@ -175,7 +175,7 @@ extern uint64_t datum_rejected_share_diff;
 #define IO_EVENT_READ  EPOLLIN
 #define IO_EVENT_ERROR (EPOLLERR | EPOLLHUP)
 #define IO_HANDLE int
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__BSD__)
 #include <sys/event.h>
 #define IO_EVENT_READ  EVFILT_READ
 #define IO_EVENT_ERROR EVFILT_EXCEPT

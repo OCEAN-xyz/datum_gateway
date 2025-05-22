@@ -40,7 +40,7 @@
 	#include "datum_blocktemplates.h"
 #endif
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__BSD__)
 #include <sys/event.h>  // macOS uses kqueue instead of epoll
 #include <mach/mach_time.h>
 #else
@@ -155,7 +155,7 @@ typedef struct T_DATUM_THREAD_DATA {
 	int next_open_client_index;
 #ifdef __linux__
 	struct epoll_event ev, events[MAX_CLIENTS_THREAD*2];
-#elif __APPLE__
+#elif defined(__APPLE__) || defined(__BSD__)
 	struct kevent ev, events[MAX_CLIENTS_THREAD*2];
 #endif
 
