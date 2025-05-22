@@ -1689,10 +1689,11 @@ void *datum_protocol_client(void *args) {
 		if (break_again) break;
 
 #ifdef __linux__
-		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5);  // Wait for 5ms
+		int wait_ms = 5;
 #elif defined(__APPLE__) || defined(__BSD__)
-		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, 5000);  // Wait for 5ms
+		int wait_ms = 5000;
 #endif
+		nfds = datum_io_wait(epollfd, events, MAX_DATUM_CLIENT_EVENTS, wait_ms);  // Wait for 5ms
 
 		if (nfds == -1 && errno != EINTR) {
 			DLOG_FATAL("epoll_wait(...) error: %s",strerror(errno));
