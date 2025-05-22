@@ -26,14 +26,14 @@ jobs:
           - gentoo/stage3:musl-hardened
           - gentoo/stage3:hardened
         config:
-          - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=gcc -DUSE_HTTPSRR=OFF"
-          - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=clang -DUSE_HTTPSRR=OFF"
-          - cmake_args: "-DENABLE_API=OFF -DUSE_HTTPSRR=OFF"
+          - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=gcc"
+          - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=clang"
+          - cmake_args: "-DENABLE_API=OFF"
         exclude:
           # Clang configured for C11 rejects our C23 usage
           - os: debian:oldstable
             config:
-              cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=clang -DUSE_HTTPSRR=OFF"
+              cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=clang"
 
     runs-on: ubuntu-latest
 
