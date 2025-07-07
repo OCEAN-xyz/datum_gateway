@@ -6,5 +6,8 @@ RUN cmake . && make
 
 FROM alpine
 RUN apk add libcurl libsodium jansson libmicrohttpd
-COPY --from=build /workdir/datum_gateway /usr/local/bin/datum_gateway
-ENTRYPOINT ["/usr/local/bin/datum_gateway", "-c", "/etc/datum_gateway_config.json"]
+WORKDIR /app
+COPY --from=build /workdir/datum_gateway /app/
+COPY --from=build /workdir/www /app/www/
+COPY --from=build /workdir/doc/example_datum_gateway_config.json /app/config/config.json
+ENTRYPOINT ["/app/datum_gateway", "--config", "/app/config/config.json"]
