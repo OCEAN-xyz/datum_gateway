@@ -1,11 +1,11 @@
-FROM alpine AS build
-RUN apk add build-base cmake pkgconf argp-standalone curl-dev jansson-dev libsodium-dev libmicrohttpd-dev psmisc
+FROM ubuntu AS build
+RUN apt update && apt install cmake pkgconf libcurl4-openssl-dev libjansson-dev libmicrohttpd-dev libsodium-dev psmisc -y
 COPY . /workdir
 WORKDIR /workdir
 RUN cmake . && make
 
-FROM alpine
-RUN apk add libcurl libsodium jansson libmicrohttpd
+FROM ubuntu
+RUN apt update && apt install libcurl4-openssl-dev libjansson4 libmicrohttpd-dev libsodium23 -y
 WORKDIR /app
 COPY --from=build /workdir/datum_gateway /app/
 COPY --from=build /workdir/www /app/www/
