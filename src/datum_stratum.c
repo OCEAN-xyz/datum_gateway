@@ -254,14 +254,24 @@ void *datum_stratum_v1_socket_server(void *arg) {
 	DLOG_INFO("Stratum V1 Server Init complete.");
 	DLOG_DEBUG("%"PRIu64" MB of RAM allocated for Stratum V1 server data.", ram_allocated>>20);
 	
-	// TODO: If limits are too low, attempt to set our ulimits in case we're allowed to do so but it hasn't been done before executing.
+	// If limits are too low, attempt to set our ulimits in case we're allowed to do so but it hasn't been done before executing.
 	if (!getrlimit(RLIMIT_NOFILE, &rlimit)) {
 		if (app->max_clients > rlimit.rlim_max) {
 			DLOG_WARN("*** NOTE *** Max Stratum clients (%llu) exceeds hard open file limit (Soft: %llu / Hard: %llu)", (unsigned long long)app->max_clients, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
 			DLOG_WARN("*** NOTE *** Adjust max open file hard limit or you WILL run into issues before reaching max clients!");
 		} else if (app->max_clients > rlimit.rlim_cur) {
-			DLOG_WARN("*** NOTE *** Max Stratum clients (%llu) exceeds open file soft limit (Soft: %llu / Hard: %llu)", (unsigned long long)app->max_clients, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
-			DLOG_WARN("*** NOTE *** You should increase the soft open file limit to prevent issues as you approach max clients!");
+			DLOG_WARN("*** NOTE *** Max Stratum clients (%llu) exceeds soft open file limit (Soft: %llu / Hard: %llu)", (unsigned long long)app->max_clients, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
+			DLOG_WARN("*** NOTE *** Attempting to increase the soft limit...");
+
+			// Attempt to increase the soft limit to match the hard limit or max_clients, whichever is smaller
+			struct rlimit new_rlimit = rlimit;
+			new_rlimit.rlim_cur = (app->max_clients < rlimit.rlim_max) ? app->max_clients : rlimit.rlim_max;
+
+			if (setrlimit(RLIMIT_NOFILE, &new_rlimit) == 0) {
+				DLOG_INFO("Successfully increased the soft open file limit to %llu", (unsigned long long)new_rlimit.rlim_cur);
+			} else {
+				DLOG_ERROR("Failed to increase soft open file limit: %s", strerror(errno));
+			}
 		}
 	}
 	
