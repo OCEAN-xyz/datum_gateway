@@ -54,7 +54,7 @@ void preciousblock(CURL *curl, char *blockhash) {
 	char rpc_data[384];
 	
 	snprintf(rpc_data, sizeof(rpc_data), "{\"method\":\"preciousblock\",\"params\":[\"%s\"],\"id\":1}", blockhash);
-	json = bitcoind_json_rpc_call(curl, &datum_config, rpc_data);
+	json = bitcoind_json_rpc_call(curl, &datum_config, rpc_data, /*failonerror=*/true);
 	if (!json) return;
 	
 	json_decref(json);
@@ -66,7 +66,7 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 	char *s = NULL;
 	// TODO: Move these types of things to the conf file
 	if (!url) {
-		r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
+		r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req, /*failonerror=*/true);
 	} else {
 		r = json_rpc_call(tcurl, url, NULL, submitblock_req);
 	}
