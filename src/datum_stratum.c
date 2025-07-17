@@ -59,6 +59,8 @@
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
 
+#define USERNAME_BUF_SIZE 0x100
+
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
 int stratum_job_next = 0;
@@ -936,7 +938,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	const char *job_id_s;
 	const char *vroll_s;
 	const char *username_s;
-	char username_buf[0x100];
+	char username_buf[USERNAME_BUF_SIZE];
 	const char *extranonce2_s;
 	const char *ntime_s;
 	const char *nonce_s;
@@ -1224,10 +1226,17 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	if (datum_config.stratum_username_mod) {
+		if (!strchr(username_s, '~') && strlen(username_s) < USERNAME_BUF_SIZE-1) {
+			strcpy(username_buf, username_s);
+			int l = strlen(username_s);
+			username_buf[l++] = '~';
+			username_buf[l++] = '\0';
+			username_s = username_buf;
+		}
 		const char * const tilde = strchr(username_s, '~');
 		if (tilde) {
 			const char * const modname = &tilde[1];
-			const size_t modname_len = json_string_length(username) - (modname - username_s);
+			const size_t modname_len = strlen(username_s) - (modname - username_s);
 			const uint16_t share_rnd = upk_u16le(share_hash, 0);
 			username_s = datum_stratum_mod_username(username_s, username_buf, sizeof(username_buf), share_rnd, modname, modname_len);
 		}
