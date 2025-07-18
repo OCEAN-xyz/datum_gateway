@@ -123,6 +123,7 @@ typedef struct {
 	int stratum_v1_idle_timeout_max_last_work;
 	
 	void *stratum_username_mod;
+	bool stratum_default_mod_present;
 	
 	char mining_pool_address[256];
 	char mining_coinbase_tag_primary[64];
