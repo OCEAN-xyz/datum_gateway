@@ -939,6 +939,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	const char *vroll_s;
 	const char *username_s;
 	char username_buf[USERNAME_BUF_SIZE];
+	char username_default_buf[USERNAME_BUF_SIZE];
 	const char *extranonce2_s;
 	const char *ntime_s;
 	const char *nonce_s;
@@ -1229,11 +1230,11 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		if (datum_config.stratum_default_mod_present
 		&& !strchr(username_s, '~')
 		&& strlen(username_s) < USERNAME_BUF_SIZE-1) {
-			strcpy(username_buf, username_s);
+			strcpy(username_default_buf, username_s);
 			int l = strlen(username_s);
-			username_buf[l++] = '~';
-			username_buf[l++] = '\0';
-			username_s = username_buf;
+			username_default_buf[l++] = '~';
+			username_default_buf[l++] = '\0';
+			username_s = username_default_buf;
 		}
 		const char * const tilde = strchr(username_s, '~');
 		if (tilde) {
