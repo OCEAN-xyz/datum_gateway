@@ -1226,7 +1226,9 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	if (datum_config.stratum_username_mod) {
-		if (!strchr(username_s, '~') && strlen(username_s) < USERNAME_BUF_SIZE-1) {
+		if (datum_config.stratum_default_mod_present
+		&& !strchr(username_s, '~')
+		&& strlen(username_s) < USERNAME_BUF_SIZE-1) {
 			strcpy(username_buf, username_s);
 			int l = strlen(username_s);
 			username_buf[l++] = '~';

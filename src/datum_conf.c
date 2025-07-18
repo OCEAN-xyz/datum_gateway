@@ -267,11 +267,15 @@ int datum_config_parse_username_mods(struct datum_username_mod ** const umods_p,
 	const char *modname, *addr;
 	json_t *moddefn, *proportion_j;
 	bool at_least_one_mod = false;
+	datum_config.stratum_default_mod_present = false;
 	json_object_foreach(item, modname, moddefn) {
 		if (json_is_null(moddefn)) continue;
 		if (!json_is_object(moddefn)) return -1;
 		
 		at_least_one_mod = true;
+		if (strlen(modname) == 0) {
+			datum_config.stratum_default_mod_present = true;
+		}
 		sz += strlen(modname) + 1 + (sizeof(*((*umods_p)->ranges)) * (json_object_size(moddefn) + 1));
 		
 		json_object_foreach(moddefn, addr, proportion_j) {
