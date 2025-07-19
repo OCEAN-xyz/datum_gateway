@@ -59,8 +59,6 @@
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
 
-#define USERNAME_BUF_SIZE 0x100
-
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
 int stratum_job_next = 0;
@@ -884,9 +882,11 @@ void stratum_update_miner_stats_accepted(T_DATUM_CLIENT_DATA *c, uint64_t diff_a
 	}
 }
 
-// CAUTION: modname MUST be part of username_s following a tilde
 const char *datum_stratum_mod_username(const char *username_s, char * const username_buf, const size_t username_buf_sz, const uint16_t share_rnd, const char * const modname, const size_t modname_len) {
-	struct datum_username_mod * const umod = datum_username_mods_find(datum_config.stratum_username_mod, modname, modname_len);
+	struct datum_username_mod * umod = datum_username_mods_find(datum_config.stratum_username_mod, modname, modname_len);
+	if (!umod && datum_config.stratum_default_mod_present) {
+		umod = datum_username_mods_find(datum_config.stratum_username_mod, "", 0);
+	}
 	if (!umod) return username_s;
 	
 	struct datum_addr_range *range;
@@ -895,9 +895,10 @@ const char *datum_stratum_mod_username(const char *username_s, char * const user
 		if (share_rnd <= range->max) break;
 	}
 	
-	const char * const tilde = &modname[-1];
+	const char * const tilde = strchr(username_s, '~');
+	const char * const end = tilde? tilde: strchr(username_s, '\0');
 	if (range->addr_len == 0) {
-		size_t len = tilde - username_s;
+		size_t len = end - username_s;
 		if (len >= username_buf_sz) len = username_buf_sz - 1;
 		memcpy(username_buf, username_s, len);
 		username_buf[len] = '\0';
@@ -910,8 +911,8 @@ const char *datum_stratum_mod_username(const char *username_s, char * const user
 	}
 	
 	memcpy(username_buf, range->addr, range->addr_len);
-	size_t len = tilde - period;
-	if (len >= username_buf_sz) len = username_buf_sz - 1;
+	size_t len = end - period;
+	if (len >= username_buf_sz - range->addr_len) len = username_buf_sz - range->addr_len - 1;
 	memcpy(&username_buf[range->addr_len], period, len);
 	username_buf[range->addr_len + len] = '\0';
 	return username_buf;
@@ -938,8 +939,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	const char *job_id_s;
 	const char *vroll_s;
 	const char *username_s;
-	char username_buf[USERNAME_BUF_SIZE];
-	char username_default_buf[USERNAME_BUF_SIZE];
+	char username_buf[0x100];
 	const char *extranonce2_s;
 	const char *ntime_s;
 	const char *nonce_s;
@@ -1227,19 +1227,10 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	}
 	
 	if (datum_config.stratum_username_mod) {
-		if (datum_config.stratum_default_mod_present
-		&& !strchr(username_s, '~')
-		&& strlen(username_s) < USERNAME_BUF_SIZE-1) {
-			strcpy(username_default_buf, username_s);
-			int l = strlen(username_s);
-			username_default_buf[l++] = '~';
-			username_default_buf[l++] = '\0';
-			username_s = username_default_buf;
-		}
 		const char * const tilde = strchr(username_s, '~');
-		if (tilde) {
-			const char * const modname = &tilde[1];
-			const size_t modname_len = strlen(username_s) - (modname - username_s);
+		if (tilde || datum_config.stratum_default_mod_present) {
+			const char * const modname = tilde? &tilde[1]: "";
+			const size_t modname_len = strlen(modname);
 			const uint16_t share_rnd = upk_u16le(share_hash, 0);
 			username_s = datum_stratum_mod_username(username_s, username_buf, sizeof(username_buf), share_rnd, modname, modname_len);
 		}
