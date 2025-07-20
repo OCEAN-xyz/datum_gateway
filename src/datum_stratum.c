@@ -1444,7 +1444,9 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj) {
 	char s[256];
 	const char *username_s;
+	const char *password_s;
 	json_t *username;
+	json_t *password;
 	
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
 	
@@ -1461,10 +1463,28 @@ int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	strncpy(m->last_auth_username, username_s, sizeof(m->last_auth_username) - 1);
 	m->last_auth_username[sizeof(m->last_auth_username)-1] = 0;
 	
-	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
-	datum_socket_send_string_to_client(c, s);
+	password = json_array_get(params_obj, 1);
+	if (!password) {
+		password_s = (const char *)"x";
+	} else {
+		password_s = json_string_value(password);
+		if (!password_s) {
+			password_s = (const char *)"x";
+		}
+	}
 	
-	m->authorized = true;
+	if (datum_config.stratum_v1_password_len > 0 && !datum_secure_strequals(datum_config.stratum_v1_password, datum_config.stratum_v1_password_len, password_s)) {
+		DLOG_DEBUG("Kicking client %d/%d (%s) due to unsuccessful authentication attempt", c->datum_thread->thread_id, c->cid, c->rem_host);
+		snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":false}\n", id);
+		c->datum_thread->has_client_kill_request = true;
+		c->kill_request = true;
+		m->authorized = false;
+	} else {
+		snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":true}\n", id);
+		m->authorized = true;
+	}
+	
+	datum_socket_send_string_to_client(c, s);
 	
 	return 0;
 }
@@ -1484,6 +1504,13 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	
 	if (!j) {
 		return -1;
+	}
+
+	// do not send jobs to unauthorized clients
+	if (!m->authorized) {
+		c->kill_request = true;
+		c->datum_thread->has_client_kill_request = true;
+		return 0;
 	}
 	
 	//job_id - ID of the job. Use this ID while submitting share generated from this job.
