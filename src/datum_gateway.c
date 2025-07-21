@@ -83,7 +83,6 @@ struct arguments {
 
 void datum_stratum_tests(void);
 void datum_conf_tests(void);
-void datum_utils_tests(void);
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	struct arguments *arguments = state->input;
@@ -103,7 +102,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 			exit(0);
 			break;
 		case 0x101:  // test
-			datum_utils_tests();
 			datum_conf_tests();
 			datum_stratum_tests();
 			exit(datum_test_failed);

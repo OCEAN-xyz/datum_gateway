@@ -37,6 +37,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <sodium.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -431,7 +432,7 @@ int datum_api_do_error(struct MHD_Connection * const connection, const unsigned 
 }
 
 bool datum_api_check_admin_password_only(struct MHD_Connection * const connection, const char * const password, const create_response_func_t auth_failure_response_creator) {
-	if (datum_secure_strequals(datum_config.api_admin_password, datum_config.api_admin_password_len, password) && datum_config.api_admin_password_len) {
+	if (0 == crypto_pwhash_str_verify(datum_config.api_admin_password_hashed, password, strlen(password)) && datum_config.api_admin_password_len) {
 		return true;
 	}
 	DLOG_DEBUG("Wrong password in request");
@@ -491,7 +492,8 @@ bool datum_api_check_admin_password(struct MHD_Connection * const connection, co
 		datum_api_submit_uncached_response(connection, MHD_HTTP_FORBIDDEN, auth_failure_response_creator());
 		return false;
 	}
-	if (!datum_secure_strequals(datum_config.api_csrf_token, sizeof(datum_config.api_csrf_token)-1, json_string_value(j_csrf))) {
+	const char * const csrf_s = json_string_value(j_csrf);
+	if ((strlen(csrf_s) == sizeof(datum_config.api_csrf_token)-1) && 0 != sodium_memcmp(datum_config.api_csrf_token, json_string_value(j_csrf), sizeof(datum_config.api_csrf_token)-1)) {
 		DLOG_DEBUG("Wrong CSRF token in request");
 		datum_api_submit_uncached_response(connection, MHD_HTTP_FORBIDDEN, auth_failure_response_creator());
 		return false;

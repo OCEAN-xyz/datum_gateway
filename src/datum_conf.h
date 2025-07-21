@@ -40,6 +40,7 @@
 #define DATUM_MAX_BLOCK_SUBMITS DATUM_CONFIG_MAX_ARRAY_ENTRIES
 #define DATUM_MAX_SUBMIT_URL_LEN 512
 
+#include <sodium.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -131,6 +132,7 @@ typedef struct {
 	int coinbase_unique_id;
 	
 	char api_admin_password[72];
+	char api_admin_password_hashed[crypto_pwhash_STRBYTES];
 	size_t api_admin_password_len;
 	char api_csrf_token[65];
 	char api_listen_addr[128];

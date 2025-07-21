@@ -66,7 +66,7 @@ void panic_from_thread(int a);
 bool double_sha256(void *out, const void *in, size_t length);
 void hex_to_bin_le(const char *hex, unsigned char *bin);
 void hex_to_bin(const char *hex, unsigned char *bin);
-void hash2hex(unsigned char *bytes, char *hexString);
+void hash2hex(const unsigned char *bytes, char *hexString);
 void get_target_from_diff(unsigned char *result, uint64_t diff);
 uint64_t roundDownToPowerOfTwo_64(uint64_t x);
 int addr_2_output_script(const char *addr, unsigned char *script, int max_len);
@@ -86,7 +86,6 @@ int datum_atoi_strict(const char *s, size_t size);
 bool datum_str_to_bool_strict(const char *s, bool *out);
 char **datum_deepcopy_charpp(const char * const *p);
 void datum_reexec();
-bool datum_secure_strequals(const char *secret, const size_t secret_len, const char *guess);
 const char *dynamic_hash_unit(double *inout_hashrate);
 
 

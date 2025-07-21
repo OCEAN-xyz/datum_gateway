@@ -379,7 +379,7 @@ void panic_from_thread(int a) {
 	while(1) sleep(1);
 }
 
-void hash2hex(unsigned char *bytes, char *hexString) {
+void hash2hex(const unsigned char * const bytes, char *hexString) {
 	const char hexDigits[] = "0123456789abcdef";
 	
 	for (int i = 0; i < 32; ++i) {
@@ -823,19 +823,6 @@ void datum_reexec() {
 	
 	DLOG_FATAL("Failed to restart! We're too deep in to recover!");
 	abort();
-}
-
-bool datum_secure_strequals(const char *secret, size_t secret_len, const char *guess) {
-	const size_t guess_len = strlen(guess);
-	size_t acc = secret_len ^ guess_len;
-	if (!secret_len) {
-		secret = "";  // null byte avoids dereferencing out of bounds
-		secret_len = 1;
-	}
-	for (size_t i = 0; i < guess_len; ++i) {
-		acc |= ((size_t)guess[i]) ^ ((size_t)secret[i % secret_len]);
-	}
-	return !acc;
 }
 
 const char *dynamic_hash_unit(double * const inout_hashrate){
