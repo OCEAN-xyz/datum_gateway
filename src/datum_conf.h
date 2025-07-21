@@ -121,6 +121,8 @@ typedef struct {
 	int stratum_v1_idle_timeout_no_subscribe;
 	int stratum_v1_idle_timeout_no_share;
 	int stratum_v1_idle_timeout_max_last_work;
+	char stratum_v1_password[72];
+	size_t stratum_v1_password_len;
 	
 	void *stratum_username_mod;
 	
