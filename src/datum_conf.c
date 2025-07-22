@@ -524,6 +524,16 @@ int datum_read_config(const char *conffile) {
 		unsigned char hash[32];
 		my_sha256(hash, data, data_sz);
 		hash2hex(hash, datum_config.api_csrf_token);
+		if (0 != crypto_pwhash_str(
+			datum_config.api_admin_password_hashed,
+			datum_config.api_admin_password,
+			datum_config.api_admin_password_len,
+			crypto_pwhash_OPSLIMIT_SENSITIVE,
+			crypto_pwhash_MEMLIMIT_SENSITIVE
+		)) {
+			DLOG_ERROR("Ran out of memory hashing the API admin password. This should never happen.");
+			return 0;
+		}
 	}
 #endif
 	

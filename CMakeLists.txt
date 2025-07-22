@@ -33,7 +33,6 @@ add_executable(datum_gateway
 	src/datum_stratum_tests.c
 	src/datum_submitblock.c
 	src/datum_utils.c
-	src/datum_utils_tests.c
 	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
