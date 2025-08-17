@@ -271,6 +271,24 @@ unsigned char *datum_coinbaser_v2_response = NULL;
 unsigned char datum_coinbaser_v2_response_buf_idx = 0;
 uint64_t datum_coinbaser_v2_response_value[2] = { 0, 0 };
 int datum_coinbaser_v2_response_len[2] = { 0, 0 };
+#ifdef __APPLE__
+/**
+ * Attempts to acquire a mutex lock within timeout_sec seconds.
+ * Returns 0 on success, ETIMEDOUT on timeout, or other pthread error codes.
+ */
+int portable_mutex_timedlock(pthread_mutex_t *mutex, int timeout_sec) {
+    const int interval_ms = 10;
+    int waited_ms = 0; 
+    while (pthread_mutex_trylock(mutex) != 0) {
+        if (waited_ms >= timeout_sec * 1000) {
+            return ETIMEDOUT;
+        }
+        usleep(interval_ms * 1000);  // sleep for interval_ms milliseconds
+        waited_ms += interval_ms;
+    }
+    return 0;
+}
+#endif
 
 int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	if (len < 12) {
@@ -293,8 +311,11 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		DLOG_DEBUG("Invalid coinbaser received! %lu %lu", (unsigned long)x, (unsigned long)(len-12));
 		return 0;
 	}
-	
-	rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+	#ifdef __APPLE__        
+        rc = portable_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, 5); // 5 seconds timeout
+	#else
+		rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+	#endif 
 	if (rc != 0) {
 		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex after 5 seconds... bug?");
 		return 0;
