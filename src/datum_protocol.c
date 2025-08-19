@@ -273,20 +273,30 @@ uint64_t datum_coinbaser_v2_response_value[2] = { 0, 0 };
 int datum_coinbaser_v2_response_len[2] = { 0, 0 };
 #ifdef __APPLE__
 /**
- * Attempts to acquire a mutex lock within timeout_sec seconds.
- * Returns 0 on success, ETIMEDOUT on timeout, or other pthread error codes.
+ * Drop-in replacement for pthread_mutex_timedlock() on macOS.
+ * 
+ * @param mutex Pointer to the mutex.
+ * @param abstime Absolute timeout (CLOCK_REALTIME), as in POSIX.
+ * @return 0 on success, ETIMEDOUT if timeout expires, or other pthread error codes.
  */
-int portable_mutex_timedlock(pthread_mutex_t *mutex, int timeout_sec) {
-    const int interval_ms = 10;
-    int waited_ms = 0; 
-    while (pthread_mutex_trylock(mutex) != 0) {
-        if (waited_ms >= timeout_sec * 1000) {
+int portable_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime) {
+    struct timespec now;
+    int ret;
+
+    while ((ret = pthread_mutex_trylock(mutex)) == EBUSY) {
+        clock_gettime(CLOCK_REALTIME, &now);
+
+        if ((now.tv_sec > abstime->tv_sec) ||
+            (now.tv_sec == abstime->tv_sec && now.tv_nsec >= abstime->tv_nsec)) {
             return ETIMEDOUT;
         }
-        usleep(interval_ms * 1000);  // sleep for interval_ms milliseconds
-        waited_ms += interval_ms;
+
+        // Sleep for 5ms to avoid busy waiting
+        struct timespec sleep_ts = {0, 5 * 1000000};
+        nanosleep(&sleep_ts, NULL);
     }
-    return 0;
+
+    return ret;
 }
 #endif
 
@@ -312,7 +322,7 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		return 0;
 	}
 	#ifdef __APPLE__        
-        rc = portable_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, 5); // 5 seconds timeout
+        rc = portable_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts); 
 	#else
 		rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
 	#endif 
