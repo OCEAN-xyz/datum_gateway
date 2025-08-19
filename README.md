@@ -130,7 +130,8 @@ For MacOS
     
     arch -arm64 /opt/homebrew/bin/brew reinstall jansson libsodium curl libmicrohttpd
     # argp is not available on macos
-    arch -arm64 /opt/homebrew/bin/brew reinstall argp-standalone
+    arch -arm64 /opt/homebrew/bin/brew reinstall argp-standalone epoll-shim
+    export PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig:$PKG_CONFIG_PATH
 
 Compile DATUM by running:
 
