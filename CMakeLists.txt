@@ -101,18 +101,38 @@ if(NOT HAVE_ARGP_PARSE)
 	endif()
 endif()
 
+# Ensure pkg-config can find Homebrew-installed packages on macOS
+if(APPLE)
+    set(ENV{PKG_CONFIG_PATH} "/opt/homebrew/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+endif()
+
 check_function_exists(epoll_wait HAVE_EPOLL_WAIT)
 if(HAVE_EPOLL_WAIT)
 	set(EPOLL_SHIM_INCLUDE_DIRS "")
 	set(EPOLL_SHIM_LIBRARIES "")
 else()
-   if(NOT APPLE)
-        pkg_check_modules(EPOLL_SHIM REQUIRED epoll-shim)
-    else()
-        # macOS: Use Homebrew epoll-shim static library and include dirs
-        include_directories(/opt/homebrew/include)
-        list(APPEND EPOLL_SHIM_LIBRARIES /opt/homebrew/lib/libepoll-shim.dylib)
-        set(EPOLL_SHIM_INCLUDE_DIRS /opt/homebrew/include/libepoll-shim)
+    pkg_check_modules(EPOLL_SHIM REQUIRED epoll-shim)
+    if(APPLE)
+       if(NOT EPOLL_SHIM_FOUND)
+            message(FATAL_ERROR "epoll-shim not found. Install it with `brew install epoll-shim`.")
+       endif()
+        # Add include directories
+        target_include_directories(datum_gateway
+            PUBLIC
+            ${EPOLL_SHIM_INCLUDE_DIRS}
+        )
+
+        # Add link directories
+        target_link_directories(datum_gateway
+            PUBLIC
+            ${EPOLL_SHIM_LIBRARY_DIRS}
+        )
+
+        # Add linker flags (e.g. -L... -lepoll-shim)
+        target_link_libraries(datum_gateway
+            PUBLIC
+            ${EPOLL_SHIM_LDFLAGS}
+        )
     endif()
 endif()
 
