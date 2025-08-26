@@ -75,6 +75,10 @@
 #include "datum_queue.h"
 #include "git_version.h"
 
+
+#ifdef __APPLE__        
+#include "portable_mutex.h"
+#endif 
 atomic_int datum_protocol_client_active = 0;
 
 DATUM_ENC_KEYS local_datum_keys;
@@ -265,40 +269,17 @@ int datum_protocol_mining_cmd(void *data, int len) {
 }
 
 pthread_mutex_t datum_protocol_coinbaser_fetch_mutex = PTHREAD_MUTEX_INITIALIZER;
+#ifdef __APPLE__
+// Declare the state for the timed mutex only for Apple
+static timed_mutex_state_t datum_protocol_coinbaser_fetch_state;
+#endif
+
 pthread_cond_t datum_protocol_coinbaser_fetch_cond = PTHREAD_COND_INITIALIZER;
 unsigned char datum_coinbaser_v2_response_buf[2][32768] = { 0 };
 unsigned char *datum_coinbaser_v2_response = NULL;
 unsigned char datum_coinbaser_v2_response_buf_idx = 0;
 uint64_t datum_coinbaser_v2_response_value[2] = { 0, 0 };
 int datum_coinbaser_v2_response_len[2] = { 0, 0 };
-#ifdef __APPLE__
-/**
- * Drop-in replacement for pthread_mutex_timedlock() on macOS.
- * 
- * @param mutex Pointer to the mutex.
- * @param abstime Absolute timeout (CLOCK_REALTIME), as in POSIX.
- * @return 0 on success, ETIMEDOUT if timeout expires, or other pthread error codes.
- */
-int portable_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime) {
-    struct timespec now;
-    int ret;
-
-    while ((ret = pthread_mutex_trylock(mutex)) == EBUSY) {
-        clock_gettime(CLOCK_REALTIME, &now);
-
-        if ((now.tv_sec > abstime->tv_sec) ||
-            (now.tv_sec == abstime->tv_sec && now.tv_nsec >= abstime->tv_nsec)) {
-            return ETIMEDOUT;
-        }
-
-        // Sleep for 5ms to avoid busy waiting
-        struct timespec sleep_ts = {0, 5 * 1000000};
-        nanosleep(&sleep_ts, NULL);
-    }
-
-    return ret;
-}
-#endif
 
 int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	if (len < 12) {
@@ -322,8 +303,8 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		return 0;
 	}
 	#ifdef __APPLE__        
-        rc = portable_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts); 
-	#else
+		rc = apple_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state, &ts);
+        #else
 		rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
 	#endif 
 	if (rc != 0) {
@@ -343,8 +324,12 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx] = x;
 	
 	pthread_cond_signal(&datum_protocol_coinbaser_fetch_cond); // Signal the condition variable
-	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
-	
+        
+	#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	return 1;
 }
 
@@ -387,9 +372,7 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	// spin here for up to 5 seconds while awaiting a coinbaser response from DATUM Prime
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += 5; // Set timeout to 5 seconds
-	
 	pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
-	
 	rc = pthread_cond_timedwait(&datum_protocol_coinbaser_fetch_cond, &datum_protocol_coinbaser_fetch_mutex, &ts);
 	if (rc == ETIMEDOUT) {
 		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
@@ -408,7 +391,6 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	if ((datum_coinbaser_v2_response) && (datum_coinbaser_v2_response_value[datum_coinbaser_v2_response_buf_idx] == value)) {
 		i = datum_coinbaser_v2_parse(s, datum_coinbaser_v2_response, datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx], false);
 	}
-	
 	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
 	return i;
 }
@@ -1944,7 +1926,9 @@ int datum_protocol_init(void) {
 		DLOG_WARN("****************************************************");
 		return 0;
 	}
-	
+        #ifdef __APPLE__
+    		apple_timed_mutex_init(&datum_protocol_coinbaser_fetch_state);
+	#endif	
 	if (sodium_init() < 0) {
 		DLOG_FATAL("libsodium initialization failed");
 		return -1;
