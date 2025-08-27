@@ -75,6 +75,10 @@
 #include "datum_queue.h"
 #include "git_version.h"
 
+
+#ifdef __APPLE__        
+#include "portable_mutex.h"
+#endif 
 atomic_int datum_protocol_client_active = 0;
 
 DATUM_ENC_KEYS local_datum_keys;
@@ -265,6 +269,11 @@ int datum_protocol_mining_cmd(void *data, int len) {
 }
 
 pthread_mutex_t datum_protocol_coinbaser_fetch_mutex = PTHREAD_MUTEX_INITIALIZER;
+#ifdef __APPLE__
+// Declare the state for the timed mutex only for Apple
+static timed_mutex_state_t datum_protocol_coinbaser_fetch_state;
+#endif
+
 pthread_cond_t datum_protocol_coinbaser_fetch_cond = PTHREAD_COND_INITIALIZER;
 unsigned char datum_coinbaser_v2_response_buf[2][32768] = { 0 };
 unsigned char *datum_coinbaser_v2_response = NULL;
@@ -293,8 +302,11 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		DLOG_DEBUG("Invalid coinbaser received! %lu %lu", (unsigned long)x, (unsigned long)(len-12));
 		return 0;
 	}
-	
-	rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+	#ifdef __APPLE__        
+		rc = apple_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state, &ts);
+        #else
+		rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+	#endif 
 	if (rc != 0) {
 		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex after 5 seconds... bug?");
 		return 0;
@@ -312,8 +324,12 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx] = x;
 	
 	pthread_cond_signal(&datum_protocol_coinbaser_fetch_cond); // Signal the condition variable
-	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
-	
+        
+	#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	return 1;
 }
 
@@ -356,19 +372,29 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	// spin here for up to 5 seconds while awaiting a coinbaser response from DATUM Prime
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += 5; // Set timeout to 5 seconds
-	
-	pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
-	
+	#ifdef __APPLE__
+    		apple_mutex_lock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	rc = pthread_cond_timedwait(&datum_protocol_coinbaser_fetch_cond, &datum_protocol_coinbaser_fetch_mutex, &ts);
 	if (rc == ETIMEDOUT) {
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+		#else	
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#endif
 		DLOG_DEBUG("Timeout waiting for coinbaser response from DATUM Prime");
 		return 0;
 	}
 	
 	if (rc != 0) {
 		DLOG_DEBUG("Error waiting for coinbaser response from DATUM Prime");
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+		#else	
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#endif 
 		return 0;
 	}
 	i = 0;
@@ -377,8 +403,11 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	if ((datum_coinbaser_v2_response) && (datum_coinbaser_v2_response_value[datum_coinbaser_v2_response_buf_idx] == value)) {
 		i = datum_coinbaser_v2_parse(s, datum_coinbaser_v2_response, datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx], false);
 	}
-	
-	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#ifdef __APPLE__
+    	apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	return i;
 }
 
@@ -1913,7 +1942,9 @@ int datum_protocol_init(void) {
 		DLOG_WARN("****************************************************");
 		return 0;
 	}
-	
+    #ifdef __APPLE__
+    		apple_timed_mutex_init(&datum_protocol_coinbaser_fetch_state);
+	#endif	
 	if (sodium_init() < 0) {
 		DLOG_FATAL("libsodium initialization failed");
 		return -1;
