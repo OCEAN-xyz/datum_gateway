@@ -372,17 +372,29 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	// spin here for up to 5 seconds while awaiting a coinbaser response from DATUM Prime
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += 5; // Set timeout to 5 seconds
-	pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
+	#ifdef __APPLE__
+    		apple_mutex_lock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	rc = pthread_cond_timedwait(&datum_protocol_coinbaser_fetch_cond, &datum_protocol_coinbaser_fetch_mutex, &ts);
 	if (rc == ETIMEDOUT) {
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+		#else	
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#endif
 		DLOG_DEBUG("Timeout waiting for coinbaser response from DATUM Prime");
 		return 0;
 	}
 	
 	if (rc != 0) {
 		DLOG_DEBUG("Error waiting for coinbaser response from DATUM Prime");
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#ifdef __APPLE__
+    		apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+		#else	
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+		#endif 
 		return 0;
 	}
 	i = 0;
@@ -391,7 +403,11 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	if ((datum_coinbaser_v2_response) && (datum_coinbaser_v2_response_value[datum_coinbaser_v2_response_buf_idx] == value)) {
 		i = datum_coinbaser_v2_parse(s, datum_coinbaser_v2_response, datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx], false);
 	}
-	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#ifdef __APPLE__
+    	apple_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex, &datum_protocol_coinbaser_fetch_state);
+	#else	
+		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+	#endif
 	return i;
 }
 
@@ -1926,7 +1942,7 @@ int datum_protocol_init(void) {
 		DLOG_WARN("****************************************************");
 		return 0;
 	}
-        #ifdef __APPLE__
+    #ifdef __APPLE__
     		apple_timed_mutex_init(&datum_protocol_coinbaser_fetch_state);
 	#endif	
 	if (sodium_init() < 0) {
