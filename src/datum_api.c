@@ -1584,20 +1584,30 @@ int datum_api_umbrel_widget(struct MHD_Connection * const connection) {
 	T_DATUM_API_DASH_VARS umbreldata;
 	const char *hash_unit;
 	int json_response_len;
+	char reward[22];
+	char accepted_shares[21];
+	char rejected_shares[21];
 	
 	datum_api_dash_stats(&umbreldata);
+	datum_api_var_STRATUM_JOB_BLOCK_VALUE(reward, sizeof(reward), &umbreldata);
+	datum_api_var_DATUM_SHARES_ACCEPTED(accepted_shares, sizeof(accepted_shares), &umbreldata);
+	datum_api_var_DATUM_SHARES_REJECTED(rejected_shares, sizeof(rejected_shares), &umbreldata);
+	
+	truncate_char_array(3, reward, accepted_shares, rejected_shares);
 	
 	hash_unit = dynamic_hash_unit(&umbreldata.STRATUM_HASHRATE_ESTIMATE);
 	
 	json_response_len = snprintf(json_response, sizeof(json_response), "{"
-		"\"type\": \"three-stats\","
+		"\"type\": \"four-stats\","
 		"\"refresh\": \"30s\","
 		"\"link\": \"\","
 		"\"items\": ["
 			"{\"title\": \"Connections\", \"text\": \"%d\", \"subtext\": \"Worker\"},"
-			"{\"title\": \"Hashrate\", \"text\": \"%.2f\", \"subtext\": \"%s\"}"
+			"{\"title\": \"Hashrate\", \"text\": \"%.2f\", \"subtext\": \"%s\"},"
+			"{\"title\": \"Block template reward\", \"text\": \"%s\", \"subtext\": \"BTC\"},"
+			"{\"title\": \"Shares (A/R)\", \"text\": \"%s / %s\", \"subtext\": \"\"}"
 		"]"
-	"}", umbreldata.STRATUM_TOTAL_CONNECTIONS, umbreldata.STRATUM_HASHRATE_ESTIMATE, hash_unit);
+	"}", umbreldata.STRATUM_TOTAL_CONNECTIONS, umbreldata.STRATUM_HASHRATE_ESTIMATE, hash_unit, reward, accepted_shares, rejected_shares);
 	
 	if (json_response_len >= sizeof(json_response)) json_response_len = sizeof(json_response) - 1;
 	struct MHD_Response *response = MHD_create_response_from_buffer(json_response_len, (void *)json_response, MHD_RESPMEM_MUST_COPY);
