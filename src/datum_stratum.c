@@ -1451,26 +1451,18 @@ int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
 	
 	username = json_array_get(params_obj, 0);
-	if (!username) {
+	username_s = json_string_value(username);
+	if (!username_s) {
 		username_s = (const char *)"NULL";
-	} else {
-		username_s = json_string_value(username);
-		if (!username_s) {
-			username_s = (const char *)"NULL";
-		}
 	}
 	
 	strncpy(m->last_auth_username, username_s, sizeof(m->last_auth_username) - 1);
 	m->last_auth_username[sizeof(m->last_auth_username)-1] = 0;
 	
 	password = json_array_get(params_obj, 1);
-	if (!password) {
+	password_s = json_string_value(password);
+	if (!password_s) {
 		password_s = (const char *)"x";
-	} else {
-		password_s = json_string_value(password);
-		if (!password_s) {
-			password_s = (const char *)"x";
-		}
 	}
 	
 	if (datum_config.stratum_v1_password_len > 0 && !datum_secure_strequals(datum_config.stratum_v1_password, datum_config.stratum_v1_password_len, password_s)) {
@@ -1508,9 +1500,13 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 
 	// do not send jobs to unauthorized clients
 	if (!m->authorized) {
-		c->kill_request = true;
-		c->datum_thread->has_client_kill_request = true;
-		return 0;
+		// give unauthorized clients a bit of grace period to get authorization
+		usleep(1000000);
+		if (!m->authorized) {
+			c->kill_request = true;
+			c->datum_thread->has_client_kill_request = true;
+			return 0;
+		}
 	}
 	
 	//job_id - ID of the job. Use this ID while submitting share generated from this job.
