@@ -159,7 +159,13 @@ typedef struct {
 	char datum_pool_pubkey[1024];
 	int datum_protocol_global_timeout;
 	uint64_t datum_protocol_global_timeout_ms;
-	
+
+	// Job coordination options
+	bool datum_enable_job_coordination;
+	bool datum_share_full_templates;
+	bool datum_allow_direct_failover;
+	char datum_gateway_id[16];
+
 	uint32_t prime_id;
 	unsigned char override_mining_pool_scriptsig[256];
 	int override_mining_pool_scriptsig_len;
