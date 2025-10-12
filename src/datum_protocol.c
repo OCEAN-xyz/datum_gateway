@@ -73,6 +73,7 @@
 #include "datum_blocktemplates.h"
 #include "datum_coinbaser.h"
 #include "datum_queue.h"
+#include "datum_job_sync.h"
 #include "git_version.h"
 
 atomic_int datum_protocol_client_active = 0;
@@ -144,8 +145,13 @@ unsigned char datum_protocol_setup_new_job_idx(void *sx) {
 	
 	datum_jobs[a].sjob = s;
 	datum_jobs[a].datum_job_id = a;
-	
+
 	pthread_rwlock_unlock(&datum_jobs_rwlock);
+
+	// Add job to sync queue if enabled
+	if (datum_config.datum_enable_job_coordination && s->is_datum_job) {
+		datum_job_sync_add(s, s->is_new_block);
+	}
 	
 	return a;
 }
