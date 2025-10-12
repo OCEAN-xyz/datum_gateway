@@ -1803,10 +1803,11 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	    datum_config.datum_allow_direct_failover &&
 	    datum_config.datum_pool_host[0]) {
 		json_t *failover = json_object();
-		snprintf(s, sizeof(s), "stratum+tcp://%s:%d",
+		char pool_url[1050]; // Large enough for "stratum+tcp://" + host + ":" + port
+		snprintf(pool_url, sizeof(pool_url), "stratum+tcp://%s:%d",
 		         datum_config.datum_pool_host,
 		         datum_config.datum_pool_port);
-		json_object_set_new(failover, "pool_url", json_string(s));
+		json_object_set_new(failover, "pool_url", json_string(pool_url));
 		json_object_set_new(failover, "gateway_id",
 		                   json_string(datum_config.datum_gateway_id[0] ?
 		                              datum_config.datum_gateway_id : "DG"));
