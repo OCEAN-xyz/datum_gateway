@@ -58,6 +58,7 @@
 #include "datum_coinbaser.h"
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
+#include "datum_job_sync.h"
 
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
@@ -1764,8 +1765,62 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	m->sid_inv = ((sid>>24)&0xff) | (((sid>>16)&0xff)<<8) | (((sid>>8)&0xff)<<16) | ((sid&0xff)<<24);
 	
 	// tell them about all of this
-	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":[[[\"mining.notify\",\"%8.8x1\"],[\"mining.set_difficulty\",\"%8.8x2\"]],\"%8.8x\",8]}\n", id, sid, sid, sid);
-	datum_socket_send_string_to_client(c, s);
+	// Build JSON response
+	json_t *response = json_object();
+	json_object_set_new(response, "error", json_null());
+	json_object_set_new(response, "id", json_integer(id));
+
+	json_t *result = json_array();
+	json_t *subscriptions = json_array();
+
+	// Add mining.notify subscription
+	json_t *notify_sub = json_array();
+	json_array_append_new(notify_sub, json_string("mining.notify"));
+	snprintf(s, sizeof(s), "%8.8x1", sid);
+	json_array_append_new(notify_sub, json_string(s));
+	json_array_append_new(subscriptions, notify_sub);
+
+	// Add mining.set_difficulty subscription
+	json_t *diff_sub = json_array();
+	json_array_append_new(diff_sub, json_string("mining.set_difficulty"));
+	snprintf(s, sizeof(s), "%8.8x2", sid);
+	json_array_append_new(diff_sub, json_string(s));
+	json_array_append_new(subscriptions, diff_sub);
+
+	json_array_append_new(result, subscriptions);
+
+	// Add extranonce1
+	snprintf(s, sizeof(s), "%8.8x", sid);
+	json_array_append_new(result, json_string(s));
+
+	// Add extranonce2 size
+	json_array_append_new(result, json_integer(8));
+
+	json_object_set_new(response, "result", result);
+
+	// Add failover information if job coordination is enabled
+	if (datum_config.datum_enable_job_coordination &&
+	    datum_config.datum_allow_direct_failover &&
+	    datum_config.datum_pool_host[0]) {
+		json_t *failover = json_object();
+		snprintf(s, sizeof(s), "stratum+tcp://%s:%d",
+		         datum_config.datum_pool_host,
+		         datum_config.datum_pool_port);
+		json_object_set_new(failover, "pool_url", json_string(s));
+		json_object_set_new(failover, "gateway_id",
+		                   json_string(datum_config.datum_gateway_id[0] ?
+		                              datum_config.datum_gateway_id : "DG"));
+		json_object_set_new(failover, "sync_enabled", json_true());
+		json_object_set_new(response, "datum_failover", failover);
+	}
+
+	char *response_str = json_dumps(response, JSON_COMPACT);
+	if (response_str) {
+		datum_socket_send_string_to_client(c, response_str);
+		datum_socket_send_string_to_client(c, "\n");
+		free(response_str);
+	}
+	json_decref(response);
 	
 	// send them their current difficulty before sending a job
 	send_mining_set_difficulty(c);
