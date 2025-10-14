@@ -23,9 +23,13 @@ jobs:
           - alpine:latest
           - archlinux:latest
           - clearlinux:latest
+          - gentoo/stage3:musl-hardened
+          - gentoo/stage3:hardened
+          - freebsd
         config:
           - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=gcc"
           - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=clang"
+          - cmake_args: "-DENABLE_API=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_C_FLAGS=-DDATUM_API_FOR_UMBREL=ON"
           - cmake_args: "-DENABLE_API=OFF"
         exclude:
           # Clang configured for C11 rejects our C23 usage
@@ -46,9 +50,11 @@ jobs:
           path: pkg-cache
           key: never-exists
           restore-keys: |
-            ${{ matrix.os }}-pkg-cache-
+            ${{ matrix.os }}/pkg-cache/${{ matrix.config.cmake_args }}/
+            ${{ matrix.os }}/pkg-cache/
 
       - name: Build inside Docker
+        if: "!startsWith(matrix.os, 'freebsd')"
         id: docker-build
         run: |
           PKG_CACHE_DIR=/pkg-cache
@@ -104,7 +110,7 @@ jobs:
                   emerge --sync --quiet
                 fi
               '
-              INSTALL_CMD="emerge -1 sec-keys/openpgp-keys-gentoo-release && getuto && cat /etc/portage/make.conf && USE='-perl -extra -static-analyzer -compiler-rt -openmp -sanitize -adns -alt-svc -ftp -hsts -http2 -http3 -imap -pop3 -progress-meter -psl -quic -curl_quic_openssl -smtp -tftp -websockets -nls' emerge -vuDtkg1 --noreplace --jobs=\$(nproc) --buildpkg"
+              INSTALL_CMD="emerge -1 sec-keys/openpgp-keys-gentoo-release && getuto && cat /etc/portage/make.conf && USE='-httpsrr -perl -extra -static-analyzer -compiler-rt -openmp -sanitize -adns -alt-svc -ftp -hsts -http2 -http3 -imap -pop3 -progress-meter -psl -quic -curl_quic_openssl -smtp -tftp -websockets -nls' emerge -vuDtkg1 --noreplace --jobs=\$(nproc) --buildpkg"
               PACKAGES="dev-vcs/git dev-build/cmake net-misc/curl dev-libs/jansson dev-libs/libsodium virtual/pkgconfig app-portage/gentoolkit"
               [[ "${{ matrix.os }}" =~ musl ]] && PACKAGES="$PACKAGES sys-libs/argp-standalone"
               PACKAGES_API="net-libs/libmicrohttpd"
@@ -115,13 +121,11 @@ jobs:
                 set -ex
               '
               CLEANUP_CMD='
-                if ls -d /var/db/pkg/llvm-core/clang-*; then
-                  [ -e /tmp/initial-pkg-cache.cksum ] && cache_cksum >/tmp/final-pkg-cache.cksum
-                  if ! diff -u /tmp/{initial,final}-pkg-cache.cksum; then
-                    ( cd /var/db/repos && tar --sort=name -cpJf /var/cache/binpkgs/gentoo-repo.txz gentoo )
-                    touch /output/SAVE_CACHE
-                    eclean -t 2w packages --changed-deps
-                  fi
+                [ -e /tmp/initial-pkg-cache.cksum ] && cache_cksum >/tmp/final-pkg-cache.cksum
+                if ! diff -u /tmp/{initial,final}-pkg-cache.cksum; then
+                  ( cd /var/db/repos && tar --sort=name -cpJf /var/cache/binpkgs/gentoo-repo.txz gentoo )
+                  touch /output/SAVE_CACHE
+                  eclean -t 2w packages --changed-deps
                 fi
               '
               ;;
@@ -165,4 +169,23 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: pkg-cache
-          key: ${{ matrix.os }}-pkg-cache-${{ github.sha }}
+          key: ${{ matrix.os }}/pkg-cache/${{ matrix.config.cmake_args }}/${{ github.sha }}
+
+      - name: Build inside FreeBSD VM
+        if: startsWith(matrix.os, 'freebsd')
+        uses: vmactions/freebsd-vm@v1
+        with:
+          prepare: |
+            PACKAGES="git cmake pkgconf curl jansson libsodium libmicrohttpd argp-standalone libepoll-shim" 
+            if echo "${{ matrix.config.cmake_args }}" | grep -q "CMAKE_C_COMPILER=gcc"; then
+              PACKAGES="$PACKAGES gcc"
+            fi
+            pkg install -y $PACKAGES
+
+          run: |
+            git config --global --add safe.directory ${{ github.workspace }}
+            mkdir -p build
+            cd build
+            cmake ${{ github.workspace }} -DCMAKE_C_FLAGS='-Wall -Werror' ${{ matrix.config.cmake_args }}
+            make
+            ./datum_gateway --help

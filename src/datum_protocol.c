@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -69,6 +69,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <netinet/tcp.h>
+#include <netinet/in.h>
 #include <inttypes.h>
 
 #include "datum_utils.h"
@@ -1080,12 +1081,16 @@ int datum_protocol_send_hello(int sockfd) {
 }
 
 int datum_protocol_decrypt_sealed(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
+	if (h->cmd_len < crypto_box_SEALBYTES) {
+		DLOG_ERROR("Couldn't decrypt too-small DATUM command from server! (%d bytes)", h->cmd_len);
+		return -1;
+	}
 	int i;
 	memcpy(temp_data, data, h->cmd_len);
 	// attempt to decode with our session key
 	i = crypto_box_seal_open(data, temp_data, h->cmd_len, session_datum_keys.pk_x25519, session_datum_keys.sk_x25519);
 	if (i!=0) {
-		DLOG_ERROR("Couldn't decrypt DATUM command from server with our session key!");
+		DLOG_ERROR("Couldn't decrypt DATUM command from server with our session key! (%d bytes)", h->cmd_len);
 		return -1;
 	}
 	h->cmd_len -= crypto_box_SEALBYTES;
@@ -1108,12 +1113,16 @@ void datum_increment_session_nonce(void *s) {
 }
 
 int datum_protocol_decrypt_standard(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
+	if (h->cmd_len < crypto_box_MACBYTES) {
+		DLOG_ERROR("Couldn't decrypt too-small DATUM command from server! (%d bytes)", h->cmd_len);
+		return -1;
+	}
 	int i;
 	// supposedly this can be done in place, according to docs!
 	
 	i = crypto_box_open_easy_afternm(data, data, h->cmd_len, session_nonce_receiver, session_precomp.precomp_remote);
 	if (i!=0) {
-		DLOG_ERROR("Couldn't decrypt DATUM command from server with our session key!");
+		DLOG_ERROR("Couldn't decrypt DATUM command from server with our session key! (%d bytes)", h->cmd_len);
 		return -1;
 	}
 	h->cmd_len -= crypto_box_MACBYTES;
@@ -1208,6 +1217,11 @@ int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 	
 	// message is decrypted by now
 	if (h->is_signed) {
+		if (h->cmd_len < crypto_sign_BYTES) {
+			DLOG_ERROR("Could not validate too-small signature of message from server! (%d bytes)", h->cmd_len);
+			return -1;
+		}
+		
 		// validate the signature
 		// if we're already handshaked, signatures are with the pool-side session key.  if not, they're with the pool's key
 		if (datum_state >= 2) {
@@ -1216,7 +1230,7 @@ int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 			i = crypto_sign_verify_detached(&data[h->cmd_len-crypto_sign_BYTES], data, h->cmd_len-crypto_sign_BYTES, pool_keys.pk_ed25519);
 		}
 		if (i!=0) {
-			DLOG_DEBUG("Could not validate signature of message from server! (%d bytes)", h->cmd_len);
+			DLOG_ERROR("Could not validate signature of message from server! (%d bytes)", h->cmd_len);
 			return -1;
 		}
 		
@@ -1643,7 +1657,7 @@ void *datum_protocol_client(void *args) {
 					server_out_buf = 0;
 				}
 			} else {
-				if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
+				if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOTCONN)) {
 					pthread_mutex_unlock(&datum_protocol_send_buffer_lock);
 					break;
 				}
@@ -1876,6 +1890,15 @@ void *datum_protocol_client(void *args) {
 	close(epollfd);
 	datum_protocol_client_active = 0;
 	datum_queue_free(&pow_queue);
+	
+	// Wait up to 5 seconds for another thread to reconnect
+	for (i = 2000; i; --i) {
+		if (datum_protocol_client_active >= 3) break;
+		usleep(2500);
+	}
+	// ...then force a new job
+	datum_blocktemplates_notify_othercause();
+	
 	return 0;
 }
 

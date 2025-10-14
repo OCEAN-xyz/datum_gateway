@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -1040,6 +1040,10 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 					DLOG_ERROR("%s: %s not implemented", __func__, "DATUM_CONF_STRING_ARRAY");
 					break;
 				}
+				case DATUM_CONF_USERNAME_MODS: {
+					DLOG_ERROR("%s: %s not implemented", __func__, "DATUM_CONF_USERNAME_MODS");
+					break;
+				}
 			}
 		} else {
 			DLOG_ERROR("%s: '%.*s' not implemented", __func__, (int)(var_end - var_start_2), var_start_2);
@@ -1519,22 +1523,17 @@ int datum_api_config_post(struct MHD_Connection * const connection, char * const
 	return ret;
 }
 
-int datum_api_homepage(struct MHD_Connection *connection) {
-	struct MHD_Response *response;
-	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
+void datum_api_dash_stats(T_DATUM_API_DASH_VARS *dashdata) {
 	int j, k = 0, kk = 0, ii;
 	T_DATUM_MINER_DATA *m;
-	T_DATUM_API_DASH_VARS vardata;
 	unsigned char astat;
 	double thr = 0.0;
 	double hr;
 	uint64_t tsms;
-	
-	memset(&vardata, 0, sizeof(T_DATUM_API_DASH_VARS));
 
 	pthread_rwlock_rdlock(&stratum_global_job_ptr_lock);
 	j = global_latest_stratum_job_index;
-	vardata.sjob = (j >= 0 && j < MAX_STRATUM_JOBS) ? global_cur_stratum_jobs[j] : NULL;
+	dashdata->sjob = (j >= 0 && j < MAX_STRATUM_JOBS) ? global_cur_stratum_jobs[j] : NULL;
 	pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
 
 	tsms = current_time_millis();
@@ -1561,16 +1560,27 @@ int datum_api_homepage(struct MHD_Connection *connection) {
 				}
 			}
 		}
-		vardata.STRATUM_ACTIVE_THREADS = global_stratum_app->datum_active_threads;
-		vardata.STRATUM_TOTAL_CONNECTIONS = k;
-		vardata.STRATUM_TOTAL_SUBSCRIPTIONS = kk;
-		vardata.STRATUM_HASHRATE_ESTIMATE = thr;
+		dashdata->STRATUM_ACTIVE_THREADS = global_stratum_app->datum_active_threads;
+		dashdata->STRATUM_TOTAL_CONNECTIONS = k;
+		dashdata->STRATUM_TOTAL_SUBSCRIPTIONS = kk;
+		dashdata->STRATUM_HASHRATE_ESTIMATE = thr;
 	} else {
-		vardata.STRATUM_ACTIVE_THREADS = 0;
-		vardata.STRATUM_TOTAL_CONNECTIONS = 0;
-		vardata.STRATUM_TOTAL_SUBSCRIPTIONS = 0;
-		vardata.STRATUM_HASHRATE_ESTIMATE = 0.0;
+		dashdata->STRATUM_ACTIVE_THREADS = 0;
+		dashdata->STRATUM_TOTAL_CONNECTIONS = 0;
+		dashdata->STRATUM_TOTAL_SUBSCRIPTIONS = 0;
+		dashdata->STRATUM_HASHRATE_ESTIMATE = 0.0;
 	}
+
+}
+
+int datum_api_homepage(struct MHD_Connection *connection) {
+	struct MHD_Response *response;
+	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
+	T_DATUM_API_DASH_VARS vardata;
+	
+	memset(&vardata, 0, sizeof(T_DATUM_API_DASH_VARS));
+	
+	datum_api_dash_stats(&vardata);
 	
 	output[0] = 0;
 	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, datum_api_fill_var, &vardata);
@@ -1588,6 +1598,34 @@ int datum_api_OK(struct MHD_Connection *connection) {
 	MHD_add_response_header(response, "Content-Type", "text/html");
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
+
+#ifdef DATUM_API_FOR_UMBREL
+int datum_api_umbrel_widget(struct MHD_Connection * const connection) {
+	char json_response[512];
+	T_DATUM_API_DASH_VARS umbreldata;
+	const char *hash_unit;
+	int json_response_len;
+	
+	datum_api_dash_stats(&umbreldata);
+	
+	hash_unit = dynamic_hash_unit(&umbreldata.STRATUM_HASHRATE_ESTIMATE);
+	
+	json_response_len = snprintf(json_response, sizeof(json_response), "{"
+		"\"type\": \"three-stats\","
+		"\"refresh\": \"30s\","
+		"\"link\": \"\","
+		"\"items\": ["
+			"{\"title\": \"Connections\", \"text\": \"%d\", \"subtext\": \"Worker\"},"
+			"{\"title\": \"Hashrate\", \"text\": \"%.2f\", \"subtext\": \"%s\"}"
+		"]"
+	"}", umbreldata.STRATUM_TOTAL_CONNECTIONS, umbreldata.STRATUM_HASHRATE_ESTIMATE, hash_unit);
+	
+	if (json_response_len >= sizeof(json_response)) json_response_len = sizeof(json_response) - 1;
+	struct MHD_Response *response = MHD_create_response_from_buffer(json_response_len, (void *)json_response, MHD_RESPMEM_MUST_COPY);
+	MHD_add_response_header(response, "Content-Type", "application/json");
+	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
+}
+#endif
 
 int datum_api_testnet_fastforward(struct MHD_Connection * const connection) {
 	const char *time_str;
@@ -1780,6 +1818,15 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 			}
 			break;
 		}
+		
+#ifdef DATUM_API_FOR_UMBREL
+		case 'u': {
+			if (!strcmp(url, "/umbrel-api")) {
+				return datum_api_umbrel_widget(connection);
+			}
+			break;
+		}
+#endif
 		
 		default: break;
 	}

@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -36,11 +36,20 @@
 #ifndef _DATUM_UTILS_H_
 #define _DATUM_UTILS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "datum_logger.h"
 
 void datum_utils_init(void);
+
+extern unsigned int datum_test_failed;
+bool datum_test_fail_(const char *expr, const char *file, unsigned int line, const char *func);
+#define datum_test_(expr, fake_expr, line, fake_func) \
+	((expr) ? true : datum_test_fail_(fake_expr, __FILE__, line, fake_func))
+#define datum_test(expr) \
+	datum_test_(expr, #expr, __LINE__, __func__)
+
 uint64_t monotonic_time_seconds(void);
 uint64_t current_time_millis(void);
 uint64_t current_time_micros(void);
@@ -71,12 +80,19 @@ long double calc_network_difficulty(const char *bits_hex);
 unsigned char floorPoT(uint64_t x);
 uint64_t datum_siphash(const void *src, uint64_t sz, const unsigned char key[16]);
 uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char key[16]);
+unsigned int datum_double_precision(double *inout_dbl);
 uint64_t datum_atoi_strict_u64(const char *s, size_t size);
 int datum_atoi_strict(const char *s, size_t size);
 bool datum_str_to_bool_strict(const char *s, bool *out);
 char **datum_deepcopy_charpp(const char * const *p);
 void datum_reexec();
 bool datum_secure_strequals(const char *secret, const size_t secret_len, const char *guess);
+const char *dynamic_hash_unit(double *inout_hashrate);
+
+
+static inline size_t datum_align_sz(const size_t min_sz, const size_t alignment) {
+	return (min_sz + alignment - 1) / alignment * alignment;
+}
 
 
 static inline

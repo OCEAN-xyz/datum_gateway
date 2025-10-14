@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -145,6 +145,7 @@ void *datum_threadpool_thread(void *arg) {
 					my->client_data[i].new_connection = false;
 					my->client_data[i].in_buf = 0;
 					my->client_data[i].out_buf = 0;
+					my->client_data[i].proxy_line_read = 0;
 					
 					// add to epoll for this thread
 #ifdef __linux__
@@ -283,6 +284,31 @@ void *datum_threadpool_thread(void *arg) {
 						
 						while (end_line != NULL) {
 							*end_line = 0; // null terminate the line
+							if (datum_config.stratum_v1_trust_proxy != -1 && my->client_data[cidx].proxy_line_read != -1) {
+								if (strncmp(start_line, "PROXY ", 6) == 0) {
+									my->client_data[cidx].proxy_line_read += 1;
+									if (my->client_data[cidx].proxy_line_read <= datum_config.stratum_v1_trust_proxy) {
+										char src_ip[DATUM_MAX_IP_LEN + 1];
+										int matched = sscanf(start_line, "PROXY TCP4 %15s", src_ip);
+										if (matched != 1) {
+											matched = sscanf(start_line, "PROXY TCP6 %45s", src_ip);
+										}
+										if (matched == 1 && src_ip[0] != 0) {
+											DLOG_DEBUG("New proxy IP detected: %s on TID: %d, CID: %d", src_ip, my->thread_id, my->client_data[cidx].cid);
+											strcpy(my->client_data[cidx].rem_host, src_ip);
+										}
+										else {
+											DLOG_DEBUG("PROXY line present but no valid IP found, keeping original source IP: %s on TID: %d, CID: %d", my->client_data[cidx].rem_host, my->thread_id, my->client_data[cidx].cid);
+										}
+									}
+									start_line = end_line + 1;
+									end_line = strchr(start_line, '\n');
+									continue;
+								} else {
+									DLOG_DEBUG("Received non-PROXY line from client %d/%d", my->thread_id, my->client_data[cidx].cid);
+									my->client_data[cidx].proxy_line_read = -1;
+								}
+							}
 							// this function can not be NULL
 							j = my->app->client_cmd_func(&my->client_data[cidx], start_line);
 							if (j < 0) {

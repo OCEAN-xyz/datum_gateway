@@ -48,3 +48,50 @@ With this setting, the entire Stratum username will be appended after the defaul
 
 Finally, if you set both options to `false`, the Stratum username will be ignored entirely.
 Instead, only the configured default username (`mining`.`pool_address`) will be used, without any worker names.
+
+## Username modifiers (advanced)
+
+Some miners are in revenue sharing arrangements, and may wish to distribute a portion of their shares to different addresses.
+While ideally this should be implemented in miner firmware, many miners today do not support it, so the DATUM Gateway provides it as an optional feature.
+This is accomplished using "username modifiers".
+
+In the `stratum` section of your configuration, add `username_modifiers` as a JSON object.
+Example:
+
+    "username_modifiers": {
+        "modifier name 1": {
+	        "bitcoin address A": 0.2,
+	        "": 0.8
+        },
+        "modifier name 2": {
+	        "bitcoin address B": 0.5,
+	        "": 0.5
+        },
+        "modifier name 3": {
+	        "bitcoin address C": 0.01,
+	        "bitcoin address D": 0.99
+        }
+    }
+
+This example defines three username modifiers, each named "modifier name 1" and so on, with differnent proportions.
+The first redirects approximately 20% (`0.2`) of shares to "bitcoin address A", and 80% (`0.8`) to the address specified in the Stratum username (which is specified as simply `""`).
+Similarly, the second defines a 50/50 split.
+The third redirects 1% to "bitcoin address C", and 99% to "bitcoin address D"; note that the Stratum username's address does not receive *any* shares in that scenario.
+
+To make use of a modifier, you must append a tilde (`~`) and the modifier name to your Stratum username.
+For example, you might use "bitcoin address E.workername~modifier name 2".
+This would send 20% of shares to the pool as username "bitcoin address A.workername" and 80% as "bitcoin address E.workername".
+Regardless of what Bitcoin address is being used by a modifier, the worker name (if any) specified by the Stratum username is copied over as-is.
+
+Be aware that this feature reassigns share submissions based on the proof-of-work hash.
+If you specify 80%/20%, shares beginning with 0000-cccc will be directed toward the first address, and shares beginning with cccd-ffff will be sent as the second.
+Since the hash is random, this may not be an exact split (though it should approach it over the long term).
+
+Modifiers should always add up to 100%, and behaviour when they do not is undefined.
+*Currently*, if you assign *less* than a full 100%, any shares which fall outside of the defined ranges will be submitted as the default username in `mining`.`pool_address` *without* the workername copied;
+if you assign *more* than 100%, that portion above will not have any shares submitted
+(the order of addresses may or may not be random).
+Do not rely on these behaviours.
+Always specify the full 100% range explicitly.
+
+NOTE: This feature is handled when shares are received by the Gateway's Stratum server, and will therefore only work if you have `datum`.`pool_pass_full_users` enabled.

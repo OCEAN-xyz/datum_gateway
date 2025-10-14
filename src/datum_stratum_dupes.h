@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -52,8 +52,8 @@ typedef struct T_DATUM_STRATUM_DUPE_ITEM {
 	unsigned short job_index;
 	unsigned int ntime;
 	unsigned int version_bits;
-	unsigned int extra_nonce1;
-	uint64_t extra_nonce2;
+	uint64_t extra_nonce_a;  // extranonce1 + first 32 bits of extranonce2
+	uint32_t extra_nonce_b;  // last 32 bits of extranonce2
 	
 	struct T_DATUM_STRATUM_DUPE_ITEM *next;
 } T_DATUM_STRATUM_DUPE_ITEM;

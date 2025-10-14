@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -60,8 +60,16 @@
 #include "thirdparty_segwit_addr.h"
 #include "datum_logger.h"
 
+unsigned int datum_test_failed = 0;
 volatile int panic_mode = 0;
 static uint64_t process_start_time = 0;
+
+bool datum_test_fail_(const char *expr, const char *file, unsigned int line, const char *func) {
+	fprintf(stderr, "ERROR: TEST FAILED at %s:%u (%s): %s\n", file, line, func, expr);
+	fflush(stderr);
+	++datum_test_failed;
+	return false;
+}
 
 void get_target_from_diff(unsigned char *result, uint64_t diff) {
 	uint64_t dividend_parts[4] = {0, 0, 0, 0x00000000FFFF0000};
@@ -725,6 +733,22 @@ uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char ke
 	return (v0 ^ v1) ^ (v2 ^ v3);
 }
 
+unsigned int datum_double_precision(double *inout_dbl) {
+	if (*inout_dbl >= 0.9) {
+		*inout_dbl = ceil(*inout_dbl);
+		return 0;
+	} else if (*inout_dbl >= 0.09) {
+		*inout_dbl = ceil(*inout_dbl * 10) / 10;
+		return 1;
+	} else if (*inout_dbl >= 0.009) {
+		*inout_dbl = ceil(*inout_dbl * 100) / 100;
+		return 2;
+	} else {
+		*inout_dbl = ceil(*inout_dbl * 1000) / 1000;
+		return 3;
+	}
+}
+
 // Uses a fixed-size buffer; positive only; digits only
 // Returns UINT64_MAX on failure
 uint64_t datum_atoi_strict_u64(const char * const s, const size_t size) {
@@ -801,11 +825,27 @@ void datum_reexec() {
 	abort();
 }
 
-bool datum_secure_strequals(const char *secret, const size_t secret_len, const char *guess) {
+bool datum_secure_strequals(const char *secret, size_t secret_len, const char *guess) {
 	const size_t guess_len = strlen(guess);
 	size_t acc = secret_len ^ guess_len;
+	if (!secret_len) {
+		secret = "";  // null byte avoids dereferencing out of bounds
+		secret_len = 1;
+	}
 	for (size_t i = 0; i < guess_len; ++i) {
-		acc |= ((size_t)guess[i]) ^ ((size_t)secret[i % guess_len]);
+		acc |= ((size_t)guess[i]) ^ ((size_t)secret[i % secret_len]);
 	}
 	return !acc;
+}
+
+const char *dynamic_hash_unit(double * const inout_hashrate){
+	if (*inout_hashrate >= 1000000.0) {
+		*inout_hashrate /= 1000000.0;
+		return "Eh/s";
+	} else if (*inout_hashrate >= 1000.0) {
+		*inout_hashrate /= 1000.0;
+		return "Ph/s";
+	} else {
+		return "Th/s";
+	}
 }

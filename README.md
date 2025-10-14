@@ -1,6 +1,6 @@
 # DATUM Gateway
 **Decentralized Alternative Templates for Universal Mining**
-(c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+(c) 2024-2025 Bitcoin Ocean, LLC, Jason Hughes, and individual contributors
 
 The DATUM Gateway implements lightweight efficient client side decentralized block template creation for true solo mining.
 
@@ -64,7 +64,7 @@ At this time, you must also reserve some block space for the pool's generation t
     blockmaxsize=3985000
     blockmaxweight=3985000
 
-Note: This reservation requirement will be removed for Bitcoin Knots users in a future version of the DATUM Gateway thanks to support for on-the-fly specification of these metrics by the client in Knots (as of version 27.1).
+Note: This reservation requirement will be removed for Bitcoin Knots users in a future version of the DATUM Gateway thanks to support for on-the-fly specification of these metrics by the client in Knots.
 
 To avoid mining stale work, you will need to ensure the DATUM Gateway receives new block notifications from your node. It is suggested you run the DATUM Gateway as the same user as your full node and utilize the following configuration line in your bitcoin.conf:
 
@@ -122,6 +122,10 @@ For Clear Linux:
 
     sudo swupd bundle-add c-basic cmake pkgconf devpkg-curl devpkg-jansson devpkg-libsodium devpkg-libmicrohttpd psmisc
 
+For FreeBSD:
+
+    sudo pkg install cmake pkgconf curl jansson libsodium libmicrohttpd argp-standalone libepoll-shim
+
 Compile DATUM by running:
 
     cmake . && make
@@ -135,6 +139,124 @@ Note that the API/web admin password is also used for preventing CSRF attacks, s
 
 You should review the [documentation on usernames](doc/usernames.md) next.
 Once you have everything running, you can point miners at the Gateway.
+
+## Docker
+
+The DATUM Gateway is also available as a Docker image.
+
+
+### Building the Docker Image
+
+To build the DATUM Gateway Docker image:
+
+```bash
+# From the root of the repository
+docker build -t datum_gateway .
+```
+
+### Running the Container
+
+To run the DATUM Gateway container:
+
+```bash
+# Run with default configuration
+docker run -p 23334:23334 -p 7152:7152 --name datum-gateway datum_gateway
+```
+
+The container expects a configuration file at `/app/config/config.json`. Mount a volume to this path to use your own configuration:
+
+```bash
+docker run -v /path/to/your/config/directory:/app/config -p 23334:23334 -p 7152:7152 datum_gateway
+```
+
+You will need to disable the notify fallback in your configuration file if you are using Docker. And in bitcoin.conf, you will need to set the following:
+
+```bash
+blocknotify=wget -q -O /dev/null http://datum-gateway:7152/NOTIFY
+```
+
+### Connecting to a Bitcoin Node
+
+When running the DATUM Gateway in Docker, you need to configure it to connect to your Bitcoin node. The connection method depends on where your Bitcoin node is running:
+
+#### 1. Bitcoin Node Running in Docker (Same Network)
+
+If your Bitcoin node is also running in a Docker container on the same network, use the container name as the hostname:
+
+```json
+{
+  "rpc_host": "bitcoin-node",
+  "rpc_port": 8332,
+  "rpc_user": "your_rpc_user",
+  "rpc_pass": "your_rpc_password"
+}
+```
+
+In your `bitcoin.conf`, set the blocknotify to use the DATUM Gateway container name:
+
+```
+blocknotify=wget -q -O /dev/null http://datum-gateway:7152/NOTIFY
+```
+
+#### 2. Bitcoin Node Running on Host System
+
+If your Bitcoin node is running directly on the host system or in a container that binds to host ports, you have two options:
+
+**Option A: Using host.docker.internal (recommended)**
+```json
+{
+  "rpc_host": "host.docker.internal",
+  "rpc_port": 8332,
+  "rpc_user": "your_rpc_user",
+  "rpc_pass": "your_rpc_password"
+}
+```
+
+**Option B: Using host networking mode**
+Run the DATUM Gateway container with `--network host`:
+
+```bash
+docker run --network host -v /path/to/config:/app/config datum_gateway
+```
+
+Then configure using localhost:
+```json
+{
+  "rpc_host": "localhost",
+  "rpc_port": 8332,
+  "rpc_user": "your_rpc_user",
+  "rpc_pass": "your_rpc_password"
+}
+```
+
+For blocknotify in `bitcoin.conf` when using host networking:
+```
+blocknotify=wget -q -O /dev/null http://localhost:7152/NOTIFY
+```
+
+#### 3. Bitcoin Node on Remote System
+
+If your Bitcoin node is running on a different machine, use the hostname or IP address:
+
+```json
+{
+  "rpc_host": "192.168.1.100",
+  "rpc_port": 8332,
+  "rpc_user": "your_rpc_user",
+  "rpc_pass": "your_rpc_password"
+}
+```
+
+In your remote Bitcoin node's `bitcoin.conf`:
+```
+blocknotify=wget -q -O /dev/null http://datum-gateway-host-ip:7152/NOTIFY
+```
+
+**Important Notes:**
+- Ensure your Bitcoin node's RPC is configured to accept connections from the DATUM Gateway
+- For remote connections, you may need to configure `rpcbind` and `rpcallowip` in your `bitcoin.conf`
+- Always use strong RPC credentials and consider network security when exposing RPC endpoints
+- Remember to disable the notify fallback in your DATUM Gateway configuration when using Docker
 
 ## Template/Share Requirements for Pooled Mining
 

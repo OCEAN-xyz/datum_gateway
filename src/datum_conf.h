@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -46,10 +46,12 @@
 #include <jansson.h>
 
 enum datum_conf_vartype {
+	// NOTE: Keep in sync with datum_conf_var_type_text
 	DATUM_CONF_BOOL,
 	DATUM_CONF_INT,
 	DATUM_CONF_STRING,
 	DATUM_CONF_STRING_ARRAY,
+	DATUM_CONF_USERNAME_MODS,
 };
 
 typedef struct {
@@ -76,6 +78,23 @@ typedef struct {
 const T_DATUM_CONFIG_ITEM *datum_config_get_option_info(const char *category, size_t category_len, const char *name, size_t name_len);
 const T_DATUM_CONFIG_ITEM *datum_config_get_option_info2(const char *category, const char *name);
 
+struct datum_addr_range {
+	char *addr;
+	size_t addr_len;
+	uint16_t max;
+};
+
+struct datum_username_mod {
+	size_t sz;
+	char *modname;
+	size_t modname_len;
+	struct datum_addr_range ranges[];
+};
+
+int datum_config_parse_username_mods(struct datum_username_mod **umods_p, json_t *item, bool log_errors);
+struct datum_username_mod *datum_username_mods_next(struct datum_username_mod *prev_umod);
+struct datum_username_mod *datum_username_mods_find(struct datum_username_mod *umod, const char *modname, size_t modname_len);
+
 // Globally accessable config options
 typedef struct {
 	char bitcoind_rpcuserpass[256];
@@ -91,6 +110,7 @@ typedef struct {
 	int stratum_v1_max_clients;
 	int stratum_v1_max_threads;
 	int stratum_v1_max_clients_per_thread;
+	int stratum_v1_trust_proxy;
 	
 	int stratum_v1_vardiff_min;
 	int stratum_v1_vardiff_target_shares_min;
@@ -101,6 +121,8 @@ typedef struct {
 	int stratum_v1_idle_timeout_no_subscribe;
 	int stratum_v1_idle_timeout_no_share;
 	int stratum_v1_idle_timeout_max_last_work;
+	
+	void *stratum_username_mod;
 	
 	char mining_pool_address[256];
 	char mining_coinbase_tag_primary[64];

@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024-2025 Bitcoin Ocean, LLC & Jason Hughes
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -35,7 +35,9 @@
 
 // Custom configurator and help output generator
 
+#include <assert.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,7 +51,13 @@
 
 global_config_t datum_config;
 
-const char *datum_conf_var_type_text[] = { "boolean", "integer", "string", "string_array" };
+const char *datum_conf_var_type_text[] = {
+	"boolean",
+	"integer",
+	"string",
+	"string_array",
+	"{\"modname\":{\"address\":proportion,...},...}",
+};
 
 const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	// Bitcoind configs
@@ -82,6 +90,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.stratum_v1_max_threads,					.default_int = 8 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "max_clients",				.description = "Maximum total Stratum clients before rejecting connections",
 		.required = false, .ptr = &datum_config.stratum_v1_max_clients, 				.default_int = 1024 },
+	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "trust_proxy",		.description = "Enable support for the PROXY protocol, trusting up to the specified number of levels deep of proxies (-1 to disable entirely)",
+		.required = false, .ptr = &datum_config.stratum_v1_trust_proxy, 	.default_int = -1 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_min",				.description = "Work difficulty floor",
 		.required = false, .ptr = &datum_config.stratum_v1_vardiff_min, 				.default_int = 16384 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_target_shares_min",.description = "Adjust work difficulty to target this many shares per minute",
@@ -100,6 +110,7 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.stratum_v1_idle_timeout_no_share, 	.default_int = 7200 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "idle_timeout_max_last_work",	.description = "Seconds we allow a subscribed connection to be idle since its last accepted share? (0 disables)",
 		.required = false, .ptr = &datum_config.stratum_v1_idle_timeout_max_last_work, 	.default_int = 0 },
+	{ .var_type = DATUM_CONF_USERNAME_MODS, .category = "stratum", .name = "username_modifiers", .description = "Modifiers to redirect some portion of shares to alternate usernames", .required = false, .ptr = &datum_config.stratum_username_mod, },
 	
 	// mining settings
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "pool_address",				.description = "Bitcoin address used for mining rewards.",
@@ -236,7 +247,109 @@ void datum_config_set_default(const T_DATUM_CONFIG_ITEM *c) {
 			((char *)c->ptr)[0] = 0;
 			break;
 		}
+		
+		case DATUM_CONF_USERNAME_MODS: {
+			struct datum_username_mod ** const umods_p = c->ptr;
+			free(*umods_p);
+			*umods_p = NULL;
+			break;
+		}
 	}
+}
+
+int datum_config_parse_username_mods(struct datum_username_mod ** const umods_p, json_t * const item, const bool log_errors) {
+	if (!json_object_size(item)) {
+		if (json_is_null(item) || json_is_object(item)) {
+			free(*umods_p);
+			*umods_p = NULL;
+			return 1;
+		}
+		return -1;
+	}
+	
+	size_t sz = (sizeof(**umods_p) + _Alignof(struct datum_username_mod) - 1) * (json_object_size(item) + 1);
+	const char *modname, *addr;
+	json_t *moddefn, *proportion_j;
+	bool at_least_one_mod = false;
+	json_object_foreach(item, modname, moddefn) {
+		if (json_is_null(moddefn)) continue;
+		if (!json_is_object(moddefn)) return -1;
+		
+		at_least_one_mod = true;
+		sz += strlen(modname) + 1 + (sizeof(*((*umods_p)->ranges)) * (json_object_size(moddefn) + 1));
+		
+		json_object_foreach(moddefn, addr, proportion_j) {
+			if (json_is_null(proportion_j)) continue;
+			if (!json_is_number(proportion_j)) return -1;
+			if (json_number_value(proportion_j) < 0) return -1;
+			sz += strlen(addr) + 1;
+		}
+	}
+	
+	free(*umods_p);
+	
+	if (!at_least_one_mod) {
+		*umods_p = NULL;
+		return 1;
+	}
+	
+	uint8_t *p = malloc(sz);
+	assert(p);
+	*umods_p = (struct datum_username_mod*)p;
+	json_object_foreach(item, modname, moddefn) {
+		if (json_is_null(moddefn)) continue;
+		
+		struct datum_username_mod * const umod = (struct datum_username_mod*)p;
+		umod->sz = sizeof(*umod) + (sizeof(*umod->ranges) * (json_object_size(moddefn) + 1));
+		p += umod->sz;
+		umod->modname_len = strlen(modname);
+		umod->modname = memcpy(p, modname, umod->modname_len);
+		p += umod->modname_len;
+		
+		double sum = 0;
+		struct datum_addr_range *addr_range = umod->ranges;
+		json_object_foreach(moddefn, addr, proportion_j) {
+			if (json_is_null(proportion_j)) continue;
+			
+			sum += json_number_value(proportion_j);
+			const double nonce_max_d = ceil(sum * 0x10000) - 1;
+			if (nonce_max_d < 0) continue;
+			const uint16_t nonce_max = (nonce_max_d > 0xffff) ? (uint16_t)0xffff : (uint16_t)nonce_max_d;
+			addr_range->addr_len = strlen(addr);
+			addr_range->addr = memcpy(p, addr, addr_range->addr_len + 1);
+			addr_range->max = nonce_max;
+			p = &p[addr_range->addr_len + 1];
+			++addr_range;
+			if (nonce_max == 0xffff) break;
+		}
+		if (log_errors && (addr_range == umod->ranges || addr_range[-1].max != 0xffff)) {
+			double missing_percent = 100 * (1 - sum);
+			const unsigned int missing_percent_precision = datum_double_precision(&missing_percent);
+			DLOG_ERROR("Username modifier '%s' is configured to not distribute %.*f%% of shares!", modname, missing_percent_precision, missing_percent);
+		}
+		addr_range[0].addr = NULL;
+		assert((uint8_t*)addr_range <= &((uint8_t*)umod)[umod->sz]);  // otherwise we overwrote strings!
+		assert(p <= &((uint8_t*)*umods_p)[sz]);  // otherwise we overran the buffer!
+		umod->sz = datum_align_sz(p - (uint8_t*)umod, _Alignof(struct datum_username_mod));
+		p = &((uint8_t*)umod)[umod->sz];
+	}
+	((struct datum_username_mod*)p)->sz = 0;
+	
+	return 1;
+}
+
+struct datum_username_mod *datum_username_mods_next(struct datum_username_mod * const prev_umod) {
+	struct datum_username_mod * const next_umod = (struct datum_username_mod *)&(((uint8_t*)prev_umod)[prev_umod->sz]);
+	return next_umod->sz ? next_umod : NULL;
+}
+
+struct datum_username_mod *datum_username_mods_find(struct datum_username_mod *umod, const char * const modname, const size_t modname_len) {
+	for ( ; umod; umod = datum_username_mods_next(umod)) {
+		if (modname_len != umod->modname_len) continue;
+		if (strncmp(modname, umod->modname, modname_len)) continue;
+		return umod;
+	}
+	return NULL;
 }
 
 int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
@@ -294,6 +407,10 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 			}
 			((char (*)[1024])c->ptr)[i][0] = 0;
 			return 1;
+		}
+		
+		case DATUM_CONF_USERNAME_MODS: {
+			return datum_config_parse_username_mods(c->ptr, item, true);
 		}
 	}
 	
@@ -590,6 +707,11 @@ void datum_gateway_example_conf(void) {
 				
 				case DATUM_CONF_STRING_ARRAY: {
 					puts("[]");
+					break;
+				}
+				
+				case DATUM_CONF_USERNAME_MODS: {
+					puts("{}");
 					break;
 				}
 			}

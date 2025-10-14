@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(DATUM VERSION 0.3.1 LANGUAGES C)
+project(DATUM VERSION 0.4.0 LANGUAGES C)
 
 # Enable C23 if supported, else fall back to C11 for compatibility
 if(CMAKE_VERSION VERSION_LESS "3.21")
@@ -37,6 +37,7 @@ add_executable(datum_gateway
 	src/datum_blocktemplates.c
 	src/datum_coinbaser.c
 	src/datum_conf.c
+	src/datum_conf_tests.c
 	src/datum_gateway.c
 	src/datum_jsonrpc.c
 	src/datum_logger.c
@@ -45,8 +46,10 @@ add_executable(datum_gateway
 	src/datum_sockets.c
 	src/datum_stratum.c
 	src/datum_stratum_dupes.c
+	src/datum_stratum_tests.c
 	src/datum_submitblock.c
 	src/datum_utils.c
+	src/datum_utils_tests.c
 	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
@@ -95,9 +98,22 @@ set(ARGP_LIBS "")
 check_function_exists(argp_parse HAVE_ARGP_PARSE)
 if(NOT HAVE_ARGP_PARSE)
 	check_library_exists(argp argp_parse "" ARGP)
+	if(NOT ARGP AND CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+		# Workaround bug where CMake doesn't check the standard install location on FreeBSD
+		unset(ARGP CACHE)
+		check_library_exists(argp argp_parse "/usr/local/lib" ARGP)
+	endif()
 	if(ARGP)
 		list(APPEND ARGP_LIBS "argp")
 	endif()
+endif()
+
+check_function_exists(epoll_wait HAVE_EPOLL_WAIT)
+if(HAVE_EPOLL_WAIT)
+	set(EPOLL_SHIM_INCLUDE_DIRS "")
+	set(EPOLL_SHIM_LIBRARIES "")
+else()
+	pkg_check_modules(EPOLL_SHIM REQUIRED epoll-shim)
 endif()
 
 cmake_pop_check_state()
@@ -121,6 +137,7 @@ add_custom_command(
 target_include_directories(datum_gateway
 	PRIVATE
 	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+	${EPOLL_SHIM_INCLUDE_DIRS}
 	${CURL_INCLUDE_DIRS}
 	${JANSSON_INCLUDE_DIRS}
 	${SODIUM_INCLUDE_DIRS}
@@ -136,6 +153,7 @@ target_link_libraries(datum_gateway
 	${POW_LIBS}
 	Threads::Threads
 	${ARGP_LIBS}
+	${EPOLL_SHIM_LIBRARIES}
 	${CURL_LIBRARIES} ${CURL_LDFLAGS} ${CURL_LDFLAGS_OTHER}
 	${JANSSON_LIBRARIES} ${JANSSON_LDFLAGS} ${JANSSON_LDFLAGS_OTHER}
 	${SODIUM_LIBRARIES} ${SODIUM_LDFLAGS} ${SODIUM_LDFLAGS_OTHER}
@@ -160,6 +178,7 @@ endif()
 
 install(FILES README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(FILES doc/DATUM_recommended_setup-network_diagram.svg DESTINATION ${CMAKE_INSTALL_DOCDIR}/doc)
+install(FILES doc/usernames.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
 set(PREGEN_DOC ${CMAKE_SOURCE_DIR}/doc/example_datum_gateway_config.json)
 install(FILES ${PREGEN_DOC} DESTINATION ${CMAKE_INSTALL_DOCDIR})
