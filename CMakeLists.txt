@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.11)
 
 project(DATUM VERSION 0.3.1 LANGUAGES C)
 
@@ -17,9 +17,17 @@ option(ENABLE_API "Build API support." ON)
 
 include(GNUInstallDirs)
 
-if(APPLE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 	add_definitions(-D__APPLE__)
 	set(PLATFORM_SOURCES src/platform_macos.c)
+
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "OpenBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR
+		CMAKE_SYSTEM_NAME STREQUAL "DragonFly")
+	add_definitions(-D__BSD__)
+	set(PLATFORM_SOURCES src/platform_bsd.c)
+
 elseif(UNIX)
 	add_definitions(-D__LINUX__)
 	set(PLATFORM_SOURCES src/platform_linux.c)
@@ -42,7 +50,7 @@ add_executable(datum_gateway
 	src/thirdparty_base58.c
 	src/thirdparty_segwit_addr.c
 	${CMAKE_CURRENT_BINARY_DIR}/web_resources.h
-		src/datum_cross_platform_io.h
+	src/datum_cross_platform_io.h
 )
 install(TARGETS datum_gateway DESTINATION bin)
 
