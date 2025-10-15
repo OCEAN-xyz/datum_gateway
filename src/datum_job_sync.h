@@ -173,9 +173,13 @@ bool datum_job_sync_validate_hmac(const T_DATUM_JOB_SYNC *sync);
 void datum_job_sync_generate_hmac(T_DATUM_JOB_SYNC *sync);
 
 // Get synchronized job by Stratum job ID
+// THREAD SAFETY: Caller MUST hold global_job_sync_state.lock (read or write) for
+// the entire duration they use the returned pointer. Returns NULL if not found.
 T_SYNC_JOB_ENTRY *datum_job_sync_find_by_stratum_id(const char *job_id);
 
 // Get synchronized job by DATUM job ID
+// THREAD SAFETY: Caller MUST hold global_job_sync_state.lock (read or write) for
+// the entire duration they use the returned pointer. Returns NULL if not found.
 T_SYNC_JOB_ENTRY *datum_job_sync_find_by_datum_id(unsigned char datum_job_id);
 
 // Periodic sync maintenance (cleanup old jobs, retry failed syncs)
@@ -194,6 +198,9 @@ void datum_job_sync_set_shared_secret(const unsigned char *secret, size_t len);
 
 // Debugging and logging
 void datum_job_sync_dump_state(void);
+
+// Protocol integration
+int datum_job_sync_send_to_pool(T_DATUM_JOB_SYNC *sync);
 
 // External globals
 extern T_JOB_SYNC_STATE global_job_sync_state;

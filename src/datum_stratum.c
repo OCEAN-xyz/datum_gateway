@@ -1803,7 +1803,8 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	    datum_config.datum_allow_direct_failover &&
 	    datum_config.datum_pool_host[0]) {
 		json_t *failover = json_object();
-		char pool_url[1050]; // Large enough for "stratum+tcp://" + host + ":" + port
+		// Buffer size calculation: "stratum+tcp://" (14) + host (1024) + ":" (1) + port (6) + null (1) = 1046
+		char pool_url[1100]; // Safe buffer size for URL construction
 		snprintf(pool_url, sizeof(pool_url), "stratum+tcp://%s:%d",
 		         datum_config.datum_pool_host,
 		         datum_config.datum_pool_port);
