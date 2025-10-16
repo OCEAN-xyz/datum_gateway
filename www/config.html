@@ -121,7 +121,14 @@
 				</div>
 				<div class="setting-row">
 					<div class="flex-row">
-						<label for="mining_coinbase_tag_secondary" class="label">Coinbase Tag:</label>
+						<label for="mining_coinbase_tag_primary" class="label">Coinbase Tag primary:</label>
+						<input maxlength="${*mining_coinbase_tag_primary_max}" name="mining_coinbase_tag_primary" id="mining_coinbase_tag_primary" value="${mining_coinbase_tag_primary}"${*ro}></input>
+					</div>
+					<label for="coinbase_tag_primary" id="coinbase_tag_primary" class="tip">Arbitrary tag included in the coinbase. (overridden by DATUM Pool)</label>
+				</div>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="mining_coinbase_tag_secondary" class="label">Coinbase Tag secondary:</label>
 						<input maxlength="${*mining_coinbase_tag_secondary_max}" name="mining_coinbase_tag_secondary" id="mining_coinbase_tag_secondary" value="${mining_coinbase_tag_secondary}"${*ro}></input>
 					</div>
 					<label for="coinbase_tag_secondary" id="coinbase_tag_secondary" class="tip">Arbitrary name displayed as the block creator on block explorers.</label>
@@ -225,14 +232,17 @@
 		function reward_sharing_changed() {
 			var newvalue = document.getElementById('reward_sharing').value;
 			var fields = document.getElementById('pool_settings').getElementsByTagName('input');
+			var primary_tag = document.getElementById('mining_coinbase_tag_primary');
 			if (newvalue == 'never') {
 				for (var i = 0; i < fields.length; ++i) {
 					fields[i].setAttribute('disabled', true);
 				}
+				primary_tag.removeAttribute('disabled');
 			} else {
 				for (var i = 0; i < fields.length; ++i) {
 					fields[i].removeAttribute('disabled');
 				}
+				primary_tag.setAttribute('disabled', true);
 			}
 		}
 		reward_sharing_changed();
