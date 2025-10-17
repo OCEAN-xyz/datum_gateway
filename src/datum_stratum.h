@@ -290,4 +290,14 @@ extern T_DATUM_SOCKET_APP *global_stratum_app;
 extern pthread_rwlock_t need_coinbaser_rwlocks[MAX_STRATUM_JOBS];
 extern bool need_coinbaser_rwlocks_init_done;
 
+// Global counters for total shares from stratum clients
+// These track all shares submitted by miners connected to the stratum server,
+// regardless of whether they're forwarded to a pool or used for solo mining.
+// In solo mining mode, these counters are displayed on the web dashboard instead
+// of the pool share counters, providing visibility into miner activity.
+extern uint64_t stratum_client_accepted_share_count;
+extern uint64_t stratum_client_accepted_share_diff;
+extern uint64_t stratum_client_rejected_share_count;
+extern uint64_t stratum_client_rejected_share_diff;
+
 #endif

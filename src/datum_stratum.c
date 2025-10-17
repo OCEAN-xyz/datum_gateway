@@ -76,6 +76,15 @@ bool stratum_latest_empty_ready_for_full = 0;
 uint64_t stratum_latest_empty_job_index = 0;
 uint64_t stratum_latest_empty_sent_count = 0;
 
+// Global counters for total shares from stratum clients
+// These counters track all share submissions from connected miners,
+// providing accurate statistics for solo mining operations where pool
+// share counters would remain at zero.
+uint64_t stratum_client_accepted_share_count = 0;
+uint64_t stratum_client_accepted_share_diff = 0;
+uint64_t stratum_client_rejected_share_count = 0;
+uint64_t stratum_client_rejected_share_diff = 0;
+
 pthread_rwlock_t need_coinbaser_rwlocks[MAX_STRATUM_JOBS];
 bool need_coinbaser_rwlocks_init_done = false;
 
@@ -1268,6 +1277,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		send_rejected_stale_block(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
+		__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+		__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 		return 0;
 	}
 	
@@ -1277,6 +1288,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		send_rejected_time_too_old(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
+		__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+		__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 		return 0;
 	}
 	
@@ -1284,6 +1297,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		send_rejected_time_too_new(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
+		__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+		__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 		return 0;
 	}
 	
@@ -1295,6 +1310,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 			send_rejected_high_hash_error(c, id);
 			m->share_count_rejected++;
 			m->share_diff_rejected += job_diff;
+			__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+			__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 			return 0;
 		}
 	} else {
@@ -1304,6 +1321,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 			send_rejected_high_hash_error(c, id);
 			m->share_count_rejected++;
 			m->share_diff_rejected += job_diff;
+			__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+			__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 			return 0;
 		}
 	}
@@ -1314,6 +1333,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		send_rejected_stale(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
+		__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+		__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 		return 0;
 	}
 	
@@ -1323,6 +1344,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		send_rejected_duplicate(c, id);
 		m->share_count_rejected++;
 		m->share_diff_rejected += job_diff;
+		__atomic_add_fetch(&stratum_client_rejected_share_count, 1, __ATOMIC_RELAXED);
+		__atomic_add_fetch(&stratum_client_rejected_share_diff, job_diff, __ATOMIC_RELAXED);
 		return 0;
 	}
 	
@@ -1341,6 +1364,10 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// update connection totals
 	m->share_diff_accepted += job_diff;
 	m->share_count_accepted++;
+	
+	// update global stratum client totals (used for solo mining display)
+	__atomic_add_fetch(&stratum_client_accepted_share_count, 1, __ATOMIC_RELAXED);
+	__atomic_add_fetch(&stratum_client_accepted_share_diff, job_diff, __ATOMIC_RELAXED);
 	
 	// update since-snap totals
 	m->share_count_since_snap++;
