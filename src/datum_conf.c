@@ -69,15 +69,21 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcpassword",				.description = "RPC password for communication with local bitcoind.",
 		.example = "\"something only you know\"",
 		.required = false, .ptr = datum_config.bitcoind_rpcpassword,			.default_string[0] = "", .max_string_len = sizeof(datum_config.bitcoind_rpcpassword) },
-	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcurl",					.description = "RPC URL for communication with local bitcoind. (GBT Template Source)",
+	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpcurl",					.description = "RPC URL for communication with local bitcoind. (GBT Template Source) - Legacy single-node format, or use 'nodes' array",
 		.example = "\"http://localhost:8332\"",
-		.required = true, .ptr = datum_config.bitcoind_rpcurl, .max_string_len = sizeof(datum_config.bitcoind_rpcurl) },
+		.required = false, .ptr = datum_config.bitcoind_rpcurl, .default_string[0] = "", .max_string_len = sizeof(datum_config.bitcoind_rpcurl) },
 	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "work_update_seconds",		.description = "How many seconds between normal work updates?  (5-120, 40 suggested)",
 		.required = false, .ptr = &datum_config.bitcoind_work_update_seconds, .default_int = 40 },
 	{ .var_type = DATUM_CONF_BOOL,	 	.category = "bitcoind", 	.name = "notify_fallback",			.description = "Fall back to less efficient methods for new block notifications. Can disable if you use blocknotify.",
 		.example_default = true,
 		.required = false, .ptr = &datum_config.bitcoind_notify_fallback, .default_bool = true },
-	
+	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "failover_cooldown_seconds",		.description = "Seconds to wait before retrying a failed node (multi-node failover)",
+		.required = false, .ptr = &datum_config.bitcoind_failover_cooldown_sec, .default_int = 30 },
+	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "max_consecutive_failures",			.description = "Number of consecutive failures before switching to another node",
+		.required = false, .ptr = &datum_config.bitcoind_max_consecutive_failures, .default_int = 3 },
+	{ .var_type = DATUM_CONF_BOOL,	 	.category = "bitcoind", 	.name = "try_higher_priority_nodes",		.description = "Automatically attempt to recover to higher priority nodes when available",
+		.required = false, .ptr = &datum_config.bitcoind_try_higher_priority, .default_bool = true },
+
 	// stratum v1 server configs
 	{ .var_type = DATUM_CONF_STRING, 	.category = "stratum", 		.name = "listen_addr",					.description = "IP address to listen for Stratum Gateway connections",
 		.required = false, .ptr = datum_config.stratum_v1_listen_addr,				.default_string[0] = "", .max_string_len = sizeof(datum_config.stratum_v1_listen_addr) },
@@ -418,6 +424,153 @@ static void datum_config_opt_missing_error(const T_DATUM_CONFIG_ITEM * const opt
 	DLOG_ERROR("--- Config description: \"%s\"", opt->description);
 }
 
+// Helper function to compare node priorities for sorting
+static int compare_node_priority(const void *a, const void *b) {
+	const T_BITCOIND_NODE_CONFIG *node_a = (const T_BITCOIND_NODE_CONFIG *)a;
+	const T_BITCOIND_NODE_CONFIG *node_b = (const T_BITCOIND_NODE_CONFIG *)b;
+	return node_a->priority - node_b->priority;
+}
+
+// Parse bitcoind.nodes array for multi-node configuration
+// Returns: 1 if multi-node format parsed, 0 if legacy format, -1 on error
+static int parse_bitcoind_nodes(json_t *bitcoind_obj) {
+	json_t *nodes_array = json_object_get(bitcoind_obj, "nodes");
+
+	if (nodes_array && json_is_array(nodes_array)) {
+		// New multi-node format
+		size_t node_count = json_array_size(nodes_array);
+
+		if (node_count == 0) {
+			DLOG_ERROR("bitcoind.nodes array is empty!");
+			return -1;
+		}
+
+		if (node_count > DATUM_MAX_BITCOIND_NODES) {
+			DLOG_WARN("Too many Bitcoin nodes configured (%zu). Using first %d.",
+			          node_count, DATUM_MAX_BITCOIND_NODES);
+			node_count = DATUM_MAX_BITCOIND_NODES;
+		}
+
+		datum_config.bitcoind_node_count = node_count;
+
+		for (size_t i = 0; i < node_count; i++) {
+			json_t *node_obj = json_array_get(nodes_array, i);
+			if (!json_is_object(node_obj)) {
+				DLOG_ERROR("bitcoind.nodes[%zu] is not an object!", i);
+				return -1;
+			}
+
+			T_BITCOIND_NODE_CONFIG *node = &datum_config.bitcoind_nodes[i];
+			memset(node, 0, sizeof(T_BITCOIND_NODE_CONFIG));
+
+			// Parse rpcurl (required)
+			const char *rpcurl = json_string_value(json_object_get(node_obj, "rpcurl"));
+			if (!rpcurl || strlen(rpcurl) == 0) {
+				DLOG_ERROR("bitcoind.nodes[%zu].rpcurl is required!", i);
+				return -1;
+			}
+			strncpy(node->rpcurl, rpcurl, sizeof(node->rpcurl) - 1);
+
+			// Parse rpcuser (optional)
+			const char *rpcuser = json_string_value(json_object_get(node_obj, "rpcuser"));
+			if (rpcuser) {
+				strncpy(node->rpcuser, rpcuser, sizeof(node->rpcuser) - 1);
+			}
+
+			// Parse rpcpassword (optional)
+			const char *rpcpassword = json_string_value(json_object_get(node_obj, "rpcpassword"));
+			if (rpcpassword) {
+				strncpy(node->rpcpassword, rpcpassword, sizeof(node->rpcpassword) - 1);
+			}
+
+			// Parse rpccookiefile (optional)
+			const char *rpccookiefile = json_string_value(json_object_get(node_obj, "rpccookiefile"));
+			if (rpccookiefile) {
+				strncpy(node->rpccookiefile, rpccookiefile, sizeof(node->rpccookiefile) - 1);
+			}
+
+			// Parse priority (optional, default to array index)
+			json_t *priority_obj = json_object_get(node_obj, "priority");
+			if (priority_obj && json_is_integer(priority_obj)) {
+				node->priority = json_integer_value(priority_obj);
+			} else {
+				node->priority = i;
+			}
+
+			// Parse enabled (optional, default true)
+			json_t *enabled_obj = json_object_get(node_obj, "enabled");
+			if (enabled_obj && json_is_boolean(enabled_obj)) {
+				node->enabled = json_boolean_value(enabled_obj);
+			} else {
+				node->enabled = true;
+			}
+
+			// Initialize runtime state
+			node->last_success_time = 0;
+			node->last_failure_time = 0;
+			node->consecutive_failures = 0;
+			node->total_failures = 0;
+			node->total_successes = 0;
+
+			DLOG_INFO("Configured Bitcoin node %zu: %s (priority %d, %s)",
+			         i, node->rpcurl, node->priority,
+			         node->enabled ? "enabled" : "disabled");
+		}
+
+		// Sort nodes by priority
+		qsort(datum_config.bitcoind_nodes, node_count,
+		      sizeof(T_BITCOIND_NODE_CONFIG), compare_node_priority);
+
+		DLOG_INFO("Configured %zu Bitcoin node(s), sorted by priority", node_count);
+
+		// Set initial active node to first enabled node
+		datum_config.bitcoind_current_node_index = -1;
+		for (int i = 0; i < node_count; i++) {
+			if (datum_config.bitcoind_nodes[i].enabled) {
+				datum_config.bitcoind_current_node_index = i;
+				DLOG_INFO("Initial active node: %d (%s)",
+				         i, datum_config.bitcoind_nodes[i].rpcurl);
+				break;
+			}
+		}
+
+		if (datum_config.bitcoind_current_node_index < 0) {
+			DLOG_ERROR("No enabled Bitcoin nodes configured!");
+			return -1;
+		}
+
+		return 1;  // Multi-node config successfully parsed
+
+	} else {
+		// Legacy single-node format - convert to multi-node internally
+		DLOG_INFO("Using legacy single-node Bitcoin configuration");
+
+		datum_config.bitcoind_node_count = 1;
+		T_BITCOIND_NODE_CONFIG *node = &datum_config.bitcoind_nodes[0];
+		memset(node, 0, sizeof(T_BITCOIND_NODE_CONFIG));
+
+		// Copy from legacy fields (already parsed by config system)
+		strncpy(node->rpcurl, datum_config.bitcoind_rpcurl, sizeof(node->rpcurl) - 1);
+		strncpy(node->rpcuser, datum_config.bitcoind_rpcuser, sizeof(node->rpcuser) - 1);
+		strncpy(node->rpcpassword, datum_config.bitcoind_rpcpassword, sizeof(node->rpcpassword) - 1);
+		strncpy(node->rpccookiefile, datum_config.bitcoind_rpccookiefile, sizeof(node->rpccookiefile) - 1);
+
+		node->priority = 0;
+		node->enabled = true;
+		node->last_success_time = 0;
+		node->last_failure_time = 0;
+		node->consecutive_failures = 0;
+		node->total_failures = 0;
+		node->total_successes = 0;
+
+		datum_config.bitcoind_current_node_index = 0;
+
+		DLOG_INFO("Configured single Bitcoin node: %s", node->rpcurl);
+
+		return 0;  // Legacy config converted to multi-node format
+	}
+}
+
 int datum_read_config(const char *conffile) {
 	json_t *config = NULL;
 	json_t *cat, *item;
@@ -460,7 +613,66 @@ int datum_read_config(const char *conffile) {
 			return -1;
 		}
 	}
-	
+
+	// Parse multi-node configuration
+	json_t *bitcoind_obj = json_object_get(config, "bitcoind");
+	int using_multinode_format = 0;  // Track if we're using new multi-node format
+
+	if (bitcoind_obj && json_is_object(bitcoind_obj)) {
+		// Parse failover settings
+		json_t *cooldown_obj = json_object_get(bitcoind_obj, "failover_cooldown_seconds");
+		if (cooldown_obj && json_is_integer(cooldown_obj)) {
+			datum_config.bitcoind_failover_cooldown_sec = json_integer_value(cooldown_obj);
+		} else {
+			datum_config.bitcoind_failover_cooldown_sec = 30;  // Default 30 seconds (faster than plan's 60)
+		}
+
+		json_t *max_failures_obj = json_object_get(bitcoind_obj, "max_consecutive_failures");
+		if (max_failures_obj && json_is_integer(max_failures_obj)) {
+			datum_config.bitcoind_max_consecutive_failures = json_integer_value(max_failures_obj);
+		} else {
+			datum_config.bitcoind_max_consecutive_failures = 3;  // Default 3 failures before switching
+		}
+
+		json_t *try_higher_obj = json_object_get(bitcoind_obj, "try_higher_priority_nodes");
+		if (try_higher_obj && json_is_boolean(try_higher_obj)) {
+			datum_config.bitcoind_try_higher_priority = json_boolean_value(try_higher_obj);
+		} else {
+			datum_config.bitcoind_try_higher_priority = true;  // Default enabled
+		}
+
+		// Parse nodes array or convert legacy config
+		int parse_result = parse_bitcoind_nodes(bitcoind_obj);
+		if (parse_result < 0) {
+			DLOG_FATAL("Failed to parse Bitcoin node configuration");
+			return 0;
+		}
+		using_multinode_format = parse_result;  // 1 if multi-node, 0 if legacy
+	} else {
+		// No bitcoind section at all - create default from legacy fields
+		datum_config.bitcoind_failover_cooldown_sec = 30;
+		datum_config.bitcoind_try_higher_priority = true;
+
+		datum_config.bitcoind_node_count = 1;
+		T_BITCOIND_NODE_CONFIG *node = &datum_config.bitcoind_nodes[0];
+		memset(node, 0, sizeof(T_BITCOIND_NODE_CONFIG));
+
+		strncpy(node->rpcurl, datum_config.bitcoind_rpcurl, sizeof(node->rpcurl) - 1);
+		strncpy(node->rpcuser, datum_config.bitcoind_rpcuser, sizeof(node->rpcuser) - 1);
+		strncpy(node->rpcpassword, datum_config.bitcoind_rpcpassword, sizeof(node->rpcpassword) - 1);
+		node->priority = 0;
+		node->enabled = true;
+		datum_config.bitcoind_current_node_index = 0;
+	}
+
+	// Validate that we have at least one Bitcoin node configured
+	if (datum_config.bitcoind_node_count < 1 || datum_config.bitcoind_current_node_index < 0) {
+		DLOG_FATAL("No Bitcoin nodes configured! Use either 'bitcoind.nodes' array or legacy 'bitcoind.rpcurl' format.");
+		DLOG_ERROR("Example multi-node: {\"bitcoind\":{\"nodes\":[{\"rpcurl\":\"http://localhost:8332\",\"rpcuser\":\"datum\",\"rpcpassword\":\"password\"}]}}");
+		DLOG_ERROR("Example legacy: {\"bitcoind\":{\"rpcurl\":\"http://localhost:8332\",\"rpcuser\":\"datum\",\"rpcpassword\":\"password\"}}");
+		return 0;
+	}
+
 #ifdef ENABLE_API
 	if (datum_config.api_modify_conf) {
 		datum_config.config_json = config;
@@ -469,7 +681,7 @@ int datum_read_config(const char *conffile) {
 	{
 		json_decref(config);
 	}
-	
+
 	// populate userpass for further reuse
 	snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
 	
@@ -488,23 +700,27 @@ int datum_read_config(const char *conffile) {
 	if (datum_config.bitcoind_work_update_seconds > 120) {
 		datum_config.bitcoind_work_update_seconds = 120;
 	}
-	
-	if (datum_config.bitcoind_rpcuser[0]) {
-		if (!datum_config.bitcoind_rpcpassword[0]) {
-			datum_config_opt_missing_error(datum_config_get_option_info2("bitcoind", "rpcpassword"));
+
+	// Only validate legacy rpcuser/rpcpassword if NOT using multi-node format
+	if (!using_multinode_format) {
+		if (datum_config.bitcoind_rpcuser[0]) {
+			if (!datum_config.bitcoind_rpcpassword[0]) {
+				datum_config_opt_missing_error(datum_config_get_option_info2("bitcoind", "rpcpassword"));
+				return 0;
+			}
+			snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
+		} else if (datum_config.bitcoind_rpccookiefile[0]) {
+			update_rpc_cookie(&datum_config);
+		} else {
+			const T_DATUM_CONFIG_ITEM *opt;
+			DLOG_ERROR("Either bitcoind.rpcuser (and bitcoind.rpcpassword) or bitcoind.rpccookiefile is required for legacy single-node format.");
+			DLOG_ERROR("Or use the new multi-node format: {\"bitcoind\":{\"nodes\":[{\"rpcurl\":\"...\",\"rpcuser\":\"...\",\"rpcpassword\":\"...\"}]}}");
+			opt = datum_config_get_option_info2("bitcoind", "rpcuser");
+			DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
+			opt = datum_config_get_option_info2("bitcoind", "rpccookiefile");
+			DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
 			return 0;
 		}
-		snprintf(datum_config.bitcoind_rpcuserpass, sizeof(datum_config.bitcoind_rpcuserpass), "%s:%s", datum_config.bitcoind_rpcuser, datum_config.bitcoind_rpcpassword);
-	} else if (datum_config.bitcoind_rpccookiefile[0]) {
-		update_rpc_cookie(&datum_config);
-	} else {
-		const T_DATUM_CONFIG_ITEM *opt;
-		DLOG_ERROR("Either bitcoind.rpcuser (and bitcoind.rpcpassword) or bitcoind.rpccookiefile is required.");
-		opt = datum_config_get_option_info2("bitcoind", "rpcuser");
-		DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
-		opt = datum_config_get_option_info2("bitcoind", "rpccookiefile");
-		DLOG_ERROR("--- Config description for %s.%s: \"%s\"", opt->category, opt->name, opt->description);
-		return 0;
 	}
 	
 #ifndef ENABLE_API

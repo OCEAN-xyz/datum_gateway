@@ -223,6 +223,22 @@ void datum_api_var_STRATUM_JOB_SIGOPS(char *buffer, size_t buffer_size, const T_
 void datum_api_var_STRATUM_JOB_TXNCOUNT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%u", (unsigned)vardata->sjob->block_template->txn_count);
 }
+void datum_api_var_BITCOIND_ACTIVE_NODE_URL(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const int active_index = datum_config.bitcoind_current_node_index;
+	if (active_index >= 0 && active_index < datum_config.bitcoind_node_count) {
+		snprintf(buffer, buffer_size, "%s", datum_config.bitcoind_nodes[active_index].rpcurl);
+	} else {
+		snprintf(buffer, buffer_size, "N/A");
+	}
+}
+void datum_api_var_BITCOIND_ACTIVE_NODE_PRIORITY(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const int active_index = datum_config.bitcoind_current_node_index;
+	if (active_index >= 0 && active_index < datum_config.bitcoind_node_count) {
+		snprintf(buffer, buffer_size, "%d", datum_config.bitcoind_nodes[active_index].priority);
+	} else {
+		snprintf(buffer, buffer_size, "N/A");
+	}
+}
 
 
 DATUM_API_VarEntry var_entries[] = {
@@ -256,7 +272,10 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
 	{"STRATUM_JOB_TXNCOUNT", datum_api_var_STRATUM_JOB_TXNCOUNT},
-	
+
+	{"BITCOIND_ACTIVE_NODE_URL", datum_api_var_BITCOIND_ACTIVE_NODE_URL},
+	{"BITCOIND_ACTIVE_NODE_PRIORITY", datum_api_var_BITCOIND_ACTIVE_NODE_PRIORITY},
+
 	{NULL, NULL} // Mark the end of the array
 };
 
@@ -395,13 +414,32 @@ static void http_resp_prevent_caching(struct MHD_Response * const response) {
 
 static enum MHD_Result datum_api_formdata_to_json_cb(void * const cls, const enum MHD_ValueKind kind, const char * const key, const char * const filename, const char * const content_type, const char * const transfer_encoding, const char * const data, const uint64_t off, const size_t size) {
 	if (!key) return MHD_YES;
-	if (off) return MHD_YES;
-	
+
 	assert(cls);
 	json_t * const j = cls;
-	
-	json_object_set_new(j, key, json_stringn(data, size));
-	
+
+	if (off == 0) {
+		// First chunk - create new field
+		json_object_set_new(j, key, json_stringn(data, size));
+	} else {
+		// Continuation chunk - append to existing field
+		json_t *existing = json_object_get(j, key);
+		if (existing && json_is_string(existing)) {
+			const char *existing_str = json_string_value(existing);
+			size_t existing_len = json_string_length(existing);
+
+			// Create new buffer with combined data
+			char *combined = malloc(existing_len + size + 1);
+			if (combined) {
+				memcpy(combined, existing_str, existing_len);
+				memcpy(combined + existing_len, data, size);
+				combined[existing_len + size] = '\0';
+				json_object_set_new(j, key, json_string(combined));
+				free(combined);
+			}
+		}
+	}
+
 	return MHD_YES;
 }
 
@@ -1076,17 +1114,50 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 	return snprintf(replacement, replacement_max_len, "%d", val);
 }
 
+int datum_api_bitcoind_nodes_json(struct MHD_Connection *connection) {
+	struct MHD_Response *response;
+	json_t *nodes_array = json_array();
+
+	for (int i = 0; i < datum_config.bitcoind_node_count; i++) {
+		T_BITCOIND_NODE_CONFIG *node = &datum_config.bitcoind_nodes[i];
+		json_t *node_obj = json_object();
+
+		json_object_set_new(node_obj, "index", json_integer(i));
+		json_object_set_new(node_obj, "rpcurl", json_string(node->rpcurl));
+		json_object_set_new(node_obj, "rpcuser", json_string(node->rpcuser));
+		json_object_set_new(node_obj, "priority", json_integer(node->priority));
+		json_object_set_new(node_obj, "enabled", json_boolean(node->enabled));
+		json_object_set_new(node_obj, "is_active", json_boolean(i == datum_config.bitcoind_current_node_index));
+		json_object_set_new(node_obj, "consecutive_failures", json_integer(node->consecutive_failures));
+		json_object_set_new(node_obj, "total_failures", json_integer(node->total_failures));
+		json_object_set_new(node_obj, "total_successes", json_integer(node->total_successes));
+
+		json_array_append_new(nodes_array, node_obj);
+	}
+
+	char *json_str = json_dumps(nodes_array, JSON_INDENT(2));
+	json_decref(nodes_array);
+
+	if (!json_str) {
+		return datum_api_do_error(connection, MHD_HTTP_INTERNAL_SERVER_ERROR);
+	}
+
+	response = MHD_create_response_from_buffer(strlen(json_str), json_str, MHD_RESPMEM_MUST_FREE);
+	MHD_add_response_header(response, "Content-Type", "application/json");
+	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
+}
+
 int datum_api_config_dashboard(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	size_t sz = 0, max_sz = 0;
 	char *output = NULL;
-	
+
 	max_sz = www_config_html_sz * 2;
 	output = malloc(max_sz);
 	if (!output) {
 		return MHD_NO;
 	}
-	
+
 	sz += datum_api_fill_vars(www_config_html, output, max_sz, datum_api_fill_config_var, NULL);
 	
 	response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
@@ -1325,6 +1396,91 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		}
 		// TODO: apply change without restarting (and don't interfere with existing jobs)
 		status->need_restart = true;
+	} else if (0 == strcmp(key, "bitcoind_failover_cooldown_seconds")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.bitcoind_failover_cooldown_sec) return true;
+		if (val_int > 300 || val_int < 5) {
+			json_array_append_new(errors, json_string_nocheck("failover cooldown must be between 5 and 300 seconds"));
+			return false;
+		}
+		datum_config.bitcoind_failover_cooldown_sec = val_int;
+		datum_api_json_modify_new("bitcoind", "failover_cooldown_seconds", json_integer(val_int));
+		status->modified_config = true;
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "bitcoind_max_consecutive_failures")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.bitcoind_max_consecutive_failures) return true;
+		if (val_int > 100 || val_int < 1) {
+			json_array_append_new(errors, json_string_nocheck("max consecutive failures must be between 1 and 100"));
+			return false;
+		}
+		datum_config.bitcoind_max_consecutive_failures = val_int;
+		datum_api_json_modify_new("bitcoind", "max_consecutive_failures", json_integer(val_int));
+		status->modified_config = true;
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "bitcoind_try_higher_priority_nodes")) {
+		const bool val_bool = datum_atoi_strict(val, strlen(val));
+		if (val_bool == datum_config.bitcoind_try_higher_priority) return true;
+		datum_config.bitcoind_try_higher_priority = val_bool;
+		datum_api_json_modify_new("bitcoind", "try_higher_priority_nodes", json_boolean(val_bool));
+		status->modified_config = true;
+		status->need_restart = true;
+	} else if (0 == strcmp(key, "bitcoind_nodes_json")) {
+		json_error_t jerror;
+		json_t * const nodes_array = json_loads(val, 0, &jerror);
+		if (!nodes_array || !json_is_array(nodes_array)) {
+			DLOG_ERROR("Failed to parse bitcoind nodes JSON: %s (line %d, column %d)", jerror.text, jerror.line, jerror.column);
+			json_array_append_new(errors, json_string_nocheck("Invalid bitcoind nodes JSON"));
+			return false;
+		}
+
+		// Get existing nodes to preserve passwords marked with ***KEEP_EXISTING***
+		json_t * const config = datum_config.config_json;
+		json_t *bitcoind_obj = json_object_get(config, "bitcoind");
+		json_t *existing_nodes = NULL;
+		if (bitcoind_obj && json_is_object(bitcoind_obj)) {
+			existing_nodes = json_object_get(bitcoind_obj, "nodes");
+		}
+
+		// Process each node in the new array
+		size_t index;
+		json_t *node;
+		json_array_foreach(nodes_array, index, node) {
+			json_t *password = json_object_get(node, "rpcpassword");
+			if (password && json_is_string(password)) {
+				const char *pass_str = json_string_value(password);
+				if (0 == strcmp(pass_str, "***KEEP_EXISTING***")) {
+					// Find matching node in existing config by index
+					json_t *index_obj = json_object_get(node, "index");
+					if (index_obj && json_is_integer(index_obj) && existing_nodes && json_is_array(existing_nodes)) {
+						json_int_t node_index = json_integer_value(index_obj);
+						if (node_index >= 0 && (size_t)node_index < json_array_size(existing_nodes)) {
+							json_t *existing_node = json_array_get(existing_nodes, node_index);
+							if (existing_node) {
+								// Found matching node by index, copy password
+								json_t *existing_pass = json_object_get(existing_node, "rpcpassword");
+								if (existing_pass && json_is_string(existing_pass)) {
+									json_object_set(node, "rpcpassword", existing_pass);
+								}
+							}
+						}
+					}
+				}
+			}
+			// Remove the index field before saving (it's only used for matching)
+			json_object_del(node, "index");
+		}
+
+		// Save to config
+		if (!bitcoind_obj || !json_is_object(bitcoind_obj)) {
+			bitcoind_obj = json_object();
+			json_object_set_new(config, "bitcoind", bitcoind_obj);
+		}
+		json_object_set(bitcoind_obj, "nodes", nodes_array);
+
+		status->modified_config = true;
+		status->need_restart = true;
+		json_decref(nodes_array);
 	} else if (0 == strcmp(key, "bitcoind_rpcurl")) {
 		if (0 == strcmp(val, datum_config.bitcoind_rpcurl)) return true;
 		if (strlen(val) > 128) {
@@ -1753,6 +1909,8 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz, www_assets_icons_favicon_ico_etag);
 			} else if (!strcmp(url, "/assets/style.css")) {
 				return datum_api_asset(connection, "text/css", www_assets_style_css, www_assets_style_css_sz, www_assets_style_css_etag);
+			} else if (!strcmp(url, "/api/bitcoind_nodes")) {
+				return datum_api_bitcoind_nodes_json(connection);
 			}
 			break;
 		}

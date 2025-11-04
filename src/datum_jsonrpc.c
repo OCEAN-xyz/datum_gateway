@@ -41,6 +41,8 @@
 #include <curl/curl.h>
 #include <jansson.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <time.h>
 
 #include "datum_conf.h"
 #include "datum_jsonrpc.h"
@@ -264,8 +266,574 @@ json_t *bitcoind_json_rpc_call(CURL * const curl, global_config_t * const cfg, c
 	if (j) return j;
 	if (cfg->bitcoind_rpcuser[0]) return NULL;
 	if (http_resp_code != 401) return NULL;
-	
+
 	// Authentication failure using cookie; reload cookie file and try again
 	if (!update_rpc_cookie(cfg)) return NULL;
 	return json_rpc_call(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req);
+}
+
+// ========== Multi-Node Failover Implementation ==========
+
+#include <pthread.h>
+#include <limits.h>
+
+// Mutex for protecting node state updates
+static pthread_mutex_t bitcoind_nodes_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Mutex for serializing failover operations to prevent duplicate logging from concurrent calls
+static pthread_mutex_t bitcoind_failover_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Background recovery thread and control variables
+static pthread_t recovery_thread;
+static bool recovery_thread_running = false;
+static pthread_mutex_t recovery_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t recovery_thread_cond = PTHREAD_COND_INITIALIZER;
+static global_config_t *recovery_config = NULL;
+
+T_BITCOIND_NODE_CONFIG* bitcoind_get_active_node(global_config_t *cfg) {
+	if (cfg->bitcoind_current_node_index < 0 ||
+	    cfg->bitcoind_current_node_index >= cfg->bitcoind_node_count) {
+		return NULL;
+	}
+	return &cfg->bitcoind_nodes[cfg->bitcoind_current_node_index];
+}
+
+json_t *bitcoind_json_rpc_call_single(CURL *curl, T_BITCOIND_NODE_CONFIG *node, const char *rpc_req) {
+	char userpass[512];
+	long http_resp_code = -1;
+
+	// Build userpass from node config
+	if (node->rpcuser[0] != '\0' && node->rpcpassword[0] != '\0') {
+		snprintf(userpass, sizeof(userpass), "%s:%s", node->rpcuser, node->rpcpassword);
+	} else if (node->rpccookiefile[0] != '\0') {
+		// Try to read cookie file
+		FILE *F = fopen(node->rpccookiefile, "r");
+		if (!F || !(fgets(userpass, sizeof(userpass), F) && userpass[0])) {
+			if (F) fclose(F);
+			return NULL;
+		}
+		fclose(F);
+	} else {
+		userpass[0] = '\0';
+	}
+
+	// Call with faster timeout (2 seconds instead of 5)
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2);
+
+	json_t *j = json_rpc_call_full(curl, node->rpcurl, userpass, rpc_req, NULL, &http_resp_code);
+
+	// Reset to default timeout
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5);
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5);
+
+	if (j) return j;
+
+	// If authentication failed using cookie, try to reload it
+	if (http_resp_code == 401 && node->rpccookiefile[0] != '\0' && !node->rpcuser[0]) {
+		FILE *F = fopen(node->rpccookiefile, "r");
+		if (F && fgets(userpass, sizeof(userpass), F) && userpass[0]) {
+			fclose(F);
+
+			curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 2);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2);
+
+			j = json_rpc_call(curl, node->rpcurl, userpass, rpc_req);
+
+			curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5);
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5);
+
+			return j;
+		}
+		if (F) fclose(F);
+	}
+
+	return NULL;
+}
+
+void bitcoind_mark_node_failed(global_config_t *cfg, int node_index) {
+	if (node_index < 0 || node_index >= cfg->bitcoind_node_count) return;
+
+	pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+	T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[node_index];
+	node->last_failure_time = current_time_millis();
+	node->consecutive_failures++;
+	node->total_failures++;
+
+	pthread_mutex_unlock(&bitcoind_nodes_mutex);
+}
+
+void bitcoind_mark_node_success(global_config_t *cfg, int node_index) {
+	if (node_index < 0 || node_index >= cfg->bitcoind_node_count) return;
+
+	pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+	T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[node_index];
+	node->last_success_time = current_time_millis();
+	node->consecutive_failures = 0;  // Reset on success
+	node->total_successes++;
+
+	pthread_mutex_unlock(&bitcoind_nodes_mutex);
+}
+
+int bitcoind_get_next_node(global_config_t *cfg, int current_index) {
+	// Find next enabled node in failover sequence (next higher priority number)
+	uint64_t now = current_time_millis();
+	int best_index = -1;
+	int best_priority = INT_MAX;
+	int fallback_index = -1;  // Node in cooldown, but available as fallback
+	int fallback_priority = INT_MAX;
+	int current_priority = cfg->bitcoind_nodes[current_index].priority;
+
+	pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+	// First pass: Try to find nodes with higher priority numbers (lower priority) than current
+	// Prefer nodes not in cooldown, but track nodes in cooldown as fallback
+	for (int i = 0; i < cfg->bitcoind_node_count; i++) {
+		if (i == current_index) continue;  // Skip current node
+
+		T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[i];
+
+		if (!node->enabled) continue;
+
+		// Only consider nodes with higher priority numbers (lower priority) than current
+		if (node->priority <= current_priority) continue;
+
+		// Check cooldown period
+		bool in_cooldown = false;
+		if (node->consecutive_failures > 0) {
+			uint64_t time_since_failure = now - node->last_failure_time;
+			uint64_t cooldown_ms = cfg->bitcoind_failover_cooldown_sec * 1000;
+
+			if (time_since_failure < cooldown_ms) {
+				in_cooldown = true;
+				// Track as fallback - prefer forward progress over cycling back
+				if (node->priority < fallback_priority) {
+					fallback_priority = node->priority;
+					fallback_index = i;
+				}
+				continue;  // Skip for now, but remember it
+			}
+		}
+
+		// Choose node with lowest priority number among candidates (highest priority in this tier)
+		if (node->priority < best_priority) {
+			best_priority = node->priority;
+			best_index = i;
+		}
+	}
+
+	pthread_mutex_unlock(&bitcoind_nodes_mutex);
+
+	// If no nodes out of cooldown, use the fallback (node in cooldown)
+	// This ensures forward progress even if nodes are in cooldown
+	if (best_index < 0 && fallback_index >= 0) {
+		return fallback_index;
+	}
+
+	return best_index;
+}
+
+bool bitcoind_should_try_higher_priority(global_config_t *cfg) {
+	if (!cfg->bitcoind_try_higher_priority) return false;
+
+	int current_index = cfg->bitcoind_current_node_index;
+	if (current_index <= 0) return false;  // Already on highest priority
+
+	pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+	// Check if any higher-priority nodes are available (enabled and out of cooldown)
+	uint64_t now = current_time_millis();
+	uint64_t cooldown_ms = cfg->bitcoind_failover_cooldown_sec * 1000;
+
+	for (int i = 0; i < current_index; i++) {
+		T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[i];
+
+		if (!node->enabled) continue;
+
+		// Check if out of cooldown
+		if (node->consecutive_failures > 0) {
+			uint64_t time_since_failure = now - node->last_failure_time;
+			if (time_since_failure < cooldown_ms) {
+				continue;
+			}
+		}
+
+		// Found a higher-priority node that's available
+		pthread_mutex_unlock(&bitcoind_nodes_mutex);
+		return true;
+	}
+
+	pthread_mutex_unlock(&bitcoind_nodes_mutex);
+	return false;
+}
+
+// Background thread function to check for higher-priority node recovery
+void *bitcoind_recovery_thread_func(void *arg) {
+	DLOG_INFO("Background recovery thread started");
+
+	while (true) {
+		pthread_mutex_lock(&recovery_thread_mutex);
+
+		// Check if we should exit
+		if (!recovery_thread_running) {
+			pthread_mutex_unlock(&recovery_thread_mutex);
+			break;
+		}
+
+		global_config_t *cfg = recovery_config;
+		if (!cfg) {
+			pthread_mutex_unlock(&recovery_thread_mutex);
+			break;
+		}
+
+		pthread_mutex_unlock(&recovery_thread_mutex);
+
+		// Check if we should try higher-priority nodes
+		if (cfg->bitcoind_try_higher_priority) {
+			int current_index = cfg->bitcoind_current_node_index;
+
+			// Only check if we're on a backup node
+			if (current_index > 0) {
+				// Check each higher-priority node
+				pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+				uint64_t now = current_time_millis();
+				uint64_t cooldown_ms = cfg->bitcoind_failover_cooldown_sec * 1000;
+
+				for (int i = 0; i < current_index; i++) {
+					T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[i];
+
+					if (!node->enabled) continue;
+
+					// Check if this node was failed and is now out of cooldown
+					if (node->consecutive_failures > 0) {
+						uint64_t time_since_failure = now - node->last_failure_time;
+						if (time_since_failure >= cooldown_ms) {
+							// This node is ready to be tested
+							DLOG_DEBUG("Recovery thread: Testing node %d (priority %d) after cooldown", i, node->priority);
+							pthread_mutex_unlock(&bitcoind_nodes_mutex);
+
+							// Silently try to connect (no logging of failure)
+							CURL *test_curl = curl_easy_init();
+							if (!test_curl) {
+								pthread_mutex_lock(&bitcoind_nodes_mutex);
+								continue;
+							}
+
+							// Try a simple getblockcount call to test connectivity
+							const char *test_rpc = "{\"method\":\"getblockcount\",\"params\":[],\"id\":1}";
+							json_t *test_result = bitcoind_json_rpc_call_single(test_curl, node, test_rpc);
+
+							curl_easy_cleanup(test_curl);
+
+							if (test_result) {
+								// Success! Mark the node as recovered
+								json_decref(test_result);
+
+								pthread_mutex_lock(&bitcoind_nodes_mutex);
+								// Directly update node state (we already hold the mutex)
+								node->last_success_time = current_time_millis();
+								node->consecutive_failures = 0;  // Reset on success
+								node->total_successes++;
+								pthread_mutex_unlock(&bitcoind_nodes_mutex);
+
+								// Log only the successful recovery
+								DLOG_INFO("Bitcoin node %d (priority %d) has recovered and is now available: %s",
+								         i, node->priority, node->rpcurl);
+							}
+
+							// Re-acquire the lock to continue checking other nodes
+							pthread_mutex_lock(&bitcoind_nodes_mutex);
+						}
+					}
+				}
+
+				pthread_mutex_unlock(&bitcoind_nodes_mutex);
+			}
+		}
+
+		// Sleep for the cooldown period before checking again
+		// Use pthread_cond_timedwait for interruptible sleep
+		pthread_mutex_lock(&recovery_thread_mutex);
+
+		if (!recovery_thread_running) {
+			pthread_mutex_unlock(&recovery_thread_mutex);
+			break;
+		}
+
+		struct timespec ts;
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += recovery_config->bitcoind_failover_cooldown_sec;
+
+		int wait_result = pthread_cond_timedwait(&recovery_thread_cond, &recovery_thread_mutex, &ts);
+
+		// If signaled (not timeout), we're shutting down
+		if (wait_result != ETIMEDOUT) {
+			pthread_mutex_unlock(&recovery_thread_mutex);
+			break;
+		}
+
+		pthread_mutex_unlock(&recovery_thread_mutex);
+	}
+
+	DLOG_INFO("Background recovery thread stopped");
+	return NULL;
+}
+
+// Start the background recovery thread
+void bitcoind_recovery_thread_start(global_config_t *cfg) {
+	pthread_mutex_lock(&recovery_thread_mutex);
+
+	if (recovery_thread_running) {
+		pthread_mutex_unlock(&recovery_thread_mutex);
+		return;  // Already running
+	}
+
+	recovery_config = cfg;
+	recovery_thread_running = true;
+
+	if (pthread_create(&recovery_thread, NULL, bitcoind_recovery_thread_func, NULL) != 0) {
+		DLOG_ERROR("Failed to create background recovery thread");
+		recovery_thread_running = false;
+		recovery_config = NULL;
+		pthread_mutex_unlock(&recovery_thread_mutex);
+		return;
+	}
+
+	pthread_mutex_unlock(&recovery_thread_mutex);
+}
+
+// Stop the background recovery thread
+void bitcoind_recovery_thread_stop(void) {
+	pthread_mutex_lock(&recovery_thread_mutex);
+
+	if (!recovery_thread_running) {
+		pthread_mutex_unlock(&recovery_thread_mutex);
+		return;  // Not running
+	}
+
+	recovery_thread_running = false;
+	pthread_cond_signal(&recovery_thread_cond);  // Wake up the thread
+
+	pthread_mutex_unlock(&recovery_thread_mutex);
+
+	// Wait for thread to finish
+	pthread_join(recovery_thread, NULL);
+
+	recovery_config = NULL;
+}
+
+json_t *bitcoind_json_rpc_call_with_failover(CURL *curl, global_config_t *cfg, const char *rpc_req, int *node_index_out) {
+	// Serialize failover operations to prevent duplicate logging from concurrent calls
+	pthread_mutex_lock(&bitcoind_failover_mutex);
+
+	json_t *result = NULL;
+	int starting_index = cfg->bitcoind_current_node_index;
+	int current_index = starting_index;
+	int current_node_attempts = 0;  // Attempts on current node
+	int total_nodes_tried = 0;      // Total different nodes tried
+	bool already_retried_all = false;  // Track if we've already done a full retry cycle
+	uint64_t now = current_time_millis();
+	uint64_t cooldown_ms = cfg->bitcoind_failover_cooldown_sec * 1000;
+
+	DLOG_DEBUG("Starting GBT fetch with failover (current node: %d)", starting_index);
+
+	// If try_higher_priority is enabled and we're not on the highest priority node,
+	// check if any higher-priority nodes have been marked as recovered (by background thread)
+	if (cfg->bitcoind_try_higher_priority && starting_index > 0) {
+		pthread_mutex_lock(&bitcoind_nodes_mutex);
+		for (int i = 0; i < starting_index; i++) {
+			T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[i];
+			// Check if this higher-priority node is enabled and has been marked as recovered
+			if (node->enabled && node->consecutive_failures == 0) {
+				// Switch to this higher-priority recovered node
+				current_index = i;
+				DLOG_INFO("Switching to recovered higher-priority node %d (priority %d): %s",
+				         i, node->priority, node->rpcurl);
+				break;
+			}
+		}
+		pthread_mutex_unlock(&bitcoind_nodes_mutex);
+	}
+
+	// Try nodes in priority order
+	while (total_nodes_tried < cfg->bitcoind_node_count) {
+		T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[current_index];
+
+		// Skip disabled nodes
+		if (!node->enabled) {
+			DLOG_DEBUG("Node %d is disabled, skipping", current_index);
+			current_index = bitcoind_get_next_node(cfg, current_index);
+			if (current_index < 0) break;  // No more nodes
+			total_nodes_tried++;
+			current_node_attempts = 0;
+			continue;
+		}
+
+		// Check cooldown period for failed nodes (only on first attempt of this node in this call)
+		if (current_node_attempts == 0 && node->consecutive_failures > 0) {
+			uint64_t time_since_failure = now - node->last_failure_time;
+			if (time_since_failure < cooldown_ms) {
+				DLOG_DEBUG("Node %d still in cooldown period (%llu ms remaining)",
+				          current_index,
+				          (unsigned long long)(cooldown_ms - time_since_failure));
+				int next_index = bitcoind_get_next_node(cfg, current_index);
+				if (next_index < 0) {
+					// No more nodes available that aren't in cooldown
+					// As a last resort, try this cooled-down node anyway - mining must continue!
+					DLOG_WARN("All available nodes are in cooldown or failed. Retrying node %d despite cooldown.", current_index);
+					// Don't skip - fall through to try this node
+				} else {
+					current_index = next_index;
+					total_nodes_tried++;
+					current_node_attempts = 0;
+					continue;
+				}
+			} else {
+				DLOG_INFO("Node %d cooldown expired, retrying", current_index);
+			}
+		}
+
+		// Try this node
+		DLOG_DEBUG("Attempting GBT from node %d (priority %d, attempt %d/%d): %s",
+		           current_index, node->priority, current_node_attempts + 1,
+		           cfg->bitcoind_max_consecutive_failures, node->rpcurl);
+
+		result = bitcoind_json_rpc_call_single(curl, node, rpc_req);
+
+		if (result) {
+			// Success!
+			bitcoind_mark_node_success(cfg, current_index);
+
+			// Log message if we switched nodes
+			if (current_index != starting_index) {
+				if (current_index < starting_index) {
+					DLOG_INFO("Recovered to higher-priority Bitcoin node %d (priority %d): %s",
+					         current_index, node->priority, node->rpcurl);
+				} else {
+					DLOG_INFO("Failed over to Bitcoin node %d (priority %d): %s",
+					         current_index, node->priority, node->rpcurl);
+				}
+			}
+
+			cfg->bitcoind_current_node_index = current_index;
+			if (node_index_out) *node_index_out = current_index;
+			pthread_mutex_unlock(&bitcoind_failover_mutex);
+			return result;
+		}
+
+		// Failed - increment attempt counter
+		current_node_attempts++;
+
+		DLOG_WARN("Bitcoin node %d failed (attempt %d/%d): %s",
+		         current_index, current_node_attempts, cfg->bitcoind_max_consecutive_failures,
+		         node->rpcurl);
+
+		// Check if we've exhausted retries for this node
+		if (current_node_attempts >= cfg->bitcoind_max_consecutive_failures) {
+			// Mark node as failed only when we've exhausted all retries
+			bitcoind_mark_node_failed(cfg, current_index);
+
+			DLOG_WARN("Node %d exceeded failure threshold (%d/%d, consecutive failures: %d), switching to next node",
+			         current_index, current_node_attempts, cfg->bitcoind_max_consecutive_failures,
+			         node->consecutive_failures);
+
+			// Move to next node
+			int next_index = bitcoind_get_next_node(cfg, current_index);
+			if (next_index < 0) {
+				// No more nodes available - try cycling through all nodes again ignoring cooldown
+				// but only once to prevent infinite loop
+				if (!already_retried_all) {
+					DLOG_WARN("No more nodes available. Will retry all nodes from the beginning.");
+					current_index = 0;
+					current_node_attempts = 0;
+					total_nodes_tried = 0;  // Reset to try all nodes again
+					already_retried_all = true;  // Mark that we've done a retry cycle
+					now = current_time_millis();  // Update time for fresh cooldown checks
+					continue;
+				} else {
+					// Already retried all nodes once, give up
+					DLOG_ERROR("All nodes failed after retry cycle");
+					break;
+				}
+			}
+
+			current_index = next_index;
+			current_node_attempts = 0;
+			total_nodes_tried++;
+		}
+		// Otherwise, retry the same node
+	}
+
+	// All nodes failed
+	DLOG_ERROR("All %d Bitcoin nodes failed to respond!", cfg->bitcoind_node_count);
+	pthread_mutex_unlock(&bitcoind_failover_mutex);
+	return NULL;
+}
+
+void bitcoind_get_node_stats(global_config_t *cfg, int node_index, char *stats_json_out, size_t max_len) {
+	if (node_index < 0 || node_index >= cfg->bitcoind_node_count) {
+		snprintf(stats_json_out, max_len, "{\"error\":\"invalid node index\"}");
+		return;
+	}
+
+	pthread_mutex_lock(&bitcoind_nodes_mutex);
+
+	T_BITCOIND_NODE_CONFIG *node = &cfg->bitcoind_nodes[node_index];
+
+	const char *status;
+	if (!node->enabled) {
+		status = "disabled";
+	} else if (node_index == cfg->bitcoind_current_node_index) {
+		status = "active";
+	} else if (node->consecutive_failures > 0) {
+		uint64_t now = current_time_millis();
+		uint64_t time_since_failure = now - node->last_failure_time;
+		uint64_t cooldown_ms = cfg->bitcoind_failover_cooldown_sec * 1000;
+
+		if (time_since_failure < cooldown_ms) {
+			status = "failed";
+		} else {
+			status = "available";
+		}
+	} else {
+		status = "available";
+	}
+
+	double success_rate = 0.0;
+	uint32_t total_requests = node->total_successes + node->total_failures;
+	if (total_requests > 0) {
+		success_rate = (double)node->total_successes / (double)total_requests * 100.0;
+	}
+
+	snprintf(stats_json_out, max_len,
+	    "{"
+	    "\"index\":%d,"
+	    "\"priority\":%d,"
+	    "\"rpcurl\":\"%s\","
+	    "\"enabled\":%s,"
+	    "\"status\":\"%s\","
+	    "\"consecutive_failures\":%u,"
+	    "\"total_successes\":%u,"
+	    "\"total_failures\":%u,"
+	    "\"success_rate\":%.2f,"
+	    "\"last_success_time\":%llu,"
+	    "\"last_failure_time\":%llu"
+	    "}",
+	    node_index,
+	    node->priority,
+	    node->rpcurl,
+	    node->enabled ? "true" : "false",
+	    status,
+	    node->consecutive_failures,
+	    node->total_successes,
+	    node->total_failures,
+	    success_rate,
+	    (unsigned long long)node->last_success_time,
+	    (unsigned long long)node->last_failure_time
+	);
+
+	pthread_mutex_unlock(&bitcoind_nodes_mutex);
 }

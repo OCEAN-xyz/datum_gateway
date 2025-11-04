@@ -354,17 +354,19 @@ void *datum_gateway_fallback_notifier(void *args) {
 	p1[0] = 0;
 	json_t *gbbh, *res_val;
 	const char *s;
-	
+
 	tcurl = curl_easy_init();
 	if (!tcurl) {
 		DLOG_FATAL("Could not initialize cURL");
 		panic_from_thread(__LINE__);
 	}
 	DLOG_DEBUG("Fallback notifier thread ready.");
-	
+
 	while(1) {
 		snprintf(req, sizeof(req), "{\"jsonrpc\":\"1.0\",\"id\":\"%"PRIu64"\",\"method\":\"getbestblockhash\",\"params\":[]}", current_time_millis());
-		gbbh = bitcoind_json_rpc_call(tcurl, &datum_config, req);
+
+		// Use failover system for fallback notifier too
+		gbbh = bitcoind_json_rpc_call_with_failover(tcurl, &datum_config, req, NULL);
 		if (gbbh) {
 			res_val = json_object_get(gbbh, "result");
 			if (!res_val) {
@@ -442,17 +444,26 @@ void *datum_gateway_template_thread(void *args) {
 	
 	while(1) {
 		i++;
-		
-		// fetch latest template
+
+		// fetch latest template with multi-node failover
 		snprintf(gbt_req, sizeof(gbt_req), "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
-		gbt = bitcoind_json_rpc_call(tcurl, &datum_config, gbt_req);
-		
+
+		int node_index = -1;
+		gbt = bitcoind_json_rpc_call_with_failover(tcurl, &datum_config, gbt_req, &node_index);
+
 		if (!gbt) {
-			datum_blocktemplates_error = "Could not fetch new template!";
-			DLOG_ERROR("Could not fetch new template from %s!", datum_config.bitcoind_rpcurl);
+			datum_blocktemplates_error = "Could not fetch new template from any Bitcoin node!";
+			DLOG_ERROR("Could not fetch new template from any of %d configured Bitcoin node(s)!",
+			           datum_config.bitcoind_node_count);
 			sleep(1);
 			continue;
 		} else {
+			// Periodically check if higher-priority nodes are available
+			if (datum_config.bitcoind_try_higher_priority) {
+				if (bitcoind_should_try_higher_priority(&datum_config)) {
+					DLOG_DEBUG("Higher-priority Bitcoin nodes may be available, will check next iteration");
+				}
+			}
 			res_val = json_object_get(gbt, "result");
 			if (!res_val) {
 				datum_blocktemplates_error = "Could not decode GBT result!";

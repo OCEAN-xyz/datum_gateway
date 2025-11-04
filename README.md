@@ -177,7 +177,22 @@ blocknotify=wget -q -O /dev/null http://datum-gateway:7152/NOTIFY
 
 ### Connecting to a Bitcoin Node
 
-When running the DATUM Gateway in Docker, you need to configure it to connect to your Bitcoin node. The connection method depends on where your Bitcoin node is running:
+When running the DATUM Gateway in Docker, you need to configure it to connect to your Bitcoin node(s). The DATUM Gateway supports connecting to multiple Bitcoin nodes for automatic failover and high availability.
+
+#### Multi-Node Configuration
+
+The Gateway supports configuring multiple Bitcoin nodes with priority-based failover. Nodes are tried in order of priority (0 = highest priority), and the Gateway will automatically fail over to backup nodes if the primary node becomes unavailable.
+
+**Configuration options:**
+- `nodes`: Array of Bitcoin node configurations (at least one required)
+  - `rpcurl`: Full RPC URL (e.g., "http://localhost:8332")
+  - `rpcuser`: RPC username
+  - `rpcpassword`: RPC password
+  - `priority`: Node priority (0 = highest, lower numbers tried first)
+  - `enabled`: Whether this node is enabled (true/false)
+- `max_consecutive_failures`: Number of attempts to retry a node before switching to the next node (default: 3, range: 1-100)
+- `failover_cooldown_seconds`: Time to wait before retrying a failed node (default: 30, range: 5-300)
+- `try_higher_priority_nodes`: Automatically recover to higher priority nodes when available (default: true)
 
 #### 1. Bitcoin Node Running in Docker (Same Network)
 
@@ -185,10 +200,19 @@ If your Bitcoin node is also running in a Docker container on the same network, 
 
 ```json
 {
-  "rpc_host": "bitcoin-node",
-  "rpc_port": 8332,
-  "rpc_user": "your_rpc_user",
-  "rpc_pass": "your_rpc_password"
+  "bitcoind": {
+    "nodes": [
+      {
+        "rpcurl": "http://bitcoin-node:8332",
+        "rpcuser": "your_rpc_user",
+        "rpcpassword": "your_rpc_password",
+        "priority": 0,
+        "enabled": true
+      }
+    ],
+    "failover_cooldown_seconds": 30,
+    "try_higher_priority_nodes": true
+  }
 }
 ```
 
@@ -205,10 +229,17 @@ If your Bitcoin node is running directly on the host system or in a container th
 **Option A: Using host.docker.internal (recommended)**
 ```json
 {
-  "rpc_host": "host.docker.internal",
-  "rpc_port": 8332,
-  "rpc_user": "your_rpc_user",
-  "rpc_pass": "your_rpc_password"
+  "bitcoind": {
+    "nodes": [
+      {
+        "rpcurl": "http://host.docker.internal:8332",
+        "rpcuser": "your_rpc_user",
+        "rpcpassword": "your_rpc_password",
+        "priority": 0,
+        "enabled": true
+      }
+    ]
+  }
 }
 ```
 
@@ -222,10 +253,17 @@ docker run --network host -v /path/to/config:/app/config datum_gateway
 Then configure using localhost:
 ```json
 {
-  "rpc_host": "localhost",
-  "rpc_port": 8332,
-  "rpc_user": "your_rpc_user",
-  "rpc_pass": "your_rpc_password"
+  "bitcoind": {
+    "nodes": [
+      {
+        "rpcurl": "http://localhost:8332",
+        "rpcuser": "your_rpc_user",
+        "rpcpassword": "your_rpc_password",
+        "priority": 0,
+        "enabled": true
+      }
+    ]
+  }
 }
 ```
 
@@ -240,10 +278,53 @@ If your Bitcoin node is running on a different machine, use the hostname or IP a
 
 ```json
 {
-  "rpc_host": "192.168.1.100",
-  "rpc_port": 8332,
-  "rpc_user": "your_rpc_user",
-  "rpc_pass": "your_rpc_password"
+  "bitcoind": {
+    "nodes": [
+      {
+        "rpcurl": "http://192.168.1.100:8332",
+        "rpcuser": "your_rpc_user",
+        "rpcpassword": "your_rpc_password",
+        "priority": 0,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+#### 4. Multiple Bitcoin Nodes with Failover
+
+For high availability, you can configure multiple Bitcoin nodes. The Gateway will use the highest priority (lowest number) available node:
+
+```json
+{
+  "bitcoind": {
+    "nodes": [
+      {
+        "rpcurl": "http://192.168.1.100:8332",
+        "rpcuser": "primary_user",
+        "rpcpassword": "primary_password",
+        "priority": 0,
+        "enabled": true
+      },
+      {
+        "rpcurl": "http://192.168.1.101:8332",
+        "rpcuser": "backup_user",
+        "rpcpassword": "backup_password",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "rpcurl": "http://192.168.1.102:8332",
+        "rpcuser": "tertiary_user",
+        "rpcpassword": "tertiary_password",
+        "priority": 2,
+        "enabled": true
+      }
+    ],
+    "failover_cooldown_seconds": 30,
+    "try_higher_priority_nodes": true
+  }
 }
 ```
 

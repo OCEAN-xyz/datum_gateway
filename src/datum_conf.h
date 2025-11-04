@@ -39,6 +39,7 @@
 #define DATUM_CONFIG_MAX_ARRAY_ENTRIES 32
 #define DATUM_MAX_BLOCK_SUBMITS DATUM_CONFIG_MAX_ARRAY_ENTRIES
 #define DATUM_MAX_SUBMIT_URL_LEN 512
+#define DATUM_MAX_BITCOIND_NODES 8
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -95,6 +96,23 @@ int datum_config_parse_username_mods(struct datum_username_mod **umods_p, json_t
 struct datum_username_mod *datum_username_mods_next(struct datum_username_mod *prev_umod);
 struct datum_username_mod *datum_username_mods_find(struct datum_username_mod *umod, const char *modname, size_t modname_len);
 
+// Bitcoin node configuration for multi-node support
+typedef struct {
+	char rpcurl[256];
+	char rpcuser[128];
+	char rpcpassword[128];
+	char rpccookiefile[1024];
+	bool enabled;                    // Can be disabled in config
+	int priority;                    // Lower = higher priority (0 = primary)
+
+	// Runtime state (not persisted to config file)
+	uint64_t last_success_time;      // Timestamp of last successful GBT
+	uint64_t last_failure_time;      // Timestamp of last failure
+	uint32_t consecutive_failures;   // Consecutive failures (reset on success)
+	uint32_t total_failures;         // Lifetime failure count
+	uint32_t total_successes;        // Lifetime success count
+} T_BITCOIND_NODE_CONFIG;
+
 // Globally accessable config options
 typedef struct {
 	char bitcoind_rpcuserpass[256];
@@ -104,7 +122,15 @@ typedef struct {
 	char bitcoind_rpcurl[256];
 	int bitcoind_work_update_seconds;
 	bool bitcoind_notify_fallback;
-	
+
+	// Multi-node configuration (replaces single bitcoind_* fields for new configs)
+	int bitcoind_node_count;
+	T_BITCOIND_NODE_CONFIG bitcoind_nodes[DATUM_MAX_BITCOIND_NODES];
+	int bitcoind_current_node_index;       // Currently active node (index into bitcoind_nodes)
+	int bitcoind_failover_cooldown_sec;    // Time before retrying failed node (default: 30)
+	int bitcoind_max_consecutive_failures; // Failures before switching nodes (default: 3)
+	bool bitcoind_try_higher_priority;     // Periodically try higher priority nodes (default: true)
+
 	char stratum_v1_listen_addr[128];
 	int stratum_v1_listen_port;
 	int stratum_v1_max_clients;

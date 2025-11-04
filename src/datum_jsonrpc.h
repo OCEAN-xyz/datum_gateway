@@ -69,4 +69,18 @@ bool update_rpc_cookie(global_config_t *cfg);
 void update_rpc_auth(global_config_t *cfg);
 json_t *bitcoind_json_rpc_call(CURL *curl, global_config_t *cfg, const char *rpc_req);
 
+// Multi-node failover functions
+T_BITCOIND_NODE_CONFIG* bitcoind_get_active_node(global_config_t *cfg);
+json_t *bitcoind_json_rpc_call_single(CURL *curl, T_BITCOIND_NODE_CONFIG *node, const char *rpc_req);
+json_t *bitcoind_json_rpc_call_with_failover(CURL *curl, global_config_t *cfg, const char *rpc_req, int *node_index_out);
+void bitcoind_mark_node_failed(global_config_t *cfg, int node_index);
+void bitcoind_mark_node_success(global_config_t *cfg, int node_index);
+int bitcoind_get_next_node(global_config_t *cfg, int current_index);
+bool bitcoind_should_try_higher_priority(global_config_t *cfg);
+void bitcoind_get_node_stats(global_config_t *cfg, int node_index, char *stats_json_out, size_t max_len);
+
+// Background recovery thread management
+void bitcoind_recovery_thread_start(global_config_t *cfg);
+void bitcoind_recovery_thread_stop(void);
+
 #endif

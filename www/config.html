@@ -174,7 +174,8 @@
 		<div class="table-wrapper">
 			<div class="table-container">
 				<h2>Advanced</h2>
-				<input type="hidden" name="checkboxes" value="stratum_fingerprint_miners datum_always_pay_self"></input>
+				<h5>Changing these settings and saving will cause the DATUM gateway to restart</h5>
+				<input type="hidden" name="checkboxes" value="stratum_fingerprint_miners datum_always_pay_self bitcoind_try_higher_priority_nodes"></input>
 				<div class="setting-row">
 					<div class="flex-row">
 						<input type="checkbox" name="stratum_fingerprint_miners" id="stratum_fingerprint_miners" value="1"${checked:stratum_fingerprint_miners}${disabled:*ro}></input>
@@ -194,22 +195,35 @@
 					</div>
 					<label for="bitcoind_work_update_seconds" class="tip">5-120 seconds. 40 suggested.</label>
 				</div>
-				<div class="setting-row">
-					<div class="flex-row">
-						<label for="bitcoind_rpcurl" class="label">bitcoind RPC URL:</label>
-						<input maxlength="128" name="bitcoind_rpcurl" id="bitcoind_rpcurl" value="${bitcoind_rpcurl}"${*ro}></input>
-					</div>
+			<div class="setting-row">
+				<div class="flex-row">
+					<label for="bitcoind_failover_cooldown_seconds" class="label">Failover cooldown period:</label>
+					<input maxlength="3" name="bitcoind_failover_cooldown_seconds" id="bitcoind_failover_cooldown_seconds" value="${bitcoind_failover_cooldown_seconds}"${*ro}></input>
 				</div>
-				<div class="setting-row">
-					<div class="flex-row">
-						<label for="bitcoind_rpcuser" class="label">bitcoind RPC username:</label>
-						<input maxlength="128" name="bitcoind_rpcuser" id="bitcoind_rpcuser" value="${bitcoind_rpcuser}"${*ro}></input>
-					</div>
+				<label for="bitcoind_failover_cooldown_seconds" class="tip">Seconds to wait before retrying a failed node. Default: 30</label>
+			</div>
+			<div class="setting-row">
+				<div class="flex-row">
+					<label for="bitcoind_max_consecutive_failures" class="label">Max failures before failover:</label>
+					<input maxlength="3" name="bitcoind_max_consecutive_failures" id="bitcoind_max_consecutive_failures" value="${bitcoind_max_consecutive_failures}"${*ro}></input>
 				</div>
-				<div class="setting-row">
-					<div class="flex-row">
-						<label for="bitcoind_rpcpassword" class="label">bitcoind RPC password:</label>
-						<input maxlength="128" name="bitcoind_rpcpassword" id="bitcoind_rpcpassword" placeholder="****************" type="password"${*ro}></input>
+				<label for="bitcoind_max_consecutive_failures" class="tip">Number of consecutive failures before switching to another node. Default: 3</label>
+			</div>
+			<div class="setting-row">
+				<div class="flex-row">
+					<label for="bitcoind_try_higher_priority_nodes" class="label">Auto-recover to higher priority nodes:</label>
+					<input type="checkbox" name="bitcoind_try_higher_priority_nodes" id="bitcoind_try_higher_priority_nodes"${checked:bitcoind_try_higher_priority_nodes}${*ro}></input>
+				</div>
+				<label for="bitcoind_try_higher_priority_nodes" class="tip">Automatically switch back to primary node when it becomes available</label>
+			</div>
+			<br>
+				<div id="bitcoind_nodes_container">
+					<div class="setting-row">
+						<h3 style="margin: 10px 0;">Bitcoin Nodes Configuration</h3>
+					</div>
+					<div id="bitcoind_nodes_list"></div>
+					<div class="setting-row" style="text-align: center;">
+						<button type="button" onclick="addBitcoindNode()"${disabled:*ro}>Add Node</button>
 					</div>
 				</div>
 			</div>
@@ -225,6 +239,7 @@
 		function reward_sharing_changed() {
 			var newvalue = document.getElementById('reward_sharing').value;
 			var fields = document.getElementById('pool_settings').getElementsByTagName('input');
+		var bitcoindNodesModified = false;
 			if (newvalue == 'never') {
 				for (var i = 0; i < fields.length; ++i) {
 					fields[i].setAttribute('disabled', true);
@@ -236,6 +251,169 @@
 			}
 		}
 		reward_sharing_changed();
+
+		// Bitcoin Nodes Management
+		var bitcoindNodes = [];
+		var readonly = document.querySelector("button[disabled]") !== null;
+
+		function loadBitcoindNodes() {
+			fetch('/api/bitcoind_nodes')
+				.then(response => response.json())
+				.then(nodes => {
+					// Mark all nodes as having unchanged passwords (API doesn't return passwords)
+					for (var i = 0; i < nodes.length; i++) {
+						nodes[i].rpcpassword = '***KEEP_EXISTING***';
+					}
+					bitcoindNodes = nodes;
+				bitcoindNodesModified = false;
+					renderBitcoindNodes();
+				})
+				.catch(err => console.error('Failed to load nodes:', err));
+		}
+
+		function renderBitcoindNodes() {
+			var container = document.getElementById('bitcoind_nodes_list');
+			if (!container) return;
+
+			if (bitcoindNodes.length === 0) {
+				container.innerHTML = '<div class="setting-row"><em>No nodes configured. Click "Add Node" to add one.</em></div>';
+				return;
+			}
+
+			var html = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+			html += '<thead><tr style="background: #333;">';
+			html += '<th style="padding: 8px; text-align: left;">Priority</th>';
+			html += '<th style="padding: 8px; text-align: left;">RPC URL</th>';
+			html += '<th style="padding: 8px; text-align: left;">Username</th>';
+			html += '<th style="padding: 8px; text-align: center;">Enabled</th>';
+			html += '<th style="padding: 8px; text-align: center;">Status</th>';
+			html += '<th style="padding: 8px; text-align: center;">Actions</th>';
+			html += '</tr></thead><tbody>';
+
+			for (var i = 0; i < bitcoindNodes.length; i++) {
+				var node = bitcoindNodes[i];
+				var status = node.is_active ? '<span style="color: #27ae60;">&#x2713; Active</span>' :
+				             (node.consecutive_failures > 0 ? '<span style="color: #e74c3c;">Failed</span>' :
+				             '<span style="color: #95a5a6;">Standby</span>');
+
+				html += '<tr style="border-bottom: 1px solid #444;">';
+				html += '<td style="padding: 8px;">' + node.priority + '</td>';
+				html += '<td style="padding: 8px;">' + node.rpcurl + '</td>';
+				html += '<td style="padding: 8px;">' + node.rpcuser + '</td>';
+				html += '<td style="padding: 8px; text-align: center;">' + (node.enabled ? '&#x2713;' : '&#x2717;') + '</td>';
+				html += '<td style="padding: 8px; text-align: center;">' + status + '</td>';
+				html += '<td style="padding: 8px; text-align: center;">';
+				if (!readonly) {
+					html += '<button type="button" onclick="editBitcoindNode(' + i + ')" style="margin: 2px; padding: 5px 10px;">Edit</button>';
+					html += '<button type="button" onclick="deleteBitcoindNode(' + i + ')" style="margin: 2px; padding: 5px 10px;">Delete</button>';
+				}
+				html += '</td>';
+				html += '</tr>';
+			}
+
+			html += '</tbody></table>';
+			container.innerHTML = html;
+			updateBitcoindNodesFormData();
+		}
+
+		function updateBitcoindNodesFormData() {
+			if (!bitcoindNodesModified) return;
+			// Remove existing hidden inputs
+			var existing = document.querySelectorAll('input[name^="bitcoind_nodes_"]');
+			for (var i = 0; i < existing.length; i++) {
+				existing[i].parentNode.removeChild(existing[i]);
+			}
+
+			// Prepare clean node data (remove runtime statistics)
+			var cleanNodes = [];
+			for (var i = 0; i < bitcoindNodes.length; i++) {
+				cleanNodes.push({
+					index: bitcoindNodes[i].index,
+					rpcurl: bitcoindNodes[i].rpcurl,
+					rpcuser: bitcoindNodes[i].rpcuser,
+					rpcpassword: bitcoindNodes[i].rpcpassword,
+					priority: bitcoindNodes[i].priority,
+					enabled: bitcoindNodes[i].enabled
+				});
+			}
+
+			// Add nodes as JSON string
+			var form = document.querySelector('form');
+			var input = document.createElement('input');
+			input.type = 'hidden';
+			input.name = 'bitcoind_nodes_json';
+			input.value = JSON.stringify(cleanNodes);
+			form.appendChild(input);
+		}
+
+		function addBitcoindNode() {
+			var url = prompt('Enter Bitcoin RPC URL:', 'http://localhost:8332');
+			if (!url) return;
+
+			var user = prompt('Enter RPC username:', 'datum');
+			if (!user) return;
+
+			var pass = prompt('Enter RPC password:');
+			if (!pass) return;
+
+			var priority = prompt('Enter priority (0 = highest):', bitcoindNodes.length);
+			if (priority === null) return;
+			priority = parseInt(priority) || 0;
+
+			bitcoindNodesModified = true;
+			bitcoindNodes.push({
+				rpcurl: url,
+				rpcuser: user,
+				rpcpassword: pass,
+				priority: priority,
+				enabled: true,
+				is_active: false,
+				consecutive_failures: 0,
+				total_failures: 0,
+				total_successes: 0
+			});
+
+			renderBitcoindNodes();
+		}
+
+		function editBitcoindNode(index) {
+			var node = bitcoindNodes[index];
+
+			var url = prompt('Enter Bitcoin RPC URL:', node.rpcurl);
+			if (url === null) return;
+
+			var user = prompt('Enter RPC username:', node.rpcuser);
+			if (user === null) return;
+
+			var pass = prompt('Enter RPC password (leave blank to keep current):');
+
+			var priority = prompt('Enter priority (0 = highest):', node.priority);
+			if (priority === null) return;
+			priority = parseInt(priority) || 0;
+
+			var enabled = confirm('Enable this node?');
+
+			node.rpcurl = url;
+			node.rpcuser = user;
+			if (pass) node.rpcpassword = pass;
+			node.priority = priority;
+			node.enabled = enabled;
+			bitcoindNodesModified = true;
+
+			renderBitcoindNodes();
+		}
+
+		function deleteBitcoindNode(index) {
+			if (!confirm('Are you sure you want to delete this node?')) return;
+			bitcoindNodesModified = true;
+			bitcoindNodes.splice(index, 1);
+			renderBitcoindNodes();
+		}
+
+		// Load nodes on page load
+		if (document.getElementById('bitcoind_nodes_container')) {
+			loadBitcoindNodes();
+		}
 	</script>
 </body>
 </html>

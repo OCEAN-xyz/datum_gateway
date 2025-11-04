@@ -222,7 +222,14 @@ int main(const int argc, const char * const * const argv) {
 		DLOG_ERROR("DATUM server connection could not be established.");
 		fflush(stdout);
 	}
-	
+
+	// Start background recovery thread for multi-node failover
+	if (datum_config.bitcoind_node_count > 1 && datum_config.bitcoind_try_higher_priority) {
+		DLOG_INFO("Starting Bitcoin node background recovery thread (cooldown: %d seconds)",
+		         datum_config.bitcoind_failover_cooldown_sec);
+		bitcoind_recovery_thread_start(&datum_config);
+	}
+
 	DLOG_DEBUG("Starting template fetcher thread");
 	pthread_create(&pthread_datum_gateway_template, NULL, datum_gateway_template_thread, NULL);
 	
@@ -238,6 +245,7 @@ int main(const int argc, const char * const * const argv) {
 		if (panic_mode) {
 			DLOG_FATAL("*** PANIC TRIGGERED: EXITING IMMEDIATELY ***");
 			printf("PANIC EXIT.\n");
+			bitcoind_recovery_thread_stop();  // Clean shutdown of recovery thread
 			sleep(1); // almost immediately, wait a second for the logger!
 			fflush(stdout);
 			usleep(2000);
