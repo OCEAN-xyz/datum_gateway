@@ -52,11 +52,11 @@ char submitblock_hash[256] = { 0 };
 void preciousblock(CURL *curl, char *blockhash) {
 	json_t *json;
 	char rpc_data[384];
-	
+
 	snprintf(rpc_data, sizeof(rpc_data), "{\"method\":\"preciousblock\",\"params\":[\"%s\"],\"id\":1}", blockhash);
-	json = bitcoind_json_rpc_call(curl, &datum_config, rpc_data);
+	json = bitcoind_json_rpc_call_with_failover(curl, &datum_config, rpc_data, NULL);
 	if (!json) return;
-	
+
 	json_decref(json);
 	return;
 }
@@ -64,15 +64,21 @@ void preciousblock(CURL *curl, char *blockhash) {
 void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req, const char *block_hash_hex) {
 	json_t *r;
 	char *s = NULL;
+	int node_index = -1;
 	// TODO: Move these types of things to the conf file
 	if (!url) {
-		r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
+		r = bitcoind_json_rpc_call_with_failover(tcurl, &datum_config, submitblock_req, &node_index);
 	} else {
 		r = json_rpc_call(tcurl, url, NULL, submitblock_req);
 	}
 	if (!r) {
 		// oddly, this means success here.
-		DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
+		if (node_index >= 0) {
+			DLOG_INFO("Block %s submitted to upstream node successfully! (node %d: %s)",
+			         block_hash_hex, node_index, datum_config.bitcoind_nodes[node_index].rpcurl);
+		} else {
+			DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
+		}
 	} else {
 		s = json_dumps(r, JSON_ENCODE_ANY);
 		if (!s) {
@@ -83,7 +89,7 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 		}
 		json_decref(r);
 	}
-	
+
 	// precious block!
 	preciousblock(tcurl, submitblock_hash);
 }

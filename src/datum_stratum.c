@@ -2233,13 +2233,19 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 		usleep(100000);
 		return 0;
 	}
-	
-	// make the call!
-	r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
+
+	// make the call with failover support!
+	int node_index = -1;
+	r = bitcoind_json_rpc_call_with_failover(tcurl, &datum_config, submitblock_req, &node_index);
 	curl_easy_cleanup(tcurl);
 	if (!r) {
 		// oddly, this means success here.
-		DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
+		if (node_index >= 0) {
+			DLOG_INFO("Block %s submitted to upstream node successfully! (node %d: %s)",
+			         block_hash_hex, node_index, datum_config.bitcoind_nodes[node_index].rpcurl);
+		} else {
+			DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
+		}
 		ret = 1;
 	} else {
 		s = json_dumps(r, JSON_ENCODE_ANY);
