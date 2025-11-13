@@ -80,6 +80,24 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 			DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
 		}
 	} else {
+		// Check if response is "duplicate" - this means the block was already accepted
+		json_t *result_field = json_object_get(r, "result");
+		if (result_field && json_is_string(result_field)) {
+			const char *result_str = json_string_value(result_field);
+			if (result_str && strcmp(result_str, "duplicate") == 0) {
+				// "duplicate" means the block was already accepted - this is SUCCESS
+				if (node_index >= 0) {
+					DLOG_INFO("Block %s already in blockchain (duplicate response from node %d: %s)",
+					         block_hash_hex, node_index, datum_config.bitcoind_nodes[node_index].rpcurl);
+				} else {
+					DLOG_INFO("Block %s already in blockchain (duplicate response)",block_hash_hex);
+				}
+				json_decref(r);
+				goto do_precious;
+			}
+		}
+
+		// Actual rejection/error
 		s = json_dumps(r, JSON_ENCODE_ANY);
 		if (!s) {
 			DLOG_WARN("Upstream node rejected our block! (unknown)");
@@ -90,6 +108,7 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 		json_decref(r);
 	}
 
+do_precious:
 	// precious block!
 	preciousblock(tcurl, submitblock_hash);
 }
