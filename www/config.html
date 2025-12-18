@@ -108,6 +108,14 @@
 					</div>
 					<label for="mining_pool_address" class="tip">Mining rewards will be received by this Bitcoin address, by default.</label>
 				</div>
+				<h2>Page Refresh</h2>
+				<div class="setting-row">
+					<div class="flex-row">
+						<label for="time_out_in_secs" class="label">Refresh interval (Status Page):</label>
+						<input maxlength="3" name="time_out_in_secs" id="time_out_in_secs" value="${time_out_in_secs}"${*ro}></input>
+					</div>
+					<label for="time_out_in_secs" class="tip">This is the time in seconds the status page will refresh, 5 seconds by default.</label>
+				</div>
 				<div class="setting-row">
 					<div class="flex-row">
 						<label for="username_behaviour" class="label">Send Miner Usernames To Pool:</label>

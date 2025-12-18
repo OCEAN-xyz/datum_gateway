@@ -139,6 +139,12 @@ void datum_api_var_DATUM_MINER_TAG(char *buffer, size_t buffer_size, const T_DAT
 	buffer[i+1] = '"';
 	buffer[i+2] = 0;
 }
+void datum_api_var_PAGE_REFRESH_TIMED_OUT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	if (datum_config.datum_page_refresh_seconds != 0)
+	{
+		snprintf(buffer, buffer_size, "%d", datum_config.datum_page_refresh_seconds);
+	}
+}
 void datum_api_var_DATUM_POOL_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_config.override_vardiff_min);
 }
@@ -256,7 +262,9 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
 	{"STRATUM_JOB_TXNCOUNT", datum_api_var_STRATUM_JOB_TXNCOUNT},
-	
+
+	{"PAGE_REFRESH_TIMED_OUT", datum_api_var_PAGE_REFRESH_TIMED_OUT},
+
 	{NULL, NULL} // Mark the end of the array
 };
 
@@ -957,7 +965,10 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 	const size_t var_name_len_2 = var_end - var_start_2;
 	const char * const underscore_pos = memchr(var_start_2, '_', var_name_len_2);
 	int val;
-	if (var_name_len_2 == 3 && 0 == strncmp(var_start_2, "*ro", 3)) {
+	if (var_name_len_2 == 16 && 0 == strncmp(var_start_2, "time_out_in_secs", 16))
+	{
+		val = datum_config.datum_page_refresh_seconds;
+	} else if (var_name_len_2 == 3 && 0 == strncmp(var_start_2, "*ro", 3)) {
 		val = !(datum_config.api_modify_conf && datum_config.api_admin_password_len);
 		if (!colon_pos) {
 			var_start = "readonly:";
@@ -1149,7 +1160,17 @@ struct datum_api_config_set_status {
 // If anything fails (including validation), errors is appended and false is returned
 bool datum_api_config_set(const char * const key, const char * const val, struct datum_api_config_set_status * const status) {
 	json_t * const errors = status->errors;
-	if (0 == strcmp(key, "mining_pool_address")) {
+	if (0 == strcmp(key, "time_out_in_secs")) {
+		const int val_int = datum_atoi_strict(val, strlen(val));
+		if (val_int == datum_config.datum_page_refresh_seconds) return true;
+		if (val_int < 0) {
+			json_t * const j = json_pack("{s:i}", key, val_int);
+			json_array_append_new(errors, j);
+			return false;
+		}
+		datum_config.datum_page_refresh_seconds = val_int;
+		datum_api_json_modify_new("page_refresh", key, json_integer(val_int));
+	} else if (0 == strcmp(key, "mining_pool_address")) {
 		if (0 == strcmp(val, datum_config.mining_pool_address)) return true;
 		unsigned char dummy[64];
 		if (!addr_2_output_script(val, &dummy[0], 64)) {
