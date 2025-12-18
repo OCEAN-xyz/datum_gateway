@@ -272,6 +272,10 @@ blocknotify=wget -q -O /dev/null http://datum-gateway-host-ip:7152/NOTIFY
 
 - By default, if the connection with the pool is lost and fails to reconnect, the Gateway will disconnect all stratum clients. This way miners can use their built-in failover and switch to non-DATUM mining, or an alternate/backup Gateway.
 - Accepted/rejected share counts on mining hardware may not perfectly match with the pool. The delta may vary depending on the Gateway's configuration. This is because shares are first accepted or rejected as valid for your local template based on your local node, and then again accepted or rejected based on the pool's requirements, latency to the pool (stale work), latency between your node and the network (stale work), etc.  Stratum v1 has no mechanism to report back to the miner that previously accepted work is now rejected, and it doesn't make sense to wait for the pool before responding, either.
+ - **Share Statistics**: The "Shares Accepted" and "Shares Rejected" counters on the web dashboard prefer pool statistics when a pool is configured/active, and otherwise show local stratum client statistics:
+  - When a DATUM pool connection is active (or configured), the dashboard shows shares accepted/rejected by the pool (pool perspective)
+  - When no pool connection is active, the dashboard shows shares accepted/rejected from connected stratum miners (local perspective)
+  - In all modes, block templates are constructed from your own Bitcoin node
 
 **Most importantly**, please note that this is currently a public **BETA** release. While best efforts have been made to ensure this software is as stable and as useful as possible, you may still encounter issues.
 
