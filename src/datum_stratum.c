@@ -2236,7 +2236,7 @@ int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t 
 	}
 	
 	// make the call!
-	r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
+	r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req, /*failonerror=*/true);
 	curl_easy_cleanup(tcurl);
 	if (!r) {
 		// oddly, this means success here.
