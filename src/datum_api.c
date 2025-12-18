@@ -991,6 +991,9 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 		val = (!datum_config.datum_pooled_mining_only) && datum_config.datum_pool_host[0];
 	} else if (var_name_len_2 == 21 && 0 == strncmp(var_start_2, "*reward_sharing_never", 21)) {
 		val = (!datum_config.datum_pooled_mining_only) && !datum_config.datum_pool_host[0];
+	} else if (var_name_len_2 == 32 && 0 == strncmp(var_start_2, "*mining_coinbase_tag_primary_max", 32)) {
+		val = 88 - strlen(datum_config.mining_coinbase_tag_secondary);
+		if (val > 60) val = 60;
 	} else if (var_name_len_2 == 34 && 0 == strncmp(var_start_2, "*mining_coinbase_tag_secondary_max", 34)) {
 		val = 88 - strlen(datum_config.mining_coinbase_tag_primary);
 		if (val > 60) val = 60;
@@ -1179,12 +1182,22 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		if (!datum_config.datum_pool_pass_full_users) {
 			datum_api_json_modify_new("datum", "pool_pass_workers", json_boolean(datum_config.datum_pool_pass_workers));
 		}
+	} else if (0 == strcmp(key, "mining_coinbase_tag_primary")) {
+		if (0 == strcmp(val, datum_config.mining_coinbase_tag_primary)) return true;
+		size_t len_limit = 88 - strlen(datum_config.mining_coinbase_tag_secondary);
+		if (len_limit > 60) len_limit = 60;
+		if (strlen(val) > len_limit) {
+			json_array_append_new(errors, json_string_nocheck("Coinbase Tag primary is too long"));
+			return false;
+		}
+		strcpy(datum_config.mining_coinbase_tag_primary, val);
+		datum_api_json_modify_new("mining", "coinbase_tag_primary", json_string(val));
 	} else if (0 == strcmp(key, "mining_coinbase_tag_secondary")) {
 		if (0 == strcmp(val, datum_config.mining_coinbase_tag_secondary)) return true;
 		size_t len_limit = 88 - strlen(datum_config.mining_coinbase_tag_primary);
 		if (len_limit > 60) len_limit = 60;
 		if (strlen(val) > len_limit) {
-			json_array_append_new(errors, json_string_nocheck("Coinbase Tag is too long"));
+			json_array_append_new(errors, json_string_nocheck("Coinbase Tag secondary is too long"));
 			return false;
 		}
 		strcpy(datum_config.mining_coinbase_tag_secondary, val);
