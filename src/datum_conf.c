@@ -110,7 +110,10 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.stratum_v1_idle_timeout_no_share, 	.default_int = 7200 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "idle_timeout_max_last_work",	.description = "Seconds we allow a subscribed connection to be idle since its last accepted share? (0 disables)",
 		.required = false, .ptr = &datum_config.stratum_v1_idle_timeout_max_last_work, 	.default_int = 0 },
-	{ .var_type = DATUM_CONF_USERNAME_MODS, .category = "stratum", .name = "username_modifiers", .description = "Modifiers to redirect some portion of shares to alternate usernames", .required = false, .ptr = &datum_config.stratum_username_mod, },
+	{ .var_type = DATUM_CONF_STRING, 	.category = "stratum", 		.name = "password",			.description = "Authentication password (disabled if blank)",
+		.required = false, .ptr = datum_config.stratum_v1_password,				.default_string[0] = "", .max_string_len = sizeof(datum_config.stratum_v1_password) },
+	{ .var_type = DATUM_CONF_USERNAME_MODS, .category = "stratum", .name = "username_modifiers", .description = "Modifiers to redirect some portion of shares to alternate usernames",
+		.required = false, .ptr = &datum_config.stratum_username_mod, },
 	
 	// mining settings
 	{ .var_type = DATUM_CONF_STRING, 	.category = "mining", 		.name = "pool_address",				.description = "Bitcoin address used for mining rewards.",
@@ -589,6 +592,8 @@ int datum_read_config(const char *conffile) {
 		DLOG_FATAL("Stratum server stratum.share_stale_seconds must not exceed 150 (suggest 120)");
 		return 0;
 	}
+	
+	datum_config.stratum_v1_password_len = strlen(datum_config.stratum_v1_password);
 	
 	if (datum_config.datum_protocol_global_timeout < (datum_config.bitcoind_work_update_seconds+5)) {
 		DLOG_FATAL("DATUM protocol global timeout must be at least the work update interval plus 5 seconds.");
