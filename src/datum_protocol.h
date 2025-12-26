@@ -48,6 +48,12 @@
 #define DATUM_PROTOCOL_VERSION "v0.4.1-beta" // this is sent to the server as a UA
 #define DATUM_PROTOCOL_CONNECT_TIMEOUT 30
 
+// Job sync protocol commands
+#define DATUM_CMD_JOB_SYNC      0x30
+#define DATUM_CMD_JOB_SYNC_ACK  0x31
+#define DATUM_CMD_SHARE_FORWARD 0x32
+#define DATUM_CMD_JOB_SYNC_INIT 0x33
+
 #define DATUM_PROTOCOL_MAX_CMD_DATA_SIZE 4194304 // 2^22 - protocol limit!
 #define DATUM_PROTOCOL_BUFFER_SIZE (DATUM_PROTOCOL_MAX_CMD_DATA_SIZE*3)
 
@@ -137,6 +143,8 @@ int datum_protocol_pow_submit(
 bool datum_protocol_thread_is_active(void);
 void datum_protocol_start_connector(void);
 unsigned char datum_protocol_setup_new_job_idx(void *sx);
+int datum_protocol_send_job_sync(void *sync);
+int datum_protocol_handle_sync_messages(unsigned char cmd, unsigned char *data, int len);
 
 extern uint64_t datum_accepted_share_count;
 extern uint64_t datum_accepted_share_diff;
