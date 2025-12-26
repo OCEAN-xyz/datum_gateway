@@ -1768,9 +1768,6 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	snprintf(s, sizeof(s), "{\"error\":null,\"id\":%"PRIu64",\"result\":[[[\"mining.notify\",\"%8.8x1\"],[\"mining.set_difficulty\",\"%8.8x2\"]],\"%8.8x\",8]}\n", id, sid, sid, sid);
 	datum_socket_send_string_to_client(c, s);
 	
-	// send them their current difficulty before sending a job
-	send_mining_set_difficulty(c);
-	
 	// mark them as subscribed so that notifies actually work
 	m->subscribed = true;
 	
