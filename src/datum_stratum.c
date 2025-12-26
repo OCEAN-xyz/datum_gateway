@@ -58,6 +58,7 @@
 #include "datum_coinbaser.h"
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
+#include "datum_api.h"
 
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
@@ -124,6 +125,55 @@ void datum_stratum_v1_shutdown_all(void) {
 	DLOG_INFO("Sent disconnect request for all stratum clients to %u threads.", shutdown_threads);
 	return;
 }
+
+static unsigned long long datum_estimate_required_fds(T_DATUM_SOCKET_APP *app) {
+	// stdio and pipes
+	unsigned long long fds = 3 + 4;
+	
+	// Stratum V1 server
+	fds += 2; // listener + epoll
+	fds += app->max_clients; // Accepted client sockets
+	fds += app->max_threads; // Worker thread epolls
+	
+	// API server (libmicrohttpd): listener + max concurrent connections + small internal overhead
+	if (datum_config.api_listen_port) {
+		fds += 1; // API listener
+		fds += DATUM_API_CONNECTION_LIMIT; // accepted API sockets
+		fds += 2; // internal polling/pipe/eventfd overhead
+	}
+	
+	// DATUM protocol client (one TCP socket + one epoll instance when enabled)
+	if (datum_config.datum_pool_host[0] != 0) {
+		fds += 2;
+	}
+	
+	// Log file
+	if (datum_config.clog_to_file && datum_config.clog_file[0]) {
+		fds += 1;
+	}
+	
+	// Submitblock JSON file write (ephemeral, but account for peak) when enabled
+	if (datum_config.mining_save_submitblocks_dir[0]) {
+		fds += 1;
+	}
+	
+	// bitcoind RPC usage via libcurl
+	// - GBT fetcher thread keeps one connection alive
+	fds += 1;
+	// - Fallback notifier (getbestblockhash poller), if enabled
+	if (datum_config.bitcoind_notify_fallback) {
+		fds += 1;
+	}
+	// - Submitblock thread
+	fds += datum_config.extra_block_submissions_count;
+	
+	// Add 50 for contingency such as DNS and temp files and round up to the next 50
+	fds += 50;
+	fds = ((fds + 49) / 50) * 50;
+	
+	return fds;
+}
+
 
 // Started as its own pthread during startup
 void *datum_stratum_v1_socket_server(void *arg) {
@@ -254,15 +304,35 @@ void *datum_stratum_v1_socket_server(void *arg) {
 	DLOG_INFO("Stratum V1 Server Init complete.");
 	DLOG_DEBUG("%"PRIu64" MB of RAM allocated for Stratum V1 server data.", ram_allocated>>20);
 	
-	// TODO: If limits are too low, attempt to set our ulimits in case we're allowed to do so but it hasn't been done before executing.
+	// If limits are too low, attempt to set our ulimits in case we're allowed to do so but it hasn't been done before executing.
 	if (!getrlimit(RLIMIT_NOFILE, &rlimit)) {
-		if (app->max_clients > rlimit.rlim_max) {
-			DLOG_WARN("*** NOTE *** Max Stratum clients (%llu) exceeds hard open file limit (Soft: %llu / Hard: %llu)", (unsigned long long)app->max_clients, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
-			DLOG_WARN("*** NOTE *** Adjust max open file hard limit or you WILL run into issues before reaching max clients!");
-		} else if (app->max_clients > rlimit.rlim_cur) {
-			DLOG_WARN("*** NOTE *** Max Stratum clients (%llu) exceeds open file soft limit (Soft: %llu / Hard: %llu)", (unsigned long long)app->max_clients, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
-			DLOG_WARN("*** NOTE *** You should increase the soft open file limit to prevent issues as you approach max clients!");
+		unsigned long long required_fds = datum_estimate_required_fds(app);
+
+		DLOG_INFO("Based on configured assuming maximum %llu open file descriptors", (unsigned long long)required_fds);
+
+		// Bail if configuration demands more than hard limit. Instruct user to raise limit or change config
+		if (required_fds > rlimit.rlim_max) {
+			DLOG_FATAL("Required file descriptors (%llu) exceed hard open file limit (Soft: %llu / Hard: %llu)", required_fds, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
+			DLOG_FATAL("Unable to continue without raising the hard limit or reducing configures clients or threads. Exiting.");
+			panic_from_thread(__LINE__);
+			return NULL;
 		}
+
+		// Raise within allowed limits
+		if (required_fds > rlimit.rlim_cur) {
+			DLOG_WARN("Required file descriptors (%llu) exceed soft open file limit (Soft: %llu / Hard: %llu)", required_fds, (unsigned long long)rlimit.rlim_cur, (unsigned long long)rlimit.rlim_max);
+			DLOG_INFO("Attempting to increase the soft limit to %llu...", required_fds);
+			
+			rlimit.rlim_cur = required_fds;
+			
+			if (setrlimit(RLIMIT_NOFILE, &rlimit) == 0) {
+				DLOG_INFO("Successfully increased the open file soft limit to %llu", (unsigned long long)rlimit.rlim_cur);
+			} else {
+				DLOG_ERROR("Failed to increase open file soft limit: %s", strerror(errno));
+			}
+		}
+	} else {
+		DLOG_ERROR("Failed to query RLIMIT_NOFILE: %s. Cannot check if file descriptor limits are sufficient for this configuration; future errors may occur.", strerror(errno));
 	}
 	
 	global_stratum_app = app;

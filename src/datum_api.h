@@ -38,6 +38,8 @@
 
 #include "datum_stratum.h"
 
+#define DATUM_API_CONNECTION_LIMIT 128
+
 typedef struct {
 	int STRATUM_ACTIVE_THREADS;
 	int STRATUM_TOTAL_CONNECTIONS;

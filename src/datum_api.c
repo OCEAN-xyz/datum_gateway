@@ -1829,7 +1829,7 @@ static struct MHD_Daemon *datum_api_try_start(unsigned int flags, const int sock
 	                          NULL, NULL,  // accept policy filter
 	                          &datum_api_answer, NULL,  // default URI handler
 	                          MHD_OPTION_LISTEN_SOCKET, sock,
-	                          MHD_OPTION_CONNECTION_LIMIT, 128,
+	                          MHD_OPTION_CONNECTION_LIMIT, DATUM_API_CONNECTION_LIMIT,
 	                          MHD_OPTION_NOTIFY_COMPLETED, datum_api_request_completed, NULL,
 	                          MHD_OPTION_LISTENING_ADDRESS_REUSE, (unsigned int)1,
 	                          MHD_OPTION_END);
