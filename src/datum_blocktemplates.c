@@ -88,6 +88,7 @@ T_DATUM_TEMPLATE_DATA *template_data = NULL;
 int next_template_index = 0;
 
 const char *datum_blocktemplates_error = NULL;
+atomic_uint_fast64_t g_last_block_template_monotonic_secs = 0;
 
 int datum_template_init(void) {
 	char *temp = NULL, *ptr = NULL;
@@ -401,6 +402,7 @@ void *datum_gateway_template_thread(void *args) {
 	T_DATUM_TEMPLATE_DATA *t;
 	bool was_notified = false;
 	int wnc = 0;
+	uint64_t fetch_start_time_monotonic;
 	uint64_t last_block_change = 0;
 	pthread_t pthread_datum_gateway_fallback_notifier;
 	tcurl = curl_easy_init();
@@ -445,6 +447,7 @@ void *datum_gateway_template_thread(void *args) {
 		
 		// fetch latest template
 		snprintf(gbt_req, sizeof(gbt_req), "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
+		fetch_start_time_monotonic = monotonic_time_seconds();
 		gbt = bitcoind_json_rpc_call(tcurl, &datum_config, gbt_req);
 		
 		if (!gbt) {
@@ -462,6 +465,7 @@ void *datum_gateway_template_thread(void *args) {
 				t = datum_gbt_parser(res_val);
 				
 				if (t) {
+					g_last_block_template_monotonic_secs = fetch_start_time_monotonic;
 					datum_blocktemplates_error = NULL;
 					DLOG_DEBUG("height: %lu / value: %"PRIu64, (unsigned long)t->height, t->coinbasevalue);
 					DLOG_DEBUG("--- prevhash: %s", t->previousblockhash);

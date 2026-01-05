@@ -84,6 +84,7 @@ typedef struct {
 	char bitcoind_rpcpassword[128];
 	char bitcoind_rpcurl[256];
 	int bitcoind_work_update_seconds;
+	int bitcoind_work_update_stale_limit;
 	bool bitcoind_notify_fallback;
 	
 	char stratum_v1_listen_addr[128];
