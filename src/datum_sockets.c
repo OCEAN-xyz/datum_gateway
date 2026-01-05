@@ -709,7 +709,7 @@ void *datum_gateway_listener_thread(void *arg) {
 		nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
 		if (nfds) {
 			if (datum_config.datum_pooled_mining_only && (!datum_protocol_is_active())) {
-				curtime_tsms = current_time_millis(); // we only need this if we're rejecting connections
+				curtime_tsms = monotonic_time_seconds(); // we only need this if we're rejecting connections
 				if (!rejecting_now) {
 					last_reject_msg_tsms = curtime_tsms - 5000; // first disconnect triggers msg
 				}
