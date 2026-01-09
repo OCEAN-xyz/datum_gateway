@@ -127,6 +127,10 @@ void datum_print_banner(void) {
 	fflush(stdout);
 }
 
+void datum_log_version(void){
+	DLOG_INFO("DATUM gateway version: %s", DATUM_PROTOCOL_VERSION);
+}
+
 void handle_sigusr1(int sig) {
 	datum_blocktemplates_notifynew_sighandler();
 }
@@ -175,6 +179,8 @@ int main(const int argc, const char * const * const argv) {
 		exit(1);
 	}
 	datum_print_banner();
+	
+	datum_log_version();
 	
 	if (datum_read_config(arguments.config_file) != 1) {
 		DLOG_FATAL("Error reading config file. Check --help");
