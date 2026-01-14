@@ -395,10 +395,13 @@ void *datum_gateway_fallback_notifier(void *args) {
 void *datum_gateway_template_thread(void *args) {
 	CURL *tcurl = NULL;
 	json_t *gbt = NULL, *res_val;
+	json_t *expiry = NULL, *expiry_val;
 	uint64_t i = 0;
 	char gbt_req[1024];
+	char getexpiry_req[1024];
 	int j;
 	T_DATUM_TEMPLATE_DATA *t;
+	bool expiry_warning = false;
 	bool was_notified = false;
 	int wnc = 0;
 	uint64_t last_block_change = 0;
@@ -446,6 +449,33 @@ void *datum_gateway_template_thread(void *args) {
 		// fetch latest template
 		snprintf(gbt_req, sizeof(gbt_req), "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
 		gbt = bitcoind_json_rpc_call(tcurl, &datum_config, gbt_req);
+		
+		// fetch expiry
+		snprintf(getexpiry_req, sizeof(getexpiry_req),"{\"method\":\"getgeneralinfo\",\"params\":[],\"id\":null}");
+		expiry = bitcoind_json_rpc_call(tcurl, &datum_config, getexpiry_req);
+		
+		if (expiry) {
+			expiry_val = json_object_get(expiry, "result");
+			unsigned long raw_expiry_val = (unsigned long)json_integer_value(json_object_get(expiry_val, "expiry"));
+			long relative_expiry = raw_expiry_val - time(NULL);
+			if (raw_expiry_val == 0) {
+				if (!expiry_warning){
+					DLOG_WARN("bitcoind is configured to never expire");
+					expiry_warning = true;
+				}
+			} else if (relative_expiry <= 0) {
+				DLOG_ERROR("bitcoind has expired and stratum endpoint has been killed, update bitcoind or override expiry ASAP!");
+			} else if (relative_expiry <= 15552000) {
+				DLOG_INFO("Your bitcoind software will expire in approximately %d days, please update bitcoind or override the expiry", (int)(relative_expiry/86400));
+			} else {
+				DLOG_DEBUG("Time left before bitcoind expiry: %ld seconds (~%d days)", relative_expiry, (int)(relative_expiry/86400));
+			}
+		} else {
+			if (!expiry_warning){
+				DLOG_WARN("Error happened while fetching expiry time, your bitcoind version might not have the RPC call implemented!");
+				expiry_warning = true;
+			}
+		}
 		
 		if (!gbt) {
 			datum_blocktemplates_error = "Could not fetch new template!";
