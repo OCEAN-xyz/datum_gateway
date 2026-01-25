@@ -356,7 +356,6 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	} else {
 		// No pool
 		s->pool_addr_script_len = addr_2_output_script(datum_config.mining_pool_address, &s->pool_addr_script[0], 64);
-		DLOG_DEBUG("Using configured payout address: %s (script len %d)", datum_config.mining_pool_address, s->pool_addr_script_len);
 		s->is_datum_job = false;
 	}
 	if (!s->pool_addr_script_len) {
@@ -457,6 +456,14 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "0000000000000000%2.2x%s", (unsigned int)strlen(s->block_template->default_witness_commitment)>>1, s->block_template->default_witness_commitment);
 	// lock time
 	cb2idx[0] += sprintf(&s->coinbase[0].coinb2[cb2idx[0]], "00000000");
+
+	// adding additional debugging detail
+	DLOG_DEBUG("Raw coinb1 prefix hex (input + tags): %s", s->coinbase[0].coinb1);
+    DLOG_DEBUG("Raw coinb2 outputs hex (payout + witness + locktime): %s", s->coinbase[0].coinb2);
+    DLOG_DEBUG("Coinbase payout address: %s", datum_config.mining_pool_address);
+    DLOG_DEBUG("Coinbase payout value: %" PRIu64 " sats (%.8f BTC)", s->coinbase_value, (double)s->coinbase_value / 100000000.0);
+    DLOG_DEBUG("Coinbase primary tag: %s", datum_config.mining_coinbase_tag_primary);
+    DLOG_DEBUG("Coinbase secondary tag: %s", datum_config.mining_coinbase_tag_secondary);
 
 	if (new_block) {
 		// Append the subsidy-only payout to the subsidy_only_coinbase
