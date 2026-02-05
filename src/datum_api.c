@@ -442,7 +442,7 @@ bool datum_api_check_admin_password_only(struct MHD_Connection * const connectio
 static enum MHD_DigestAuthAlgorithm datum_api_pick_digest_algo(struct MHD_Connection * const connection) {
 	const char * const ua = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "User-Agent");
 	if (datum_config.api_allow_insecure_auth) {
-		if (strstr(ua, "AppleWebKit/") && !(strstr(ua, "Chrome/") || strstr(ua, "Brave/") || strstr(ua, "Edge/"))) {
+		if (ua != NULL && strstr(ua, "AppleWebKit/") && !(strstr(ua, "Chrome/") || strstr(ua, "Brave/") || strstr(ua, "Edge/"))) {
 			return MHD_DIGEST_ALG_MD5;
 		}
 	}
