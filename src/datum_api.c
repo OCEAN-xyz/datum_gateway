@@ -51,6 +51,7 @@
 #include "datum_blocktemplates.h"
 #include "datum_conf.h"
 #include "datum_gateway.h"
+#include "datum_json_api.h"
 #include "datum_jsonrpc.h"
 #include "datum_utils.h"
 #include "datum_stratum.h"
@@ -71,8 +72,7 @@ const char *cbnames[] = {
 	"Yuge",
 	"Antmain2"
 };
-
-typedef struct MHD_Response *(*create_response_func_t)();
+const size_t cbnames_count = sizeof(cbnames) / sizeof(cbnames[0]);
 
 static struct MHD_Response *datum_api_create_empty_mhd_response() {
 	return MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
@@ -522,7 +522,7 @@ static struct MHD_Response *datum_api_create_response_authfail(const char * cons
 	return response;
 }
 
-static struct MHD_Response *datum_api_create_response_authfail_clients() {
+struct MHD_Response *datum_api_create_response_authfail_clients() {
 	return datum_api_create_response_authfail(www_clients_top_html, www_clients_top_html_sz);
 }
 
@@ -1580,34 +1580,6 @@ int datum_api_OK(struct MHD_Connection *connection) {
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
-#ifdef DATUM_API_FOR_UMBREL
-int datum_api_umbrel_widget(struct MHD_Connection * const connection) {
-	char json_response[512];
-	T_DATUM_API_DASH_VARS umbreldata;
-	const char *hash_unit;
-	int json_response_len;
-	
-	datum_api_dash_stats(&umbreldata);
-	
-	hash_unit = dynamic_hash_unit(&umbreldata.STRATUM_HASHRATE_ESTIMATE);
-	
-	json_response_len = snprintf(json_response, sizeof(json_response), "{"
-		"\"type\": \"three-stats\","
-		"\"refresh\": \"30s\","
-		"\"link\": \"\","
-		"\"items\": ["
-			"{\"title\": \"Connections\", \"text\": \"%d\", \"subtext\": \"Worker\"},"
-			"{\"title\": \"Hashrate\", \"text\": \"%.2f\", \"subtext\": \"%s\"}"
-		"]"
-	"}", umbreldata.STRATUM_TOTAL_CONNECTIONS, umbreldata.STRATUM_HASHRATE_ESTIMATE, hash_unit);
-	
-	if (json_response_len >= sizeof(json_response)) json_response_len = sizeof(json_response) - 1;
-	struct MHD_Response *response = MHD_create_response_from_buffer(json_response_len, (void *)json_response, MHD_RESPMEM_MUST_COPY);
-	MHD_add_response_header(response, "Content-Type", "application/json");
-	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
-}
-#endif
-
 int datum_api_testnet_fastforward(struct MHD_Connection * const connection) {
 	const char *time_str;
 	
@@ -1808,6 +1780,31 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 			break;
 		}
 #endif
+		
+		case 'v': {
+			if (datum_config.api_json_api) {
+				if (!strcmp(url, "/v1/decentralized_client_stats")) {
+					return datum_api_json_decentralized_client_stats(connection);
+				} else if (!strcmp(url, "/v1/stratum_server_info")) {
+					return datum_api_json_stratum_server_info(connection);
+				} else if (!strcmp(url, "/v1/current_stratum_job")) {
+					return datum_api_json_current_stratum_job(connection);
+				} else if (!strcmp(url, "/v1/coinbaser")) {
+					return datum_api_json_coinbaser(connection);
+				} else if (!strcmp(url, "/v1/thread_stats")) {
+					return datum_api_json_thread_stats(connection);
+				} else if (!strcmp(url, "/v1/stratum_client_list")) {
+					return datum_api_json_stratum_client_list(connection);
+				} else if (!strcmp(url, "/v1/configuration")) {
+					if (int_method == 2 && con_info) {
+						return datum_api_json_set_configuration(connection, con_info->data, con_info->data_size);
+					} else {
+						return datum_api_json_configuration(connection);
+					}
+				}
+			}
+			break;
+		}
 		
 		default: break;
 	}
