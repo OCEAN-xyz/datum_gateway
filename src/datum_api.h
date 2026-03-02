@@ -36,6 +36,10 @@
 #ifndef _DATUM_API_H_
 #define _DATUM_API_H_
 
+#ifdef ENABLE_API
+#include <microhttpd.h>
+#endif
+
 #include "datum_stratum.h"
 
 typedef struct {
@@ -47,6 +51,10 @@ typedef struct {
 	T_DATUM_STRATUM_JOB *sjob;
 } T_DATUM_API_DASH_VARS;
 
+#ifdef ENABLE_API
+typedef struct MHD_Response *(*create_response_func_t)();
+#endif
+
 typedef void (*DATUM_API_VarFunc)(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata);
 typedef size_t (*DATUM_API_VarFillFunc)(const char *var_start, size_t var_name_len, char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata);
 
@@ -55,6 +63,20 @@ typedef struct {
 	DATUM_API_VarFunc func;
 } DATUM_API_VarEntry;
 
+extern const char *cbnames[];
+extern const size_t cbnames_count;
+
+#ifdef ENABLE_API
+int datum_api_submit_uncached_response(struct MHD_Connection * const connection, const unsigned int status_code, struct MHD_Response * const response);
+bool datum_api_check_admin_password_httponly(struct MHD_Connection * const connection, const create_response_func_t auth_failure_response_creator);
+
+struct MHD_Response *datum_api_create_response_authfail_clients();
+#endif
+
+void datum_api_json_modify_new(const char * const category, const char * const key, json_t * const val);
+void *datum_restart_thread(void *ptr);
+bool datum_api_json_write();
+void datum_api_dash_stats(T_DATUM_API_DASH_VARS *dashdata);
 
 int datum_api_init(void);
 size_t strncpy_html_escape(char *dest, const char *src, size_t n);

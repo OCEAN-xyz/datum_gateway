@@ -141,6 +141,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "api",	 		.name = "modify_conf",				.description = "Enable modifying the config file from API/dashboard",
 		.example_default = true,
 		.required = false, .ptr = &datum_config.api_modify_conf, 						.default_bool = false },
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "api",			.name = "json_api", 			.description = "Enable the JSON API endpoints",
+		.required = false, .ptr = &datum_config.api_json_api,							.default_bool = false},
 	
 	// extra block submissions list
 	{ .var_type = DATUM_CONF_STRING_ARRAY, 	.category = "extra_block_submissions", 	.name = "urls",		.description = "Array of bitcoind RPC URLs to submit our blocks to directly.  Include auth info: http://user:pass@IP",
