@@ -487,6 +487,15 @@ int datum_read_config(const char *conffile) {
 		}
 	}
 	
+	if (datum_config.datum_pool_pass_full_users) {
+		if (!datum_config.datum_pool_pass_workers) {
+			datum_config.datum_pool_pass_workers = true;
+			DLOG_WARN("Configuration option %s.%s ignored (%s.%s overrides)",
+			          "datum", "pool_pass_workers",
+			          "datum", "pool_pass_full_users");
+		}
+	}
+	
 #ifdef ENABLE_API
 	if (datum_config.api_modify_conf) {
 		datum_config.config_json = config;
