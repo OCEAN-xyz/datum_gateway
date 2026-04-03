@@ -60,6 +60,55 @@ const char *datum_conf_var_type_text[] = {
 	NULL,  // func
 };
 
+static int datum_conf_username_behaviour(const T_DATUM_CONFIG_ITEM * const c, const json_t * const j, const char ** const out_type) {
+	if (out_type) {
+		*out_type = "string";
+	}
+	if (json_is_string(j)) {
+		const char * const s = json_string_value(j);
+		switch (json_string_length(j)) {
+			case 4:
+				if (0 == strcasecmp("pass", s)) break;
+				return -1;
+			case 6:
+				if (0 == strcasecmp("worker", s)) {
+					datum_config.datum_pool_pass_full_users = false;
+					datum_config.datum_pool_pass_workers = true;
+					return 0;
+				}
+				if (0 == strcasecmp("ignore", s)) {
+					datum_config.datum_pool_pass_full_users = false;
+					datum_config.datum_pool_pass_workers = false;
+					return 0;
+				}
+				return -1;
+			case 8:
+				if (0 == strcasecmp("passthru", s)) break;
+				return -1;
+			case 11:
+				if (0 == strcasecmp("passthrough", s)) break;
+				return -1;
+			case 12:
+				if (0 == strcasecmp("strip_worker", s)) {
+					datum_config.datum_pool_pass_full_users = true;
+					datum_config.datum_pool_pass_workers = false;
+					return 0;
+				}
+				return -1;
+			default:
+				return -1;
+		}
+	} else if (json_is_null(j) || !j) {
+		// fallthrough
+	} else {
+		return -1;
+	}
+	// Only "passthrough" and variants reach here
+	datum_config.datum_pool_pass_full_users = true;
+	datum_config.datum_pool_pass_workers = true;
+	return 0;
+}
+
 const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	// Bitcoind configs
 	{ .var_type = DATUM_CONF_STRING, 	.category = "bitcoind", 	.name = "rpccookiefile",			.description = "Path to file to read RPC cookie from, for communication with local bitcoind.",
@@ -178,12 +227,15 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.datum_pool_port, .default_int = 28915 },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "datum", 		.name = "pool_pubkey",					.description = "Public key of the DATUM server for initiating encrypted connection. Get from secure location, or set to empty to auto-fetch.",
 		.required = false, .ptr = datum_config.datum_pool_pubkey,		.default_string[0] = "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003", .max_string_len = sizeof(datum_config.datum_pool_pubkey) },
-	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_workers",			.description = "Pass stratum miner usernames as sub-worker names to the pool (pool_username.miner's username)",
-		.example_default = true,
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_workers",
+		// DEPRECATED (but CAUTION if removing - this currently is responsible for initialising the default value!)
 		.required = false, .ptr = &datum_config.datum_pool_pass_workers, 		.default_bool = true },
-	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_full_users",			.description = "Pass stratum miner usernames as raw usernames to the pool (use if putting multiple payout addresses on miners behind this gateway)",
-		.example_default = true,
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_full_users",
+		// DEPRECATED (but CAUTION if removing - this currently is responsible for initialising the default value!)
 		.required = false, .ptr = &datum_config.datum_pool_pass_full_users, 	.default_bool = true },
+	{ .var_type = DATUM_CONF_FUNC, 		.category = "datum", 		.name = "pool_username_behaviour",		.description = "Whether and how to Pass stratum miner usernames to the pool: \"passthrough\" sends it as-is (overriding mining.pool_address), \"worker\" appends it after mining.pool_address, \"ignore\" disregards it entirely, and \"strip_worker\" passes only the username up until the first period character",
+		.example_default = true,
+		.required = false, .ptr_func = &datum_conf_username_behaviour,		 .default_string[0] = "\"passthrough\"" },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "always_pay_self",				.description = "Always include my datum.pool_username payout in my blocks if possible",
 		.required = false, .ptr = &datum_config.datum_always_pay_self, 	.default_bool = true },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pooled_mining_only",			.description = "If the DATUM pool server becomes unavailable, terminate miner connections (otherwise, 100% of any blocks you find pay mining.pool_address)",
@@ -473,7 +525,7 @@ int datum_read_config(const char *conffile) {
 			continue;
 		}
 		
-		// item might be valid
+		// item might be valid*
 		j = datum_config_parse_value(&datum_config_options[i], item);
 		if (j == -1) {
 			const T_DATUM_CONFIG_ITEM * const c = &datum_config_options[i];
@@ -487,12 +539,28 @@ int datum_read_config(const char *conffile) {
 		}
 	}
 	
-	if (datum_config.datum_pool_pass_full_users) {
-		if (!datum_config.datum_pool_pass_workers) {
+	cat = json_object_get(config, "datum");
+	if (json_is_object(cat)) {
+		item = json_object_get(cat, "pool_pass_full_users");
+		if (item && (!json_is_false(item)) ? !(datum_config.datum_pool_pass_full_users && datum_config.datum_pool_pass_workers) : datum_config.datum_pool_pass_full_users) {
+			DLOG_WARN("Deprecated configuration option %s.%s ignored (%s.%s overrides)",
+			          "datum", "pool_pass_full_users",
+			          "datum", "pool_username_behaviour");
+		} else {
+			item = json_object_get(cat, "pool_pass_workers");
+			if (item && (!json_is_false(item)) != datum_config.datum_pool_pass_workers) {
+				DLOG_WARN("Deprecated configuration option %s.%s ignored (%s.%s overrides)",
+				          "datum", "pool_pass_workers",
+				          "datum", "pool_username_behaviour");
+			}
+		}
+		item = json_object_get(cat, "pool_username_behaviour");
+		if (((!item) || json_is_null(item)) && datum_config.datum_pool_pass_full_users && !datum_config.datum_pool_pass_workers) {
 			datum_config.datum_pool_pass_workers = true;
-			DLOG_WARN("Configuration option %s.%s ignored (%s.%s overrides)",
+			DLOG_WARN("Deprecated configuration option %s.%s ignored (also-deprecated %s.%s overrides; consider migrating to %s.%s)",
 			          "datum", "pool_pass_workers",
-			          "datum", "pool_pass_full_users");
+			          "datum", "pool_pass_full_users",
+			          "datum", "pool_username_behaviour");
 		}
 	}
 	
