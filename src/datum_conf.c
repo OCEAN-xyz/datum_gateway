@@ -649,6 +649,7 @@ void datum_gateway_help(const char * const argv0) {
 	puts("Configuration file options:\n\n{");
 	for (unsigned int i = 0; i < NUM_CONFIG_ITEMS; ++i) {
 		const T_DATUM_CONFIG_ITEM * const opt = &datum_config_options[i];
+		if (!opt->description[0]) continue;  // deprecated/hidden options
 		if (strcmp(opt->category, lastcat)) {
 			if (i) { puts("    },"); }
 			printf("    \"%s\": {\n", opt->category);
