@@ -95,6 +95,17 @@ void datum_protocol_submit_username_tests() {
 	datum_test(0 == strcmp(buf, addr));
 	datum_test(datum_protocol_submit_username(buf, sizeof(buf), &cfg, noaddr_w) == addr_len);
 	datum_test(0 == strcmp(buf, addr));
+	
+	// "strip_worker" tests:
+	cfg.datum_pool_pass_full_users = true;
+	datum_test(datum_protocol_submit_username(buf, sizeof(buf), &cfg, "") == addr_len);
+	datum_test(0 == strcmp(buf, addr));
+	datum_test(datum_protocol_submit_username(buf, sizeof(buf), &cfg, addr_2) == addr_2_len);
+	datum_test(0 == strcmp(buf, addr_2));
+	datum_test(datum_protocol_submit_username(buf, sizeof(buf), &cfg, addr_2w) == addr_2_len);
+	datum_test(0 == strcmp(buf, addr_2));
+	datum_test(datum_protocol_submit_username(buf, sizeof(buf), &cfg, noaddr_w) == addr_len);
+	datum_test(0 == strcmp(buf, addr));
 }
 
 void datum_protocol_tests(void) {
