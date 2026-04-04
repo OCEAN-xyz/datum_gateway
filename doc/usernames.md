@@ -41,12 +41,16 @@ If the Stratum username *begins* with a period, it is interpreted as a worker na
 There are three different ways to pass usernames to your pool.
 
 By default, the Stratum username is always passed in full, as-is.
-You can make this explicit by setting `datum`.`pool_pass_full_users` to `true` in the config file, or "Send Miner Usernames To Pool: Override Bitcoin Address" in the web configurator.
+You can make this explicit by setting `datum`.`pool_username_behaviour` to `"passthrough"` in the config file, or "Send Miner Usernames To Pool: Override Bitcoin Address" in the web configurator.
 
-If you change `datum`.`pool_pass_full_users` to `false`, you can then set `datum`.`pool_pass_workers` instead (or "Send Miner Usernames To Pool: Send as worker names" in the web configurator).
+You can also set `datum`.`pool_username_behaviour` to `"worker"` (or "Send Miner Usernames To Pool: Send as worker names" in the web configurator).
 With this setting, the entire Stratum username will be appended after the default username (`mining`.`pool_address`) as a worker.
 
-Finally, if you set both options to `false`, the Stratum username will be ignored entirely.
+Another option is to set `datum`.`pool_username_behaviour` to `"strip_worker"` (or "Send Miner Usernames To Pool: Override Bitcoin Address with username prior to period (strip worker)" in the web configurator).
+This will strip off everything beginning with the first period (`.`) in the username, and send just the first part.
+You can use this if you want to keep the miner worker name private, but still use its username for the Bitcoin address.
+
+Finally, if you set `datum`.`pool_username_behaviour` to `"ignore"`, the Stratum username will be ignored entirely.
 Instead, only the configured default username (`mining`.`pool_address`) will be used, without any worker names.
 
 ## Username modifiers (advanced)
@@ -94,4 +98,4 @@ if you assign *more* than 100%, that portion above will not have any shares subm
 Do not rely on these behaviours.
 Always specify the full 100% range explicitly.
 
-NOTE: This feature is handled when shares are received by the Gateway's Stratum server, and will therefore only work if you have `datum`.`pool_pass_full_users` enabled.
+NOTE: This feature is handled when shares are received by the Gateway's Stratum server, and will therefore only work if you have `datum`.`pool_username_behaviour` set to `"passthrough"` or `"strip_worker"`.
