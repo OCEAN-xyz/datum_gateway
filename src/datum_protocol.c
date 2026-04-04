@@ -1311,11 +1311,16 @@ int datum_protocol_pow_submit(
 }
 
 int datum_protocol_submit_username(char * const username, const size_t username_sz, const global_config_t * const cfg, const char * const input_username) {
-	if (((!cfg->datum_pool_pass_full_users) && (!cfg->datum_pool_pass_workers)) || input_username[0] == '\0') {
+	if (((!cfg->datum_pool_pass_workers) && ((!cfg->datum_pool_pass_full_users) || input_username[0] == '.')) || input_username[0] == '\0') {
 		return snprintf(username, username_sz, "%s", cfg->mining_pool_address);
 	} else if (cfg->datum_pool_pass_full_users && input_username[0] != '.') {
+		const char * const endpos = cfg->datum_pool_pass_workers ? NULL : strchr(input_username, '.');
 		// TODO: Make sure the usernames are addresses, and if not use one of the configured addresses
-		return snprintf(username, username_sz, "%s", input_username);
+		if (endpos) {
+			return snprintf(username, username_sz, "%.*s", (int)(endpos - input_username), input_username);
+		} else {
+			return snprintf(username, username_sz, "%s", input_username);
+		}
 	} else {
 		// append the miner's username to the configured address as .workername
 		return snprintf(username, username_sz, "%s%s%s", cfg->mining_pool_address, (input_username[0] == '.') ? "" : ".", input_username);
