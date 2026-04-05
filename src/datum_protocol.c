@@ -1330,7 +1330,7 @@ int datum_protocol_pow(void *arg) {
 	} else if (datum_config.datum_pool_pass_full_users && pow->username[0] != '.') {
 		// TODO: Make sure the usernames are addresses, and if not use one of the configured addresses
 		j = snprintf(username, 385, "%s", pow->username);
-	} else if (datum_config.datum_pool_pass_full_users || datum_config.datum_pool_pass_workers) {
+	} else {
 		// append the miner's username to the configured address as .workername
 		j = snprintf(username, 385, "%s%s%s", datum_config.mining_pool_address, (pow->username[0] == '.') ? "" : ".", pow->username);
 	}
