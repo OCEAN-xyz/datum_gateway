@@ -1334,6 +1334,12 @@ int datum_protocol_pow(void *arg) {
 		// append the miner's username to the configured address as .workername
 		j = snprintf(username, 385, "%s%s%s", datum_config.mining_pool_address, (pow->username[0] == '.') ? "" : ".", pow->username);
 	}
+	if (j < 0) {
+		DLOG_ERROR("Unexpected error copying username to POW!");
+		// Still submit it without a username in case it's a block
+		username[0] = '\0';
+		j = 0;
+	}
 	if (j > 384) j = 384;
 	i += j + 1;  // including final null byte
 	
