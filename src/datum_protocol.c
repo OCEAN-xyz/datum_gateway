@@ -1326,15 +1326,16 @@ int datum_protocol_pow(void *arg) {
 	
 	char * const username = (char *)&msg[i];
 	if (((!datum_config.datum_pool_pass_full_users) && (!datum_config.datum_pool_pass_workers)) || pow->username[0] == '\0') {
-		i+=snprintf(username, 385, "%s", datum_config.mining_pool_address);
+		j = snprintf(username, 385, "%s", datum_config.mining_pool_address);
 	} else if (datum_config.datum_pool_pass_full_users && pow->username[0] != '.') {
 		// TODO: Make sure the usernames are addresses, and if not use one of the configured addresses
-		i+=snprintf(username, 385, "%s", pow->username);
+		j = snprintf(username, 385, "%s", pow->username);
 	} else if (datum_config.datum_pool_pass_full_users || datum_config.datum_pool_pass_workers) {
 		// append the miner's username to the configured address as .workername
-		i+=snprintf(username, 385, "%s%s%s", datum_config.mining_pool_address, (pow->username[0] == '.') ? "" : ".", pow->username);
+		j = snprintf(username, 385, "%s%s%s", datum_config.mining_pool_address, (pow->username[0] == '.') ? "" : ".", pow->username);
 	}
-	i++;  // already 0 from snprintf
+	if (j > 384) j = 384;
+	i += j + 1;  // including final null byte
 	
 	// reserve 4 bytes for future use
 	memset(&msg[i], 0, 4); i+=4;
