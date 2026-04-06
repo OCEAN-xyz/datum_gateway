@@ -149,10 +149,6 @@ unsigned char datum_protocol_setup_new_job_idx(void *sx) {
 	return a;
 }
 
-static inline void datum_xor_header_key(void *h, uint32_t key) {
-	*((uint32_t *)h) ^= key;
-}
-
 uint32_t datum_header_xor_feedback(const uint32_t i) {
 	uint32_t s = 0xb10cfeed;
 	uint32_t h = s;
@@ -170,6 +166,32 @@ uint32_t datum_header_xor_feedback(const uint32_t i) {
 	h *= 0xc2b2ae35;
 	h ^= h >> 16;
 	return h;
+}
+
+static
+void datum_header_pk(uint8_t * const dst, const size_t offset, const T_DATUM_PROTOCOL_HEADER * const h, uint32_t * const xor_key) {
+	uint32_t raw = (h->cmd_len & 0x3fffffUL) |
+	               ((uint32_t)h->is_signed << 24) |
+	               ((uint32_t)h->is_encrypted_pubkey << 25) |
+	               ((uint32_t)h->is_encrypted_channel << 26) |
+	               ((uint32_t)(h->proto_cmd & 0x1f) << 27);
+	raw ^= *xor_key;
+	*xor_key = datum_header_xor_feedback(*xor_key);
+	
+	pk_u32le(dst, offset, raw);
+}
+
+static
+void datum_header_upk(T_DATUM_PROTOCOL_HEADER * const h, const uint8_t * const src, const size_t offset, uint32_t * const xor_key) {
+	uint32_t raw = upk_u32le(src, offset);
+	raw ^= *xor_key;
+	*xor_key = datum_header_xor_feedback(*xor_key);
+	
+	h->cmd_len              = raw & 0x003fffffUL;
+	h->is_signed            = raw & 0x01000000UL;
+	h->is_encrypted_pubkey  = raw & 0x02000000UL;
+	h->is_encrypted_channel = raw & 0x04000000UL;
+	h->proto_cmd            = (raw >> 27) & 0x1f;
 }
 
 // Take the hexidecimal public key string and store it in a DATUM_ENC_KEYS
@@ -229,6 +251,7 @@ int datum_protocol_mining_cmd(void *data, int len) {
 	// encypt and send a standard mining sub-command
 	// this can be called from other threads so must be thread safe!
 	T_DATUM_PROTOCOL_HEADER h;
+	unsigned char wire_h[T_DATUM_PROTOCOL_HEADER_WIRE_BYTES];
 	int i;
 	
 	memset(&h, 0, sizeof(T_DATUM_PROTOCOL_HEADER));
@@ -244,11 +267,10 @@ int datum_protocol_mining_cmd(void *data, int len) {
 	
 	crypto_box_easy_afternm(data, data, len, session_nonce_sender, session_precomp.precomp_remote);
 	//DLOG_DEBUG("mining cmd 5--- len %d, send header key %8.8x, raw %8.8lx", h.cmd_len, sending_header_key, (unsigned long)upk_u32le(h, 0));
-	datum_xor_header_key(&h, sending_header_key);
-	sending_header_key = datum_header_xor_feedback(sending_header_key);
+	datum_header_pk(wire_h, 0, &h, &sending_header_key);
 	datum_increment_session_nonce(session_nonce_sender);
 	
-	i = datum_protocol_chars_to_server((unsigned char *)&h, sizeof(T_DATUM_PROTOCOL_HEADER));
+	i = datum_protocol_chars_to_server(wire_h, sizeof(wire_h));
 	if (i < 1) {
 		pthread_mutex_unlock(&datum_protocol_sender_stage1_lock);
 		return -1;
@@ -1038,16 +1060,12 @@ int datum_protocol_send_hello(int sockfd) {
 	i+=crypto_sign_BYTES;
 	
 	// seal it up
-	crypto_box_seal(&enc_hello_msg[sizeof(T_DATUM_PROTOCOL_HEADER)], hello_msg, i, pool_keys.pk_x25519);
+	crypto_box_seal(&enc_hello_msg[T_DATUM_PROTOCOL_HEADER_WIRE_BYTES], hello_msg, i, pool_keys.pk_x25519);
 	i+=crypto_box_SEALBYTES;
 	
 	h.cmd_len = i;
 	
-	memcpy(enc_hello_msg, &h, sizeof(T_DATUM_PROTOCOL_HEADER));
-	
-	// apply our initial xor key to the header, just to obfuscate it a tiny bit
-	// kinda pointless, but ok
-	datum_xor_header_key(&enc_hello_msg[0], sending_header_key);
+	datum_header_pk(enc_hello_msg, 0, &h, &sending_header_key);
 	
 	DLOG_DEBUG("Sending handshake init (%d bytes)", h.cmd_len);
 	
@@ -1070,7 +1088,7 @@ int datum_protocol_send_hello(int sockfd) {
 	// FIXME: why is this mixed-endian?
 	//DLOG_DEBUG("Session Nonce: %8.8X%8.8X%8.8X%8.8X%8.8X%8.8X", upk_u32le(session_nonce_receiver, 0), upk_u32le(session_nonce_receiver, 4), upk_u32le(session_nonce_receiver, 8), upk_u32le(session_nonce_receiver, 12), upk_u32le(session_nonce_receiver, 16), upk_u32le(session_nonce_receiver, 20));
 	
-	return datum_protocol_chars_to_server(enc_hello_msg, i+sizeof(T_DATUM_PROTOCOL_HEADER));
+	return datum_protocol_chars_to_server(enc_hello_msg, T_DATUM_PROTOCOL_HEADER_WIRE_BYTES + i);
 }
 
 int datum_protocol_decrypt_sealed(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
@@ -1464,6 +1482,7 @@ void *datum_protocol_client(void *args) {
 	bool break_again = false;
 	int sent = 0;
 	T_DATUM_PROTOCOL_HEADER s_header;
+	unsigned char wire_h[T_DATUM_PROTOCOL_HEADER_WIRE_BYTES];
 	
 	pthread_rwlock_wrlock(&datum_jobs_rwlock);
 	for(i=0;i<MAX_DATUM_PROTOCOL_JOBS;i++) {
@@ -1709,7 +1728,7 @@ void *datum_protocol_client(void *args) {
 				case 1:
 				case 2:
 				case 3: {
-					n = recv(sockfd, ((unsigned char *)&s_header) + (sizeof(T_DATUM_PROTOCOL_HEADER) - protocol_state), protocol_state, MSG_DONTWAIT);
+					n = recv(sockfd, &wire_h[sizeof(wire_h) - protocol_state], protocol_state, MSG_DONTWAIT);
 					if (n <= 0) {
 						if ((n < 0) && ((errno == EAGAIN || errno == EWOULDBLOCK))) {
 							continue;
@@ -1718,13 +1737,13 @@ void *datum_protocol_client(void *args) {
 						break_again = true; break;
 					}
 					
-					if ((n+(sizeof(T_DATUM_PROTOCOL_HEADER) - protocol_state)) != sizeof(T_DATUM_PROTOCOL_HEADER)) {
+					if ((n + (sizeof(wire_h) - protocol_state)) != sizeof(wire_h)) {
 						if ((n+protocol_state) > 4) {
 							DLOG_DEBUG("recv() issue. too many header bytes. protocol_state=%d, n=%d, errno=%d (%s)", protocol_state, n, errno, strerror(errno));
 							break_again = true; break;
 						}
 						
-						protocol_state = sizeof(T_DATUM_PROTOCOL_HEADER) - n - (sizeof(T_DATUM_PROTOCOL_HEADER) - protocol_state); // should give us a state equal to the number of. consoluted to show the process. (compiler optimizes)
+						protocol_state = sizeof(wire_h) - n - (sizeof(wire_h) - protocol_state); // should give us a state equal to the number of. consoluted to show the process. (compiler optimizes)
 						continue;
 					}
 					
@@ -1732,7 +1751,7 @@ void *datum_protocol_client(void *args) {
 					continue; // cant fall through to 0, so loop around back to this to jump to 4
 				}
 				case 0: {
-					n = recv(sockfd, &s_header, sizeof(T_DATUM_PROTOCOL_HEADER), MSG_DONTWAIT);
+					n = recv(sockfd, &wire_h[0], sizeof(wire_h), MSG_DONTWAIT);
 					if (n <= 0) {
 						if ((n < 0) && ((errno == EAGAIN || errno == EWOULDBLOCK))) {
 							continue;
@@ -1740,12 +1759,12 @@ void *datum_protocol_client(void *args) {
 						DLOG_DEBUG("recv() issue. protocol_state=%d, n=%d, errno=%d (%s)", protocol_state, n, errno, strerror(errno));
 						break_again = true; break;
 					}
-					if (n != sizeof(T_DATUM_PROTOCOL_HEADER)) {
+					if (n != sizeof(wire_h)) {
 						if (n > 4) {
 							DLOG_DEBUG("recv() issue. too many header bytes (B). protocol_state=%d, n=%d, errno=%d (%s)", protocol_state, n, errno, strerror(errno));
 							break_again = true; break;
 						}
-						protocol_state = sizeof(T_DATUM_PROTOCOL_HEADER)-n;
+						protocol_state = sizeof(wire_h) - n;
 						continue;
 					}
 					
@@ -1755,9 +1774,8 @@ void *datum_protocol_client(void *args) {
 				}
 				
 				case 4: {
-					datum_xor_header_key(&s_header, receiving_header_key);
-					//DLOG_DEBUG("Server CMD: cmd=%u, len=%u, raw = %8.8x ... rkey = %8.8x", s_header.proto_cmd, s_header.cmd_len, upk_u32le(s_header, 0), receiving_header_key);
-					receiving_header_key = datum_header_xor_feedback(receiving_header_key);
+					datum_header_upk(&s_header, wire_h, 0, &receiving_header_key);
+					//DLOG_DEBUG("Server CMD: cmd=%u, len=%u, raw = %8.8x ... rkey(after) = %8.8x", s_header.proto_cmd, s_header.cmd_len, upk_u32le(s_header, 0), receiving_header_key);
 					protocol_state = 5;
 					server_in_buf = 0;
 					if (!s_header.cmd_len) {

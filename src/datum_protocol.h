@@ -58,14 +58,14 @@
 // It's likely possible to brute force the XOR key to break packets down into individual commands, but the contents and nature of the
 // cmd is still obfuscated and unrecoverable without the session keys.
 
-typedef struct __attribute__((packed)) T_DATUM_PROTOCOL_HEADER {
+typedef struct T_DATUM_PROTOCOL_HEADER {
 	uint32_t cmd_len:22; // max cmd size is 2^22 (~4MB), which is roughly the max block size for a raw submission or a raw template validation
-	uint8_t reserved:2; // save for later use
-	bool is_signed:1;
-	bool is_encrypted_pubkey:1;
-	bool is_encrypted_channel:1;
+	bool is_signed;
+	bool is_encrypted_pubkey;
+	bool is_encrypted_channel;
 	uint8_t proto_cmd:5; // 32 protocol level commands
 } T_DATUM_PROTOCOL_HEADER;
+#define T_DATUM_PROTOCOL_HEADER_WIRE_BYTES 4
 
 typedef struct {
 	bool is_remote;
