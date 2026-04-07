@@ -964,6 +964,8 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 			var_start = "readonly:";
 			colon_pos = &var_start[8];
 		}
+	} else if (var_name_len_2 == 27 && 0 == strncmp(var_start_2, "*datum_pool_pass_full_users", 27)) {
+		val = datum_config.datum_pool_pass_workers && datum_config.datum_pool_pass_full_users;
 	} else if (var_name_len_2 == 24 && 0 == strncmp(var_start_2, "*datum_pool_pass_workers", 24)) {
 		val = datum_config.datum_pool_pass_workers && !datum_config.datum_pool_pass_full_users;
 	} else if (var_name_len_2 == 16 && 0 == strncmp(var_start_2, "*datum_pool_host", 16)) {
@@ -986,6 +988,8 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 		if (copy_sz >= replacement_max_len) copy_sz = replacement_max_len - 1;
 		memcpy(replacement, s, copy_sz);
 		return copy_sz;
+	} else if (var_name_len_2 == 32 && 0 == strncmp(var_start_2, "*username_behaviour_strip_worker", 32)) {
+		val = datum_config.datum_pool_pass_full_users && !datum_config.datum_pool_pass_workers;
 	} else if (var_name_len_2 == 27 && 0 == strncmp(var_start_2, "*username_behaviour_private", 27)) {
 		val = !(datum_config.datum_pool_pass_workers || datum_config.datum_pool_pass_full_users);
 	} else if (var_name_len_2 == 22 && 0 == strncmp(var_start_2, "*reward_sharing_prefer", 22)) {
@@ -1034,6 +1038,10 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 				}
 				case DATUM_CONF_USERNAME_MODS: {
 					DLOG_ERROR("%s: %s not implemented", __func__, "DATUM_CONF_USERNAME_MODS");
+					break;
+				}
+				case DATUM_CONF_FUNC: {
+					DLOG_ERROR("%s: %s not implemented", __func__, "DATUM_CONF_FUNC");
 					break;
 				}
 			}
@@ -1160,25 +1168,52 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		strcpy(datum_config.mining_pool_address, val);
 		datum_api_json_modify_new("mining", "pool_address", json_string(val));
 	} else if (0 == strcmp(key, "username_behaviour")) {
+		json_t * const config = datum_config.config_json;
+		assert(config);
+		
+		const char *nv;
 		if (0 == strcmp(val, "datum_pool_pass_full_users")) {
-			if (datum_config.datum_pool_pass_full_users) return true;
+			if (datum_config.datum_pool_pass_full_users && datum_config.datum_pool_pass_workers) return true;
+			nv = "passthrough";
 			datum_config.datum_pool_pass_full_users = true;
-			// datum_pool_pass_workers doesn't matter with datum_pool_pass_full_users enabled
+			datum_config.datum_pool_pass_workers = true;
 		} else if (0 == strcmp(val, "datum_pool_pass_workers")) {
 			if (datum_config.datum_pool_pass_workers && !datum_config.datum_pool_pass_full_users) return true;
+			nv = "worker";
 			datum_config.datum_pool_pass_full_users = false;
 			datum_config.datum_pool_pass_workers = true;
+		} else if (0 == strcmp(val, "strip_worker")) {
+			if (datum_config.datum_pool_pass_full_users && !datum_config.datum_pool_pass_workers) return true;
+			nv = val;
+			datum_config.datum_pool_pass_full_users = true;
+			datum_config.datum_pool_pass_workers = false;
 		} else if (0 == strcmp(val, "private")) {
 			if (!(datum_config.datum_pool_pass_workers || datum_config.datum_pool_pass_full_users)) return true;
+			nv = "ignore";
 			datum_config.datum_pool_pass_full_users = false;
 			datum_config.datum_pool_pass_workers = false;
 		} else {
 			json_array_append_new(errors, json_string_nocheck("Invalid option for \"Send Miner Usernames To Pool\""));
 			return false;
 		}
-		datum_api_json_modify_new("datum", "pool_pass_full_users", json_boolean(datum_config.datum_pool_pass_full_users));
-		if (!datum_config.datum_pool_pass_full_users) {
-			datum_api_json_modify_new("datum", "pool_pass_workers", json_boolean(datum_config.datum_pool_pass_workers));
+		datum_api_json_modify_new("datum", "pool_username_behaviour", json_string_nocheck(nv));
+		
+		json_t *j = json_object_get(config, "datum");
+		if (j && (json_object_get(j, "pool_pass_full_users")
+		       || json_object_get(j, "pool_pass_workers")
+		       || json_object_get(j, "_legacy_username_behaviour"))) {
+			if (nv[0] == 's') {  // strip_worker, not supported by legacy config
+				// Must delete legacy keys or we will trigger a warning at startup
+				json_object_del(j, "pool_pass_full_users");
+				json_object_del(j, "pool_pass_workers");
+				datum_api_json_modify_new("datum", "_legacy_username_behaviour", json_true());
+			} else {
+				json_object_del(j, "_legacy_username_behaviour");
+				datum_api_json_modify_new("datum", "pool_pass_full_users", json_boolean(datum_config.datum_pool_pass_full_users));
+				if (!datum_config.datum_pool_pass_full_users) {
+					datum_api_json_modify_new("datum", "pool_pass_workers", json_boolean(datum_config.datum_pool_pass_workers));
+				}
+			}
 		}
 	} else if (0 == strcmp(key, "mining_coinbase_tag_secondary")) {
 		if (0 == strcmp(val, datum_config.mining_coinbase_tag_secondary)) return true;

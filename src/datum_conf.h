@@ -52,9 +52,16 @@ enum datum_conf_vartype {
 	DATUM_CONF_STRING,
 	DATUM_CONF_STRING_ARRAY,
 	DATUM_CONF_USERNAME_MODS,
+	DATUM_CONF_FUNC,
 };
 
-typedef struct {
+typedef struct T_DATUM_CONFIG_ITEM T_DATUM_CONFIG_ITEM;
+
+// Usage: func(item, config json item, NULL) - assign item
+// Usage: func(item, NULL, pointer to const char*) - store type string pointer
+typedef int (* const DATUM_Conf_VarFunc)(const T_DATUM_CONFIG_ITEM *, const json_t *, const char **out_type);
+
+struct T_DATUM_CONFIG_ITEM {
 	char category[32];
 	char name[64];
 	char description[512];
@@ -70,10 +77,13 @@ typedef struct {
 		};
 	};
 	
-	void *ptr;
+	union {
+		void *ptr;
+		DATUM_Conf_VarFunc ptr_func;
+	};
 	
 	bool required;
-} T_DATUM_CONFIG_ITEM;
+};
 
 const T_DATUM_CONFIG_ITEM *datum_config_get_option_info(const char *category, size_t category_len, const char *name, size_t name_len);
 const T_DATUM_CONFIG_ITEM *datum_config_get_option_info2(const char *category, const char *name);
