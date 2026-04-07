@@ -223,6 +223,43 @@ void datum_api_var_STRATUM_JOB_SIGOPS(char *buffer, size_t buffer_size, const T_
 void datum_api_var_STRATUM_JOB_TXNCOUNT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%u", (unsigned)vardata->sjob->block_template->txn_count);
 }
+void datum_api_var_BITCOIND_NODE_EXPIRY(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata){
+	unsigned long expiry = datum_api_get_expiry();
+	long relative_expiry = expiry - time(NULL);
+	
+	if (expiry == -1) {
+		snprintf(buffer, buffer_size, 
+			"<tr style=\"height: 20px;\"></tr>\n"
+			"\t\t\t\t\t<tr>\n"
+			"\t\t\t\t\t\t<td class=\"label\">bitcoind Node Expiry:</td>\n"
+			"\t\t\t\t\t\t<td class=\"expiry\">Error happened while fetching expiry time, your bitcoind version might not have the RPC call implemented!</td>\n"
+			"\t\t\t\t\t</tr>");
+	} else if (expiry == 0) {
+		snprintf(buffer, buffer_size, 
+			"<tr style=\"height: 20px;\"></tr>\n"
+			"\t\t\t\t\t<tr>\n"
+			"\t\t\t\t\t\t<td class=\"label\">bitcoind Node Expiry:</td>\n"
+			"\t\t\t\t\t\t<td class=\"expiry\">bitcoind is configured to never expire</td>\n"
+			"\t\t\t\t\t</tr>");
+	} else if (relative_expiry <= 0) {
+		snprintf(buffer, buffer_size,
+			"<tr style=\"height: 20px;\"></tr>\n"
+			"\t\t\t\t\t<tr>\n"
+			"\t\t\t\t\t\t<td class=\"label\">bitcoind Node Expiry:</td>\n"
+			"\t\t\t\t\t\t<td class=\"expiry\">bitcoind has expired and stratum endpoint has been killed, update bitcoind or override expiry ASAP!</td>\n"
+			"\t\t\t\t\t</tr>");
+	} else if (relative_expiry <= 15552000) {
+		snprintf(buffer, buffer_size,
+			"<tr style=\"height: 20px;\"></tr>\n"
+			"\t\t\t\t\t<tr>\n"
+			"\t\t\t\t\t\t<td class=\"label\">bitcoind Node Expiry:</td>\n"
+			"\t\t\t\t\t\t<td class=\"expiry\">Expire in approximatively %d days</td>\n"
+			"\t\t\t\t\t</tr>",
+			(int)(relative_expiry/86400));
+	} else {
+		buffer[0] = '\0';
+	}
+}
 
 
 DATUM_API_VarEntry var_entries[] = {
@@ -256,6 +293,8 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
 	{"STRATUM_JOB_TXNCOUNT", datum_api_var_STRATUM_JOB_TXNCOUNT},
+	
+	{"BITCOIND_NODE_EXPIRY", datum_api_var_BITCOIND_NODE_EXPIRY},
 	
 	{NULL, NULL} // Mark the end of the array
 };
@@ -1608,6 +1647,29 @@ int datum_api_umbrel_widget(struct MHD_Connection * const connection) {
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 #endif
+
+unsigned long datum_api_get_expiry() {
+	json_t *expiry = NULL, *expiry_val;
+	char getexpiry_req[1024];
+	CURL *tcurl = curl_easy_init();
+	
+	if (!tcurl) {
+		DLOG_ERROR("Could not initialize cURL to fetch expiry info");
+		
+	}
+	
+	snprintf(getexpiry_req, sizeof(getexpiry_req),"{\"method\":\"getgeneralinfo\",\"params\":[],\"id\":null}");
+	expiry = bitcoind_json_rpc_call(tcurl, &datum_config, getexpiry_req);
+	
+	if (expiry) {
+		expiry_val = json_object_get(expiry, "result");
+		unsigned long raw_expiry_val = (unsigned long)json_integer_value(json_object_get(expiry_val, "expiry"));
+		return raw_expiry_val;
+	} else {
+		DLOG_WARN("Error happened while fetching expiry time for the dashboard, your bitcoind version might not have the RPC call implemented!");
+		return -1;
+	}
+}
 
 int datum_api_testnet_fastforward(struct MHD_Connection * const connection) {
 	const char *time_str;

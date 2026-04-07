@@ -55,6 +55,7 @@ typedef struct {
 	DATUM_API_VarFunc func;
 } DATUM_API_VarEntry;
 
+unsigned long datum_api_get_expiry();
 
 int datum_api_init(void);
 size_t strncpy_html_escape(char *dest, const char *src, size_t n);

@@ -23,6 +23,11 @@
 			word-break: break-all;
 		}
 		
+		.expiry {
+			overflow-wrap: break-word;
+			word-break: normal
+		}
+		
 		.leading_zeros {
 			color: gray;
 		}
@@ -105,6 +110,7 @@
 						<td class="label">Estimated Hashrate:</td>
 						<td>${STRATUM_HASHRATE_ESTIMATE}</td>
 					</tr>
+					${BITCOIND_NODE_EXPIRY}
 				</table>
 			</div>
 		</div>
