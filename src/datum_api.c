@@ -1381,6 +1381,7 @@ size_t datum_api_fill_config_errors(const char *var_start, const size_t var_name
 }
 
 void *datum_restart_thread(void *ptr) {
+	pthread_setname_np(pthread_self(), "restart");
 	// Give logger some time
 	usleep(500000);
 	
@@ -1837,6 +1838,7 @@ static struct MHD_Daemon *datum_api_try_start(unsigned int flags, const int sock
 }
 
 void *datum_api_thread(void *ptr) {
+	pthread_setname_np(pthread_self(), "api");
 	struct MHD_Daemon *daemon;
 	
 	if (!datum_config.api_listen_port) {

@@ -1463,6 +1463,7 @@ bool datum_protocol_is_active(void) {
 }
 
 void *datum_protocol_client(void *args) {
+	pthread_setname_np(pthread_self(), "protocol");
 	struct addrinfo hints, *res, *p;
 	int sockfd = -1;
 	int epollfd, nfds;

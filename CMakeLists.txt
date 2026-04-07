@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.13)
 
 project(DATUM VERSION 0.4.1 LANGUAGES C)
 
+add_compile_definitions(_GNU_SOURCE)
+
 # Enable C23 if supported, else fall back to C11 for compatibility
 if(CMAKE_VERSION VERSION_LESS "3.21")
     # Older CMake: C23 not recognized; use C11
@@ -97,6 +99,11 @@ if(HAVE_EPOLL_WAIT)
 	set(EPOLL_SHIM_LIBRARIES "")
 else()
 	pkg_check_modules(EPOLL_SHIM REQUIRED epoll-shim)
+endif()
+
+check_function_exists(pthread_setname_np HAVE_PTHREAD_SETNAME_NP)
+if(HAVE_PTHREAD_SETNAME_NP)
+	add_compile_definitions(HAVE_PTHREAD_SETNAME_NP)
 endif()
 
 cmake_pop_check_state()

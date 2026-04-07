@@ -821,6 +821,7 @@ int datum_coinbaser_v2_parse(T_DATUM_STRATUM_JOB *s, unsigned char *coinbaser, i
 }
 
 void *datum_coinbaser_thread(void *ptr) {
+	pthread_setname_np(pthread_self(), "coinbaser");
 	int sjob = -1;
 	T_DATUM_STRATUM_JOB *s = NULL;
 	bool need_coinbaser = false;
