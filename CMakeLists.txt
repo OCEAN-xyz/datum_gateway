@@ -149,7 +149,7 @@ target_compile_options(datum_gateway
 )
 
 if(ENABLE_API)
-	target_sources(datum_gateway PRIVATE src/datum_api.c)
+	target_sources(datum_gateway PRIVATE src/datum_api.c src/datum_json_api.c)
 	target_include_directories(datum_gateway PRIVATE ${MICROHTTPD_INCLUDE_DIRS})
 	target_link_directories(datum_gateway PUBLIC ${MICROHTTPD_LIBRARY_DIRS})
 	target_link_libraries(datum_gateway PUBLIC ${MICROHTTPD_LIBRARIES} ${MICROHTTPD_LDFLAGS} ${MICROHTTPD_LDFLAGS_OTHER})
