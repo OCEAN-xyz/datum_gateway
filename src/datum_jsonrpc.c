@@ -139,7 +139,7 @@ err_out:
 	return NULL;
 }
 
-json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, const char *rpc_req, const char *extra_header, long * const http_resp_code_out) {
+json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, const char *rpc_req, const char *extra_header, long * const http_resp_code_out, bool failonerror) {
 	json_t *val, *err_val, *res_val;
 	CURLcode rc;
 	struct data_buffer all_data = { };
@@ -152,7 +152,7 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+	curl_easy_setopt(curl, CURLOPT_FAILONERROR, (long)failonerror);
 	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
@@ -186,11 +186,12 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	
 	rc = curl_easy_perform(curl);
+	if (http_resp_code_out) {
+		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, http_resp_code_out);
+	}
 	if (rc) {
-		if (http_resp_code_out) curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, http_resp_code_out);
 		DLOG_DEBUG("json_rpc_call: HTTP request failed: %s", curl_err_str);
 		DLOG_DEBUG("json_rpc_call: Request was: %s",rpc_req);
-		goto err_out;
 	}
 	
 	val = JSON_LOADS(all_data.buf, &err);
@@ -202,6 +203,10 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	if (check_for_result) {
 		res_val = json_object_get(val, "result");
 		err_val = json_object_get(val, "error");
+		
+		if (json_integer_value(json_object_get(err_val, "code")) == -10) {
+			return val;
+		}
 		
 		if (!res_val || json_is_null(res_val) || (err_val && !json_is_null(err_val))) {
 			char *s;
@@ -233,7 +238,7 @@ err_out:
 }
 
 json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass, const char *rpc_req) {
-	return json_rpc_call_full(curl, url, userpass, rpc_req, NULL, NULL);
+	return json_rpc_call_full(curl, url, userpass, rpc_req, NULL, NULL, true);
 }
 
 bool update_rpc_cookie(global_config_t * const cfg) {
@@ -258,9 +263,13 @@ void update_rpc_auth(global_config_t * const cfg) {
 	}
 }
 
-json_t *bitcoind_json_rpc_call(CURL * const curl, global_config_t * const cfg, const char * const rpc_req) {
+json_t *bitcoind_json_rpc_call(CURL * const curl, global_config_t * const cfg, const char * const rpc_req, bool failonerror) {
 	long http_resp_code = -1;
-	json_t *j = json_rpc_call_full(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req, NULL, &http_resp_code);
+	json_t *j = json_rpc_call_full(curl, cfg->bitcoind_rpcurl, cfg->bitcoind_rpcuserpass, rpc_req, NULL, &http_resp_code, failonerror);
+	if (http_resp_code != 200 && http_resp_code != 500) {
+		free(j);
+		j = NULL;
+	}
 	if (j) return j;
 	if (cfg->bitcoind_rpcuser[0]) return NULL;
 	if (http_resp_code != 401) return NULL;

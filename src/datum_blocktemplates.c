@@ -364,7 +364,7 @@ void *datum_gateway_fallback_notifier(void *args) {
 	
 	while(1) {
 		snprintf(req, sizeof(req), "{\"jsonrpc\":\"1.0\",\"id\":\"%"PRIu64"\",\"method\":\"getbestblockhash\",\"params\":[]}", current_time_millis());
-		gbbh = bitcoind_json_rpc_call(tcurl, &datum_config, req);
+		gbbh = bitcoind_json_rpc_call(tcurl, &datum_config, req, /*failonerror=*/true);
 		if (gbbh) {
 			res_val = json_object_get(gbbh, "result");
 			if (!res_val) {
@@ -445,7 +445,7 @@ void *datum_gateway_template_thread(void *args) {
 		
 		// fetch latest template
 		snprintf(gbt_req, sizeof(gbt_req), "{\"method\":\"getblocktemplate\",\"params\":[{\"rules\":[\"segwit\"]}],\"id\":%"PRIu64"}",(uint64_t)((uint64_t)time(NULL)<<(uint64_t)8)|(uint64_t)(i&255));
-		gbt = bitcoind_json_rpc_call(tcurl, &datum_config, gbt_req);
+		gbt = bitcoind_json_rpc_call(tcurl, &datum_config, gbt_req, /*failonerror=*/false);
 		
 		if (!gbt) {
 			datum_blocktemplates_error = "Could not fetch new template!";
@@ -453,7 +453,21 @@ void *datum_gateway_template_thread(void *args) {
 			sleep(1);
 			continue;
 		} else {
+			json_t *error_obj = json_object_get(gbt, "error");
 			res_val = json_object_get(gbt, "result");
+			
+			if (json_is_object(error_obj)) {
+				json_t *code_val = json_object_get(error_obj, "code");
+				if (code_val && json_is_integer(code_val)) {
+					if ((int)json_integer_value(code_val) == -10) {
+						DLOG_ERROR("bitcoind still syncing");
+						datum_blocktemplates_error = "Could not fetch new template!";
+						sleep(1);
+						continue;
+					}
+				}
+			}
+			
 			if (!res_val) {
 				datum_blocktemplates_error = "Could not decode GBT result!";
 				DLOG_ERROR("%s", datum_blocktemplates_error);
