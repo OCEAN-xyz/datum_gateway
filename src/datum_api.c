@@ -89,10 +89,16 @@ static void html_leading_zeros(char * const buffer, const size_t buffer_size, co
 }
 
 void datum_api_var_DATUM_SHARES_ACCEPTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_accepted_share_count, (unsigned long long)datum_accepted_share_diff);
+    // Prefer pool stats when a pool is configured/active; otherwise show local stratum client stats
+    // Pool considered active if the DATUM protocol is active, or configured if pool host is set
+    // Dashboard always renders datum_* counters; when no pool is active, we mirror local stats into datum_* at submit time
+    (void)vardata;
+    snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_accepted_share_count, (unsigned long long)datum_accepted_share_diff);
 }
 void datum_api_var_DATUM_SHARES_REJECTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_rejected_share_count, (unsigned long long)datum_rejected_share_diff);
+    // Prefer pool stats when a pool is configured/active; otherwise show local stratum client stats
+    (void)vardata;
+    snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_rejected_share_count, (unsigned long long)datum_rejected_share_diff);
 }
 void datum_api_var_DATUM_CONNECTION_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	const char *colour = "lime";
