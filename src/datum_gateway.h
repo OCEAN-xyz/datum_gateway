@@ -57,6 +57,8 @@
 
 void datum_print_banner(void);
 
+void datum_log_version(void);
+
 extern const char *datum_gateway_config_filename;
 
 extern const char * const *datum_argv;
