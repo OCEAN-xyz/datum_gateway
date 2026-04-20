@@ -73,7 +73,26 @@
 #include "datum_blocktemplates.h"
 #include "datum_coinbaser.h"
 #include "datum_queue.h"
+#include "datum_job_sync.h"
 #include "git_version.h"
+
+// macOS compatibility: pthread_mutex_timedlock not available
+#ifdef __APPLE__
+static int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abs_timeout) {
+	// Simple polling implementation for macOS
+	int rc;
+	struct timespec ts;
+	while ((rc = pthread_mutex_trylock(mutex)) == EBUSY) {
+		clock_gettime(CLOCK_REALTIME, &ts);
+		if (ts.tv_sec > abs_timeout->tv_sec ||
+		    (ts.tv_sec == abs_timeout->tv_sec && ts.tv_nsec >= abs_timeout->tv_nsec)) {
+			return ETIMEDOUT;
+		}
+		usleep(1000); // Sleep 1ms before retrying
+	}
+	return rc;
+}
+#endif
 
 atomic_int datum_protocol_client_active = 0;
 
@@ -144,8 +163,13 @@ unsigned char datum_protocol_setup_new_job_idx(void *sx) {
 	
 	datum_jobs[a].sjob = s;
 	datum_jobs[a].datum_job_id = a;
-	
+
 	pthread_rwlock_unlock(&datum_jobs_rwlock);
+
+	// Add job to sync queue if enabled
+	if (datum_config.datum_enable_job_coordination && s->is_datum_job) {
+		datum_job_sync_add(s, s->is_new_block);
+	}
 	
 	return a;
 }
@@ -1946,16 +1970,75 @@ int datum_protocol_init(void) {
 
 int datum_encrypt_generate_keys(DATUM_ENC_KEYS *keys) {
 	int i;
-	
+
 	// generate an Ed25519 key pair
 	i = crypto_sign_keypair(keys->pk_ed25519, keys->sk_ed25519);
 	if (i != 0) return i;
-	
+
 	// generate an X25519 key pair
 	i = crypto_box_keypair(keys->pk_x25519, keys->sk_x25519);
 	if (i != 0) return i;
-	
+
 	keys->is_remote = false;
-	
+
+	return 0;
+}
+
+// Send job sync message to pool
+int datum_protocol_send_job_sync(void *sync_ptr) {
+	if (!sync_ptr) return -1;
+
+	T_DATUM_JOB_SYNC *sync = (T_DATUM_JOB_SYNC *)sync_ptr;
+	unsigned char msg[sizeof(T_DATUM_JOB_SYNC) + crypto_box_MACBYTES + 100];
+	int i = 0;
+
+	// Job sync sub-command
+	msg[i] = DATUM_CMD_JOB_SYNC; i++;
+
+	// Copy the sync data structure
+	memcpy(&msg[i], sync, sizeof(T_DATUM_JOB_SYNC));
+	i += sizeof(T_DATUM_JOB_SYNC);
+
+	// Terminator
+	msg[i] = 0xFE; i++;
+
+	// Pad with randomness
+	int j = 1 + (rand() % 50);
+	memset(&msg[i], rand(), j);
+	i += j;
+
+	// Send via protocol command 5
+	return datum_protocol_mining_cmd(msg, i);
+}
+
+// Handle job sync messages from pool
+int datum_protocol_handle_sync_messages(unsigned char cmd, unsigned char *data, int len) {
+	if (!data || len < 1) return -1;
+
+	switch (cmd) {
+		case DATUM_CMD_JOB_SYNC_ACK: {
+			// Job sync acknowledgment from pool
+			if (len < 2) {
+				DLOG_WARN("Invalid job sync ACK: too short");
+				return -1;
+			}
+
+			unsigned char datum_job_id = data[0];
+			bool success = (data[1] == 0x01);
+
+			return datum_job_sync_handle_ack(datum_job_id, success);
+		}
+
+		case DATUM_CMD_SHARE_FORWARD: {
+			// Forwarded share from pool for validation
+			return datum_job_sync_handle_forward(data, len);
+		}
+
+		default: {
+			DLOG_WARN("Unknown job sync command: 0x%02x", cmd);
+			return -1;
+		}
+	}
+
 	return 0;
 }
