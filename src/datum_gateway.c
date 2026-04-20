@@ -144,6 +144,7 @@ int main(const int argc, const char * const * const argv) {
 	struct sigaction sa;
 	uint64_t last_datum_protocol_connect_tsms = 0;
 	bool rejecting_stratum = false;
+	bool rejecting_stale_template = false;
 	uint32_t next_reconnect_attempt_ms = 5000;
 	
 	// listen for block notifications
@@ -255,6 +256,18 @@ int main(const int argc, const char * const * const argv) {
 			if (datum_protocol_is_active()) {
 				fail_retries = 0;
 			}
+		}
+		
+		const uint64_t now_monotonic_secs = monotonic_time_seconds();
+		
+		if (g_last_block_template_monotonic_secs + datum_config.bitcoind_work_update_stale_limit < now_monotonic_secs) {
+			if (!rejecting_stale_template) {
+				DLOG_ERROR("Failed to update block template in %d seconds! Shutting down Stratum v1 server until template updated.", (int)(now_monotonic_secs - g_last_block_template_monotonic_secs));
+				rejecting_stale_template = true;
+				datum_stratum_v1_shutdown_all();
+			}
+		} else {
+			rejecting_stale_template = false;
 		}
 		
 		if (datum_config.datum_pooled_mining_only && (fail_retries >= 2) && (!datum_protocol_is_active())) {

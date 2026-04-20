@@ -74,6 +74,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = true, .ptr = datum_config.bitcoind_rpcurl, .max_string_len = sizeof(datum_config.bitcoind_rpcurl) },
 	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "work_update_seconds",		.description = "How many seconds between normal work updates?  (5-120, 40 suggested)",
 		.required = false, .ptr = &datum_config.bitcoind_work_update_seconds, .default_int = 40 },
+	{ .var_type = DATUM_CONF_INT,	 	.category = "bitcoind", 	.name = "work_update_stale_limit",	.description = "Disconnect miners if template hasn't been updated in how many seconds? (400-600 suggested)",
+		.required = false, .ptr = &datum_config.bitcoind_work_update_stale_limit, .default_int = 600 },
 	{ .var_type = DATUM_CONF_BOOL,	 	.category = "bitcoind", 	.name = "notify_fallback",			.description = "Fall back to less efficient methods for new block notifications. Can disable if you use blocknotify.",
 		.example_default = true,
 		.required = false, .ptr = &datum_config.bitcoind_notify_fallback, .default_bool = true },
@@ -528,6 +530,11 @@ int datum_read_config(const char *conffile) {
 		hash2hex(hash, datum_config.api_csrf_token);
 	}
 #endif
+	
+	if (datum_config.bitcoind_work_update_stale_limit < datum_config.bitcoind_work_update_seconds + 5) {
+		DLOG_FATAL("bitcoind work update stale limit must be at least the work update interval plus 5 seconds.");
+		return 0;
+	}
 	
 	if (datum_config.stratum_v1_max_threads > MAX_THREADS) {
 		DLOG_FATAL("Maximum threads must be less than %d.", MAX_THREADS);
