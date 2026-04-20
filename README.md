@@ -83,6 +83,9 @@ Some additional recommendations:
 
 As a true miner, you'll most likely want as many valid transactions as possible in your mempool which meet your node's policies.
 
+Additionally, to maximize your own blocks' broadcasting speed it's recommended to open the node's P2P port (TCP port 8333) to the internet.
+A listening node significantly increases its number of peers therefore it tends to be better connected to the network, and it's harder to Eclipse attack it.
+
 ## Installation
 Install and fully sync your Bitcoin full node. Instructions for this are beyond the scope of this document.
 
