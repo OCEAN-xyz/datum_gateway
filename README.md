@@ -68,7 +68,7 @@ Note: This reservation requirement will be removed for Bitcoin Knots users in a 
 
 To avoid mining stale work, you will need to ensure the DATUM Gateway receives new block notifications from your node. It is suggested you run the DATUM Gateway as the same user as your full node and utilize the following configuration line in your bitcoin.conf:
 
-    blocknotify=killall -USR1 datum_gateway
+    blocknotify="killall -USR1 datum_gateway"
 
 Ensure you have "killall" installed on your system (*psmisc* package on many OSs).
 
@@ -172,7 +172,7 @@ docker run -v /path/to/your/config/directory:/app/config -p 23334:23334 -p 7152:
 You will need to disable the notify fallback in your configuration file if you are using Docker. And in bitcoin.conf, you will need to set the following:
 
 ```bash
-blocknotify=wget -q -O /dev/null http://datum-gateway:7152/NOTIFY
+blocknotify="wget -q -O /dev/null http://datum-gateway:7152/NOTIFY"
 ```
 
 ### Connecting to a Bitcoin Node
@@ -195,7 +195,7 @@ If your Bitcoin node is also running in a Docker container on the same network, 
 In your `bitcoin.conf`, set the blocknotify to use the DATUM Gateway container name:
 
 ```
-blocknotify=wget -q -O /dev/null http://datum-gateway:7152/NOTIFY
+blocknotify="wget -q -O /dev/null http://datum-gateway:7152/NOTIFY"
 ```
 
 #### 2. Bitcoin Node Running on Host System
@@ -231,7 +231,7 @@ Then configure using localhost:
 
 For blocknotify in `bitcoin.conf` when using host networking:
 ```
-blocknotify=wget -q -O /dev/null http://localhost:7152/NOTIFY
+blocknotify="wget -q -O /dev/null http://localhost:7152/NOTIFY"
 ```
 
 #### 3. Bitcoin Node on Remote System
@@ -249,7 +249,7 @@ If your Bitcoin node is running on a different machine, use the hostname or IP a
 
 In your remote Bitcoin node's `bitcoin.conf`:
 ```
-blocknotify=wget -q -O /dev/null http://datum-gateway-host-ip:7152/NOTIFY
+blocknotify="wget -q -O /dev/null http://datum-gateway-host-ip:7152/NOTIFY"
 ```
 
 **Important Notes:**
