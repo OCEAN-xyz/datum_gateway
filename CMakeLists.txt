@@ -48,6 +48,7 @@ set(WEB_RESOURCES
 	www/config.html
 	www/config_errors.html
 	www/config_restart.html
+	www/modifiers_top.html
 	www/threads_top.html
 	www/foot.html
 	www/assets/post.js

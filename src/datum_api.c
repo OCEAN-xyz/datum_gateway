@@ -838,6 +838,51 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
+int datum_api_modifiers(struct MHD_Connection *connection) {
+	struct MHD_Response *response;
+	struct datum_username_mod *modifiers = datum_config.stratum_username_mod;
+	int sz=0, max_sz = 0, rowspan;
+	char *output = NULL;
+	
+	max_sz = www_modifiers_top_html_sz + www_foot_html_sz;
+	max_sz += 32;
+	for (struct datum_username_mod *mod = modifiers; mod; mod = datum_username_mods_next(mod)) {
+		for (int i = 0; mod->ranges[i].addr != NULL; i++) {
+			max_sz += mod->modname_len + mod->ranges[i].addr_len + 128;
+		}
+	}
+	output = calloc(max_sz+16,1);
+	
+	sz = snprintf(output, max_sz-1-sz, "%s", www_modifiers_top_html);
+	
+	sz += snprintf(&output[sz], max_sz-1-sz, "<table>");
+	for (struct datum_username_mod *mod = modifiers; mod; mod = datum_username_mods_next(mod)) {
+		rowspan = 0;
+		for (int i = 0; mod->ranges[i].addr != NULL; i++) {
+			rowspan += 1;
+		}
+
+		for (int i = 0; mod->ranges[i].addr != NULL; i++) {
+			uint16_t prev = (i == 0) ? 0 : mod->ranges[i-1].max + 1;
+			double percent = (double)(mod->ranges[i].max - prev + 1) / 65536.0 * 100.0;
+			sz += snprintf(&output[sz], max_sz-1-sz, "<tr>");
+			if (i == 0) {
+				sz += snprintf(&output[sz], max_sz-1-sz, "<td rowspan=\"%d\">%.*s</td>", rowspan, (int)mod->modname_len, mod->modname);
+			}
+			sz += snprintf(&output[sz], max_sz-1-sz, "<td>%.*s</td>", (int)mod->ranges[i].addr_len, mod->ranges[i].addr);
+			sz += snprintf(&output[sz], max_sz-1-sz, "<td>%.5f%%</td>", percent);
+			sz += snprintf(&output[sz], max_sz-1-sz, "</tr>");
+		}
+	}
+	sz += snprintf(&output[sz], max_sz-1-sz, "</table>");
+	
+	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
+	
+	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
+	MHD_add_response_header(response, "Content-Type", "text/html");
+	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
+}
+
 int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	int connected_clients = 0;
@@ -1789,6 +1834,12 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz, www_assets_icons_favicon_ico_etag);
 			}
 			break;
+		}
+		
+		case 'm': {
+			if (!strcmp(url, "/modifiers")) {
+				return datum_api_modifiers(connection);
+			}
 		}
 		
 		case 't': {
