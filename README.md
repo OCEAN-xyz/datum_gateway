@@ -126,6 +126,13 @@ For FreeBSD:
 
     sudo pkg install cmake pkgconf curl jansson libsodium libmicrohttpd argp-standalone libepoll-shim
 
+For Red Hat/Fedora it would be:
+
+```
+sudo dnf install cmake pkgconf libcurl-devel jansson-devel libmicrohttpd-devel libsodium-devel psmisc
+```
+Note: You may also need to add `git` and `gcc` to the above list if a git client and compiler, respectively, aren't already set up on your system.
+
 Compile DATUM by running:
 
     cmake . && make
