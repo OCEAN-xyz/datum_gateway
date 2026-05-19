@@ -684,21 +684,21 @@ void *datum_gateway_listener_thread(void *arg) {
 
 bool datum_socket_setoptions(int sock) {
 	int opts;
-	int flag = 1;
+	static const int flag = 1;
 	
 	opts = fcntl(sock,F_GETFL);
 	if (opts < 0) {
 		DLOG_ERROR("fcntl(F_GETFL) failed: %s", strerror(errno));
 		return false;
 	}
-	opts = (opts | O_NONBLOCK);
-	if (fcntl(sock,F_SETFL,opts) < 0) {
+	opts |= O_NONBLOCK;
+	if (fcntl(sock, F_SETFL, opts) < 0) {
 		DLOG_ERROR("fcntl(F_SETFL) failed: %s", strerror(errno));
 		return false;
 	}
 	
 	// Set the TCP_NODELAY option
-	if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)) < 0) {
+	if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *)&flag, sizeof(flag)) < 0) {
 		DLOG_WARN("setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
 	}
 	
