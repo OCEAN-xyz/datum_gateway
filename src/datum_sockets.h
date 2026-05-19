@@ -162,7 +162,7 @@ typedef struct T_DATUM_THREAD_DATA {
 } T_DATUM_THREAD_DATA;
 
 void *datum_gateway_listener_thread(void *arg);
-void datum_socket_setoptions(int sock);
+[[nodiscard]] bool datum_socket_setoptions(int sock);
 
 int datum_socket_send_string_to_client(T_DATUM_CLIENT_DATA *c, char *s);
 int datum_socket_send_chars_to_client(T_DATUM_CLIENT_DATA *c, char *s, int len);

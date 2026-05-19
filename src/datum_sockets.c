@@ -584,7 +584,9 @@ void *datum_gateway_listener_thread(void *arg) {
 		return NULL;
 	}
 	
-	datum_socket_setoptions(listen_sock);
+	if (!datum_socket_setoptions(listen_sock)) {
+		return "datum_socket_setoptions failed";
+	}
 	memset(&serveraddr, 0, sizeof(serveraddr));
 	serveraddr.sin_family = AF_INET;
 	serveraddr.sin_port = htons(app->listen_port);
@@ -660,7 +662,11 @@ void *datum_gateway_listener_thread(void *arg) {
 				}
 				
 				DLOG_DEBUG("Accepted socket to fd %d", conn_sock);
-				datum_socket_setoptions(conn_sock);
+				if (!datum_socket_setoptions(conn_sock)) {
+					DLOG_ERROR("datum_socket_setoptions failed for incoming connection on fd %d", conn_sock);
+					close(conn_sock);
+					continue;
+				}
 				
 				// assign socket to a thread
 				i = assign_to_thread(app, conn_sock);
@@ -676,25 +682,27 @@ void *datum_gateway_listener_thread(void *arg) {
 	return NULL;
 }
 
-void datum_socket_setoptions(int sock) {
+bool datum_socket_setoptions(int sock) {
 	int opts;
 	int flag = 1;
 	
 	opts = fcntl(sock,F_GETFL);
 	if (opts < 0) {
-		DLOG_FATAL("fcntl(F_GETFL) failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
+		DLOG_ERROR("fcntl(F_GETFL) failed: %s", strerror(errno));
+		return false;
 	}
 	opts = (opts | O_NONBLOCK);
 	if (fcntl(sock,F_SETFL,opts) < 0) {
-		DLOG_FATAL("fcntl(F_SETFL) failed: %s", strerror(errno));
-		panic_from_thread(__LINE__);
+		DLOG_ERROR("fcntl(F_SETFL) failed: %s", strerror(errno));
+		return false;
 	}
 	
 	// Set the TCP_NODELAY option
 	if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)) < 0) {
 		DLOG_WARN("setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
 	}
+	
+	return true;
 }
 
 int datum_socket_send_string_to_client(T_DATUM_CLIENT_DATA *c, char *s) {
