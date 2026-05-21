@@ -585,7 +585,10 @@ void *datum_gateway_listener_thread(void *arg) {
 	}
 	
 	if (!datum_socket_setoptions(listen_sock)) {
-		return "datum_socket_setoptions failed";
+		close(listen_sock);
+		DLOG_FATAL("datum_socket_setoptions failed");
+		panic_from_thread(__LINE__);
+		return NULL;
 	}
 	memset(&serveraddr, 0, sizeof(serveraddr));
 	serveraddr.sin_family = AF_INET;
