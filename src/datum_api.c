@@ -223,6 +223,9 @@ void datum_api_var_STRATUM_JOB_SIGOPS(char *buffer, size_t buffer_size, const T_
 void datum_api_var_STRATUM_JOB_TXNCOUNT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%u", (unsigned)vardata->sjob->block_template->txn_count);
 }
+void datum_api_var_DATUM_GATEWAY_VERSION(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%s", DATUM_PROTOCOL_VERSION);
+}
 
 
 DATUM_API_VarEntry var_entries[] = {
@@ -256,6 +259,8 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
 	{"STRATUM_JOB_TXNCOUNT", datum_api_var_STRATUM_JOB_TXNCOUNT},
+	
+	{"DATUM_GATEWAY_VERSION", datum_api_var_DATUM_GATEWAY_VERSION},
 	
 	{NULL, NULL} // Mark the end of the array
 };
