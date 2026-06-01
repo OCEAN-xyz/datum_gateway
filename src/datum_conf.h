@@ -105,6 +105,10 @@ typedef struct {
 	int bitcoind_work_update_seconds;
 	bool bitcoind_notify_fallback;
 	
+	char rsk_wsurl[256];
+	int rsk_work_update_seconds;
+	bool rsk_update_job;
+	
 	char stratum_v1_listen_addr[128];
 	int stratum_v1_listen_port;
 	int stratum_v1_max_clients;

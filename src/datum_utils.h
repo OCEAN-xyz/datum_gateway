@@ -36,6 +36,8 @@
 #ifndef _DATUM_UTILS_H_
 #define _DATUM_UTILS_H_
 
+#include <ctype.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -50,10 +52,37 @@ bool datum_test_fail_(const char *expr, const char *file, unsigned int line, con
 #define datum_test(expr) \
 	datum_test_(expr, #expr, __LINE__, __func__)
 
+static inline
+void datum_update_timeout(int * const timeout_p, const uint64_t target, const uint64_t now) {
+	if (now < target) {
+		*timeout_p = 0;
+		return;
+	}
+	
+	const uint64_t delta = target - now;
+	if (*timeout_p < 0 && delta > INT_MAX) {
+		*timeout_p = INT_MAX;
+	} else if (delta < (uint64_t)*timeout_p) {
+		*timeout_p = (int)delta;
+	}
+}
+
 uint64_t monotonic_time_seconds(void);
+uint64_t monotonic_time_millis(void);
 uint64_t current_time_millis(void);
 uint64_t current_time_micros(void);
 uint64_t get_process_uptime_seconds(void);
+
+static inline
+bool is_all_hex(const char * const s, const size_t len) {
+	for (size_t i = 0; i < len; ++i) {
+		if (!isxdigit(s[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
 unsigned char hex2bin_uchar(const char *in);
 void build_hex_lookup(void);
 bool my_sha256(void *digest, const void *buffer, size_t length);
@@ -66,7 +95,21 @@ void panic_from_thread(int a);
 bool double_sha256(void *out, const void *in, size_t length);
 void hex_to_bin_le(const char *hex, unsigned char *bin);
 void hex_to_bin(const char *hex, unsigned char *bin);
-void hash2hex(unsigned char *bytes, char *hexString);
+
+static inline
+bool hex_to_bin_checked(const char *hex, unsigned char *bin) {
+	while (hex[0]) {
+		if (!(isxdigit(hex[0] && isxdigit(hex[1])))) return false;
+		*(bin++) = hex2bin_uchar(hex);
+		hex = &hex[2];
+	}
+	return true;
+}
+
+void bin2hex(char *hexString, const void *bytes, size_t len, bool terminate);
+static inline void hash2hex(unsigned char * const bytes, char *const hexString) {
+	bin2hex(hexString, bytes, /*len=*/ 32, /*terminate=*/ true);
+}
 void get_target_from_diff(unsigned char *result, uint64_t diff);
 uint64_t roundDownToPowerOfTwo_64(uint64_t x);
 int addr_2_output_script(const char *addr, unsigned char *script, int max_len);

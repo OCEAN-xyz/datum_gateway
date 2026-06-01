@@ -78,6 +78,14 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.example_default = true,
 		.required = false, .ptr = &datum_config.bitcoind_notify_fallback, .default_bool = true },
 	
+	// Rootstock configs
+	{ .var_type = DATUM_CONF_STRING, 	.category = "rsk", 			.name = "wsurl",					.description = "Websocket URL for communication with local Rootstock node.",
+		.required = false, .ptr = datum_config.rsk_wsurl, .max_string_len = sizeof(datum_config.rsk_wsurl) },
+	{ .var_type = DATUM_CONF_INT,	 	.category = "rsk", 			.name = "work_update_seconds",		.description = "How many seconds between normal work updates?  (1-120, 2 suggested)",
+		.required = false, .ptr = &datum_config.rsk_work_update_seconds, .default_int = 2 },
+	{ .var_type = DATUM_CONF_BOOL,	 	.category = "rsk",		 	.name = "update_job",					.description = "Push a new job to miners as soon as every new Rootstock block is found.",
+		.required = false, .ptr = &datum_config.rsk_update_job, .default_bool = false },
+	
 	// stratum v1 server configs
 	{ .var_type = DATUM_CONF_STRING, 	.category = "stratum", 		.name = "listen_addr",					.description = "IP address to listen for Stratum Gateway connections",
 		.required = false, .ptr = datum_config.stratum_v1_listen_addr,				.default_string[0] = "", .max_string_len = sizeof(datum_config.stratum_v1_listen_addr) },
@@ -489,6 +497,12 @@ int datum_read_config(const char *conffile) {
 	}
 	if (datum_config.bitcoind_work_update_seconds > 120) {
 		datum_config.bitcoind_work_update_seconds = 120;
+	}
+	
+	if (datum_config.rsk_work_update_seconds < 1) {
+		datum_config.rsk_work_update_seconds = 1;
+	} else if (datum_config.rsk_work_update_seconds > 120) {
+		datum_config.rsk_work_update_seconds = 120;
 	}
 	
 	if (datum_config.bitcoind_rpcuser[0]) {

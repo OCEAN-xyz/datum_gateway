@@ -46,6 +46,8 @@
 	#include "datum_blocktemplates.h"
 #endif
 
+#include "datum_rsk.h"
+
 #define MAX_STRATUM_JOBS 256
 
 #define MAX_COINBASE_TYPES 6
@@ -118,7 +120,7 @@ typedef struct {
 	int sigops;
 } T_DATUM_TXN_OUTPUT;
 
-typedef struct {
+typedef struct T_DATUM_STRATUM_JOB {
 	int global_index;
 	
 	char job_id[24];
@@ -136,8 +138,8 @@ typedef struct {
 	T_DATUM_TEMPLATE_DATA *block_template;
 	
 	unsigned char merklebranch_count;
-	char merklebranches_hex[24][72];
-	unsigned char merklebranches_bin[24][32];
+	char merklebranches_hex[MAX_MERKLE_BRANCHES][72];
+	unsigned char merklebranches_bin[MAX_MERKLE_BRANCHES][32];
 	
 	char merklebranches_full[4096];
 	
@@ -174,6 +176,9 @@ typedef struct {
 	bool is_datum_job;
 	unsigned char datum_job_idx;
 	unsigned char datum_coinbaser_id;
+	
+	char rsk_commitment_hex_unterminated[RSK_COMMITMENT_SIZE * 2];
+	uint8_t rsk_block_target[RSK_TARGET_SIZE];
 } T_DATUM_STRATUM_JOB;
 
 typedef struct T_DATUM_STRATUM_THREADPOOL_DATA {

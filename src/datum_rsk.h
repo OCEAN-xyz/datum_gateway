@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2026 Bitcoin Ocean, LLC & Luke Dashjr
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -33,34 +33,22 @@
  *
  */
 
-#ifndef _DATUM_GATEWAY_H_
-#define _DATUM_GATEWAY_H_
+#ifndef _DATUM_RSK_H_
+#define _DATUM_RSK_H_
 
-#include "git_version.h"
+#include "datum_conf.h"
 
-#ifndef GIT_COMMIT_HASH
-	#define GIT_COMMIT_HASH "UNKNOWN_GIT_HASH"
-#endif
+struct T_DATUM_STRATUM_JOB;  // datum_stratum.h includes us, so it would be recursive
 
-// For SV1
-// client buffer must be large enough to hold entire coinbase in hex at max size
-// TODO: Make somewhat more dynamic without having to hammer [cm]alloc
-#define CLIENT_BUFFER ((16384*3)+1024)
+#define RSK_COMMITMENT_SIZE 0x20
+#define RSK_TARGET_SIZE 0x20
 
-// in ascii hex
-#define STRATUM_COINBASE1_MAX_LEN 1024
-#define STRATUM_COINBASE2_MAX_LEN 32768
+// NOTE: First byte of RSK_COMMITMENT_OVERHEAD_HEX is the length of both the overhead (excluding that byte) and actual commitment in binary
+#define RSK_COMMITMENT_OVERHEAD_HEX "2952534b424c4f434b3a"
+#define RSK_COMMITMENT_OVERHEAD_SIZE (sizeof(RSK_COMMITMENT_OVERHEAD_HEX) / 2)
 
-#define MAX_COINBASE_TXN_SIZE_BYTES (((STRATUM_COINBASE1_MAX_LEN+STRATUM_COINBASE2_MAX_LEN)>>1)+64)
-
-#define MAX_MERKLE_BRANCHES 32
-
-#define STRATUM_JOB_INDEX_XOR ((uint16_t)0xC0DE)
-
-void datum_print_banner(void);
-
-extern const char *datum_gateway_config_filename;
-
-extern const char * const *datum_argv;
+bool datum_rsk_init(const global_config_t *cfg);
+void datum_rsk_get_current_work(char *out_rsk_commitment_hex_unterminated, uint8_t *out_target);
+int datum_rsk_pow_submit(const struct T_DATUM_STRATUM_JOB *job, const unsigned char *block_header, const unsigned char *full_cb_txn, size_t full_cb_txn_len);
 
 #endif
