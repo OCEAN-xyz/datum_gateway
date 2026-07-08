@@ -1745,6 +1745,25 @@ static unsigned char datum_stratum_coinbase_selection_from_config(void) {
 	return COINBASE_TYPE_ANTMAIN;
 }
 
+static int datum_stratum_coinbase_selection_capacity(unsigned char selection) {
+	switch (selection) {
+		case COINBASE_TYPE_TINY:
+			return 0;
+		case COINBASE_TYPE_SMALL:
+			return 500;
+		case COINBASE_TYPE_ANTMAIN:
+			return 750;
+		case COINBASE_TYPE_RESPECTABLE:
+			return 6500;
+		case COINBASE_TYPE_YUGE:
+			return 16000;
+		case COINBASE_TYPE_ANTMAIN2:
+			return 2250;
+		default:
+			return 750;
+	}
+}
+
 static bool datum_stratum_force_coinbase_selection(void) {
 	const char * const mode = datum_config.stratum_v1_coinbase_selection_mode;
 	if (!mode || !mode[0] || !strcasecmp(mode, "auto")) {
@@ -1763,6 +1782,8 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	char s[1024];
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
 	json_t *useragent;
+	unsigned char forced_coinbase_selection;
+	unsigned char fingerprinted_coinbase_selection;
 	
 	// params =
 	// 0 = UA
@@ -1794,7 +1815,18 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	}
 	
 	if (datum_stratum_force_coinbase_selection()) {
-		m->coinbase_selection = datum_stratum_coinbase_selection_from_config();
+		forced_coinbase_selection = datum_stratum_coinbase_selection_from_config();
+		if ((datum_config.stratum_v1_fingerprint_miners) && (m->useragent[0])) {
+			datum_stratum_fingerprint_by_UA(m);
+			fingerprinted_coinbase_selection = m->coinbase_selection;
+			if (datum_stratum_coinbase_selection_capacity(fingerprinted_coinbase_selection) < datum_stratum_coinbase_selection_capacity(forced_coinbase_selection)) {
+				DLOG_WARN("Disconnecting Stratum client \"%s\": fingerprinted coinbase class %u is smaller than forced class %u", m->useragent, fingerprinted_coinbase_selection, forced_coinbase_selection);
+				snprintf(s, sizeof(s), "{\"error\":[20,\"Miner firmware appears incompatible with the forced coinbase size configured on this DATUM Gateway\",null],\"id\":%"PRIu64",\"result\":null}\n", id);
+				datum_socket_send_string_to_client(c, s);
+				return -1;
+			}
+		}
+		m->coinbase_selection = forced_coinbase_selection;
 	} else if ((datum_config.stratum_v1_fingerprint_miners) && (m->useragent[0])) {
 		datum_stratum_fingerprint_by_UA(m);
 		if (m->current_diff < datum_config.stratum_v1_vardiff_min) {

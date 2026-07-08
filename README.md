@@ -166,6 +166,14 @@ behavior. In `force` mode, `coinbase_selection` accepts `tiny`, `default`,
 the Gateway's internal coinbase classes. Pools using forced mode should test
 their target miner firmware before production use.
 
+When forced mode is active and miner fingerprinting is enabled, the Gateway
+still uses the Stratum user agent to detect known firmware limitations before
+sending work. If a known miner class is smaller than the configured forced
+class, the Gateway rejects `mining.subscribe` and disconnects the Stratum
+client instead of serving an oversized template. Unknown or unfingerprinted
+clients are still served optimistically because the Gateway has no reliable
+compatibility signal for them.
+
 This is a local Gateway policy setting. It does not change the DATUM wire
 protocol and it does not require support from the upstream DATUM server. A
 Gateway using the default `auto` mode remains compatible with existing DATUM
