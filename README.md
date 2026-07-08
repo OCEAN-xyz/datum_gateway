@@ -140,6 +140,32 @@ Note that the API/web admin password is also used for preventing CSRF attacks, s
 You should review the [documentation on usernames](doc/usernames.md) next.
 Once you have everything running, you can point miners at the Gateway.
 
+### Forcing the Stratum Coinbase Size Class
+
+By default, DATUM fingerprints Stratum V1 clients and selects a coinbase size
+class intended to work around known miner firmware limitations. Pools that
+coordinate non-custodial generation transaction payouts may need deterministic
+coinbase behavior instead, because truncating the payout list can make otherwise
+valid shares invalid for that pool's accounting rules.
+
+Operators can force every Stratum client connected to this Gateway to receive
+the same coinbase class:
+
+```json
+{
+	"stratum": {
+		"coinbase_selection_mode": "force",
+		"coinbase_selection": "yuge"
+	}
+}
+```
+
+`coinbase_selection_mode` defaults to `auto`, preserving existing fingerprint
+behavior. In `force` mode, `coinbase_selection` accepts `tiny`, `default`,
+`respectable`, `yuge`, `antmain2`, or numeric values `0` through `5` matching
+the Gateway's internal coinbase classes. Pools using forced mode should test
+their target miner firmware before production use.
+
 ## Docker
 
 The DATUM Gateway is also available as a Docker image.

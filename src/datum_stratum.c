@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -1715,6 +1716,48 @@ void datum_stratum_fingerprint_by_UA(T_DATUM_MINER_DATA *m) {
 	}
 }
 
+static unsigned char datum_stratum_coinbase_selection_from_config(void) {
+	const char * const selection = datum_config.stratum_v1_coinbase_selection;
+	if (!selection || !selection[0]) {
+		return COINBASE_TYPE_ANTMAIN;
+	}
+
+	if (!strcasecmp(selection, "blank") || !strcasecmp(selection, "empty") || !strcmp(selection, "0")) {
+		return COINBASE_TYPE_TINY;
+	}
+	if (!strcasecmp(selection, "tiny") || !strcasecmp(selection, "small") || !strcasecmp(selection, "nicehash") || !strcmp(selection, "1")) {
+		return COINBASE_TYPE_SMALL;
+	}
+	if (!strcasecmp(selection, "default") || !strcasecmp(selection, "antminer") || !strcasecmp(selection, "antmain") || !strcmp(selection, "2")) {
+		return COINBASE_TYPE_ANTMAIN;
+	}
+	if (!strcasecmp(selection, "respect") || !strcasecmp(selection, "respectable") || !strcasecmp(selection, "whatsminer") || !strcmp(selection, "3")) {
+		return COINBASE_TYPE_RESPECTABLE;
+	}
+	if (!strcasecmp(selection, "yuge") || !strcasecmp(selection, "huge") || !strcmp(selection, "4")) {
+		return COINBASE_TYPE_YUGE;
+	}
+	if (!strcasecmp(selection, "antmain2") || !strcasecmp(selection, "antminer2") || !strcasecmp(selection, "s21") || !strcmp(selection, "5")) {
+		return COINBASE_TYPE_ANTMAIN2;
+	}
+
+	DLOG_WARN("Unknown stratum.coinbase_selection \"%s\"; using default coinbase selection", selection);
+	return COINBASE_TYPE_ANTMAIN;
+}
+
+static bool datum_stratum_force_coinbase_selection(void) {
+	const char * const mode = datum_config.stratum_v1_coinbase_selection_mode;
+	if (!mode || !mode[0] || !strcasecmp(mode, "auto")) {
+		return false;
+	}
+	if (!strcasecmp(mode, "force")) {
+		return true;
+	}
+
+	DLOG_WARN("Unknown stratum.coinbase_selection_mode \"%s\"; using auto coinbase selection", mode);
+	return false;
+}
+
 int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj) {
 	uint32_t sid;
 	char s[1024];
@@ -1750,7 +1793,9 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 		}
 	}
 	
-	if ((datum_config.stratum_v1_fingerprint_miners) && (m->useragent[0])) {
+	if (datum_stratum_force_coinbase_selection()) {
+		m->coinbase_selection = datum_stratum_coinbase_selection_from_config();
+	} else if ((datum_config.stratum_v1_fingerprint_miners) && (m->useragent[0])) {
 		datum_stratum_fingerprint_by_UA(m);
 		if (m->current_diff < datum_config.stratum_v1_vardiff_min) {
 			m->current_diff = datum_config.stratum_v1_vardiff_min;
