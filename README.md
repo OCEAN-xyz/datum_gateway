@@ -166,6 +166,31 @@ behavior. In `force` mode, `coinbase_selection` accepts `tiny`, `default`,
 the Gateway's internal coinbase classes. Pools using forced mode should test
 their target miner firmware before production use.
 
+This is a local Gateway policy setting. It does not change the DATUM wire
+protocol and it does not require support from the upstream DATUM server. A
+Gateway using the default `auto` mode remains compatible with existing DATUM
+servers, including servers that do not know about this option.
+
+Compatibility expectations:
+
+* New Gateway, existing DATUM server: works as before. The server does not need
+  to send or understand this option.
+* New Gateway, non-custodial payout-list server: the Gateway operator can set
+  `coinbase_selection_mode` to `force` and choose a class large enough for that
+  pool's payout list.
+* Existing Gateway, non-custodial payout-list server: works while the selected
+  coinbase class can carry the full payout list. If the client truncates a
+  required payout list, the server should reject the invalid share and may send
+  an informational DATUM server message advising the operator to upgrade or
+  configure a larger forced coinbase class.
+
+Server-driven forcing is intentionally not part of this option. The existing
+DATUM client configuration message is versioned and not extensible in a way
+that can safely force this setting on older Gateways without prior capability
+negotiation. A future protocol extension could add explicit feature
+advertisement and server-selected coinbase class policy, but this option keeps
+the current change backward-compatible.
+
 ## Docker
 
 The DATUM Gateway is also available as a Docker image.
