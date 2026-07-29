@@ -37,6 +37,7 @@
 #include <string.h>
 
 #include "datum_blocktemplates.h"
+#include "datum_conf.h"
 #include "datum_protocol.h"
 #include "datum_stratum.h"
 #include "datum_utils.h"
@@ -169,6 +170,21 @@ static void datum_protocol_tests_job_data_encoding(void) {
 	}
 }
 
+// A field can sit in the config struct without ever being wired into the
+// options table, in which case setting it in the config file silently does
+// nothing. Pin the option to the field it is supposed to drive.
+static void datum_protocol_tests_announce_option(void) {
+	const T_DATUM_CONFIG_ITEM *opt = datum_config_get_option_info2("datum", "announce_jobs");
+
+	if (datum_test(opt != NULL)) {
+		datum_test(opt->var_type == DATUM_CONF_BOOL);
+		datum_test(opt->ptr == &datum_config.datum_announce_jobs);
+		// Sharing every template costs bandwidth, so this stays opt-in.
+		datum_test(opt->default_bool == false);
+	}
+}
+
 void datum_protocol_tests(void) {
 	datum_protocol_tests_job_data_encoding();
+	datum_protocol_tests_announce_option();
 }

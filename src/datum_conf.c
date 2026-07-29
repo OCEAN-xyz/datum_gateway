@@ -190,6 +190,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.datum_pooled_mining_only, 	.default_bool = true },
 	{ .var_type = DATUM_CONF_INT, 		.category = "datum", 		.name = "protocol_global_timeout",		.description = "If no valid messages are received from the DATUM server in this many seconds, give up and try to reconnect",
 		.required = false, .ptr = &datum_config.datum_protocol_global_timeout, 	.default_int = 60 },
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "announce_jobs",				.description = "Send each job's template data to the pool as the job is created, instead of only alongside the first share for that job. Uses more bandwidth, but lets the pool credit shares from miners that failed over directly to it",
+		.required = false, .ptr = &datum_config.datum_announce_jobs, 	.default_bool = false },
 };
 
 #define NUM_CONFIG_ITEMS (sizeof(datum_config_options) / sizeof(datum_config_options[0]))
