@@ -1310,6 +1310,45 @@ int datum_protocol_pow_submit(
 	return datum_queue_add_item(&pow_queue, &pow);
 }
 
+// Appends the 0x01 sub-block: everything about a job except the coinbase.
+// Shared with job announcements so both paths encode identically.
+int datum_protocol_append_job_data(unsigned char *msg, int i, const T_DATUM_STRATUM_JOB *sjob, uint16_t target_byte_index) {
+	msg[i] = 0x01; i++;
+	memcpy(&msg[i], sjob->prevhash_bin, 32); i+=32;
+	pk_u16le(msg, i, target_byte_index); i += 2; // target byte location in coinb1
+	memcpy(&msg[i], &sjob->nbits_bin[0], sizeof(sjob->nbits_bin)); i += sizeof(sjob->nbits_bin); // nbits!
+	msg[i] = sjob->datum_coinbaser_id; i++;
+	pk_u32le(msg, i, sjob->height); i += 4;
+	pk_u64le(msg, i, sjob->coinbase_value); i += 8;
+	
+	pk_u32le(msg, i, sjob->block_template->txn_count); i += 4;
+	pk_u32le(msg, i, sjob->block_template->txn_total_weight); i += 4;
+	pk_u32le(msg, i, sjob->block_template->txn_total_size); i += 4;
+	pk_u32le(msg, i, sjob->block_template->txn_total_sigops); i += 4;
+	
+	msg[i] = sjob->merklebranch_count; i++;
+	
+	memcpy(&msg[i], &sjob->merklebranches_bin[0][0], sjob->merklebranch_count * 32);
+	i+=sjob->merklebranch_count * 32;
+	
+	return i;
+}
+
+// Appends the 0x02 sub-block: one coinbase variant. coinbase_id is 0xFF for the
+// subsidy only coinbase, otherwise the index into the job's coinbase array.
+int datum_protocol_append_coinbase_data(unsigned char *msg, int i, const T_DATUM_STRATUM_COINBASE *coinbase, unsigned char coinbase_id) {
+	msg[i] = 0x02; i++;
+	msg[i] = coinbase_id; i++;
+	pk_u16le(msg, i, coinbase->coinb1_len); i += 2;  // len1
+	pk_u16le(msg, i, coinbase->coinb2_len); i += 2;  // len2
+	memcpy(&msg[i], coinbase->coinb1_bin, coinbase->coinb1_len);
+	i+=coinbase->coinb1_len;
+	memcpy(&msg[i], coinbase->coinb2_bin, coinbase->coinb2_len);
+	i+=coinbase->coinb2_len;
+	
+	return i;
+}
+
 // {"params": ["mzjP9Hn7aqaCLM5pSgMSQzgs3gnxSFv91B", "662599770700", "f40c000000000000", "66259976", "48220d13", "00d30000"], "id": 182, "method": "mining.submit"}
 int datum_protocol_pow(void *arg) {
 	T_DATUM_PROTOCOL_POW *pow = arg;
@@ -1364,23 +1403,7 @@ int datum_protocol_pow(void *arg) {
 	if (!datum_jobs[pow->datum_job_id].server_has_merkle_branches) {
 		// we need to send the merkle branches with this job
 		// also send the prevblockhash
-		msg[i] = 0x01; i++;
-		memcpy(&msg[i], sjob->prevhash_bin, 32); i+=32;
-		pk_u16le(msg, i, pow->target_byte_index); i += 2; // target byte location in coinb1
-		memcpy(&msg[i], &sjob->nbits_bin[0], sizeof(sjob->nbits_bin)); i += sizeof(sjob->nbits_bin); // nbits!
-		msg[i] = sjob->datum_coinbaser_id; i++;
-		pk_u32le(msg, i, sjob->height); i += 4;
-		pk_u64le(msg, i, sjob->coinbase_value); i += 8;
-		
-		pk_u32le(msg, i, sjob->block_template->txn_count); i += 4;
-		pk_u32le(msg, i, sjob->block_template->txn_total_weight); i += 4;
-		pk_u32le(msg, i, sjob->block_template->txn_total_size); i += 4;
-		pk_u32le(msg, i, sjob->block_template->txn_total_sigops); i += 4;
-		
-		msg[i] = sjob->merklebranch_count; i++;
-		
-		memcpy(&msg[i], &sjob->merklebranches_bin[0][0], sjob->merklebranch_count * 32);
-		i+=sjob->merklebranch_count * 32;
+		i = datum_protocol_append_job_data(msg, i, sjob, pow->target_byte_index);
 		
 		// switch us to a write lock
 		pthread_rwlock_unlock(&datum_jobs_rwlock);
@@ -1391,14 +1414,8 @@ int datum_protocol_pow(void *arg) {
 	
 	if (pow->subsidy_only) {
 		if (!datum_jobs[pow->datum_job_id].server_has_coinbase_empty) {
-			msg[i] = 0x02; i++;
-			msg[i] = 0xFF; i++; // subsidy only coinbase! yes, I know we specified above in the flags as well
-			pk_u16le(msg, i, sjob->subsidy_only_coinbase.coinb1_len); i += 2;  // len1
-			pk_u16le(msg, i, sjob->subsidy_only_coinbase.coinb2_len); i += 2;  // len2
-			memcpy(&msg[i], sjob->subsidy_only_coinbase.coinb1_bin, sjob->subsidy_only_coinbase.coinb1_len);
-			i+=sjob->subsidy_only_coinbase.coinb1_len;
-			memcpy(&msg[i], sjob->subsidy_only_coinbase.coinb2_bin, sjob->subsidy_only_coinbase.coinb2_len);
-			i+=sjob->subsidy_only_coinbase.coinb2_len;
+			// subsidy only coinbase! yes, I know we specified above in the flags as well
+			i = datum_protocol_append_coinbase_data(msg, i, &sjob->subsidy_only_coinbase, 0xFF);
 			
 			if (!w) {
 				pthread_rwlock_unlock(&datum_jobs_rwlock);
@@ -1410,14 +1427,7 @@ int datum_protocol_pow(void *arg) {
 		}
 	} else {
 		if (!datum_jobs[pow->datum_job_id].server_has_coinbase[pow->coinbase_id]) {
-			msg[i] = 0x02; i++;
-			msg[i] = pow->coinbase_id; i++;
-			pk_u16le(msg, i, sjob->coinbase[pow->coinbase_id].coinb1_len); i += 2;  // len1
-			pk_u16le(msg, i, sjob->coinbase[pow->coinbase_id].coinb2_len); i += 2;  // len2
-			memcpy(&msg[i], sjob->coinbase[pow->coinbase_id].coinb1_bin, sjob->coinbase[pow->coinbase_id].coinb1_len);
-			i+=sjob->coinbase[pow->coinbase_id].coinb1_len;
-			memcpy(&msg[i], sjob->coinbase[pow->coinbase_id].coinb2_bin, sjob->coinbase[pow->coinbase_id].coinb2_len);
-			i+=sjob->coinbase[pow->coinbase_id].coinb2_len;
+			i = datum_protocol_append_coinbase_data(msg, i, &sjob->coinbase[pow->coinbase_id], pow->coinbase_id);
 			
 			if (!w) {
 				pthread_rwlock_unlock(&datum_jobs_rwlock);

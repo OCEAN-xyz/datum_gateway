@@ -137,6 +137,8 @@ int datum_protocol_pow_submit(
 bool datum_protocol_thread_is_active(void);
 void datum_protocol_start_connector(void);
 unsigned char datum_protocol_setup_new_job_idx(void *sx);
+int datum_protocol_append_job_data(unsigned char *msg, int i, const T_DATUM_STRATUM_JOB *sjob, uint16_t target_byte_index);
+int datum_protocol_append_coinbase_data(unsigned char *msg, int i, const T_DATUM_STRATUM_COINBASE *coinbase, unsigned char coinbase_id);
 
 extern uint64_t datum_accepted_share_count;
 extern uint64_t datum_accepted_share_diff;
