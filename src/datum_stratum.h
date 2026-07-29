@@ -219,6 +219,7 @@ typedef struct {
 	bool extension_version_rolling;
 	uint32_t extension_version_rolling_mask;
 	unsigned char extension_version_rolling_bits;
+	bool extension_version_rolling_warned;
 	
 	bool extension_minimum_difficulty;
 	double extension_minimum_difficulty_value;
