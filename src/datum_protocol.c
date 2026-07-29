@@ -147,6 +147,13 @@ unsigned char datum_protocol_setup_new_job_idx(void *sx) {
 	
 	pthread_rwlock_unlock(&datum_jobs_rwlock);
 	
+	// If this job is still waiting on the coinbaser, its coinbases will be
+	// rebuilt out from under us, so leave the announcement to the coinbaser
+	// thread once the final ones exist.
+	if (!s->need_coinbaser) {
+		datum_protocol_announce_job(a);
+	}
+	
 	return a;
 }
 
@@ -1460,6 +1467,88 @@ int datum_protocol_pow(void *arg) {
 	}
 	datum_last_accepted_share_local_tsms = datum_protocol_mainloop_tsms;
 	return 0;
+}
+
+// Send the server a job's data up front rather than waiting for a share to
+// carry it. A miner that loses us fails over to the pool and submits the shares
+// it already found, which the pool can only credit if it can rebuild the job.
+void datum_protocol_announce_job(unsigned char datum_job_id) {
+	T_DATUM_STRATUM_JOB *sjob;
+	unsigned char *msg;
+	uint16_t coinbases_sent = 0;
+	bool sent_empty = false;
+	int i = 0, j, k;
+	
+	if (!datum_config.datum_announce_jobs) return;
+	if (datum_job_id >= MAX_DATUM_PROTOCOL_JOBS) return;
+	if (!datum_protocol_is_active()) return;
+	
+	msg = malloc(DATUM_PROTOCOL_ANNOUNCE_MSG_SIZE);
+	if (!msg) {
+		DLOG_ERROR("Could not allocate job announcement buffer!");
+		return;
+	}
+	
+	msg[i] = 0x28; i++; // announce job
+	msg[i] = datum_job_id; i++;
+	
+	pthread_rwlock_wrlock(&datum_jobs_rwlock);
+	
+	sjob = datum_jobs[datum_job_id].sjob;
+	if ((!sjob) || (!sjob->block_template) || datum_jobs[datum_job_id].server_has_merkle_branches) {
+		// no job, not ready, or the server already has everything it needs
+		pthread_rwlock_unlock(&datum_jobs_rwlock);
+		free(msg);
+		return;
+	}
+	
+	i = datum_protocol_append_job_data(msg, i, sjob, sjob->target_pot_index);
+	datum_jobs[datum_job_id].server_has_merkle_branches = true;
+	
+	// We don't know which coinbase variant the miner that fails over was
+	// working on, so the server needs every one we could have handed out.
+	for(k=0;k<MAX_COINBASE_TYPES;k++) {
+		if ((!sjob->coinbase[k].coinb1_len) && (!sjob->coinbase[k].coinb2_len)) continue;
+		i = datum_protocol_append_coinbase_data(msg, i, &sjob->coinbase[k], k);
+		datum_jobs[datum_job_id].server_has_coinbase[k] = true;
+		coinbases_sent |= (1 << k);
+	}
+	
+	if (sjob->subsidy_only_coinbase.coinb1_len || sjob->subsidy_only_coinbase.coinb2_len) {
+		i = datum_protocol_append_coinbase_data(msg, i, &sjob->subsidy_only_coinbase, 0xFF);
+		datum_jobs[datum_job_id].server_has_coinbase_empty = true;
+		sent_empty = true;
+	}
+	
+	pthread_rwlock_unlock(&datum_jobs_rwlock);
+	
+	// cap message
+	msg[i] = 0xFE; i++;
+	
+	// pad with some randomness
+	j = 1 + (rand() % 80);
+	memset(&msg[i], rand(), j);
+	i+=j;
+	
+	if (datum_protocol_mining_cmd(msg, i) < 1) {
+		// Undo the bookkeeping, or the share path would skip the job data too
+		// and every share against this job would be unverifiable.
+		pthread_rwlock_wrlock(&datum_jobs_rwlock);
+		if (datum_jobs[datum_job_id].sjob == sjob) {
+			datum_jobs[datum_job_id].server_has_merkle_branches = false;
+			for(k=0;k<MAX_COINBASE_TYPES;k++) {
+				if (coinbases_sent & (1 << k)) datum_jobs[datum_job_id].server_has_coinbase[k] = false;
+			}
+			if (sent_empty) datum_jobs[datum_job_id].server_has_coinbase_empty = false;
+		}
+		pthread_rwlock_unlock(&datum_jobs_rwlock);
+		DLOG_DEBUG("Could not announce job %d to server", (int)datum_job_id);
+		free(msg);
+		return;
+	}
+	
+	free(msg);
+	DLOG_DEBUG("Announced job %d to server (%d bytes)", (int)datum_job_id, i);
 }
 
 bool datum_protocol_thread_is_active(void) {

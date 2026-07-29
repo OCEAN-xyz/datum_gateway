@@ -51,6 +51,12 @@
 #define DATUM_PROTOCOL_MAX_CMD_DATA_SIZE 4194304 // 2^22 - protocol limit!
 #define DATUM_PROTOCOL_BUFFER_SIZE (DATUM_PROTOCOL_MAX_CMD_DATA_SIZE*3)
 
+// Worst case job announcement: the job data sub-block carrying a full merkle
+// branch list, plus every coinbase variant and the subsidy only coinbase.
+// Padded for the sub-block headers, the message terminator, the random tail,
+// and the MAC that datum_protocol_mining_cmd appends when it encrypts in place.
+#define DATUM_PROTOCOL_ANNOUNCE_MSG_SIZE (2048 + ((MAX_COINBASE_TYPES + 1) * (8 + (STRATUM_COINBASE1_MAX_LEN>>1) + (STRATUM_COINBASE2_MAX_LEN>>1))) + 128 + crypto_box_MACBYTES)
+
 #define MAX_DATUM_CLIENT_EVENTS 32
 
 // Header is only XOR'd with a rotating key.  This is NOT 100% secure, and makes the cmd# and length of the handshake message decipherable.
@@ -137,6 +143,7 @@ int datum_protocol_pow_submit(
 bool datum_protocol_thread_is_active(void);
 void datum_protocol_start_connector(void);
 unsigned char datum_protocol_setup_new_job_idx(void *sx);
+void datum_protocol_announce_job(unsigned char datum_job_id);
 int datum_protocol_append_job_data(unsigned char *msg, int i, const T_DATUM_STRATUM_JOB *sjob, uint16_t target_byte_index);
 int datum_protocol_append_coinbase_data(unsigned char *msg, int i, const T_DATUM_STRATUM_COINBASE *coinbase, unsigned char coinbase_id);
 

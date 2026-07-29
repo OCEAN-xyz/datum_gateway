@@ -170,6 +170,49 @@ static void datum_protocol_tests_job_data_encoding(void) {
 	}
 }
 
+// An announcement carries the job data plus every populated coinbase, so the
+// buffer has to cover the largest job we can build.
+static void datum_protocol_tests_announce_buffer_bound(void) {
+	T_DATUM_STRATUM_JOB *job;
+	T_DATUM_TEMPLATE_DATA tmpl;
+	unsigned char *msg;
+	int i = 0, k;
+	
+	job = malloc(sizeof(T_DATUM_STRATUM_JOB));
+	msg = malloc(DATUM_PROTOCOL_ANNOUNCE_MSG_SIZE);
+	if ((!datum_test(job != NULL)) || (!datum_test(msg != NULL))) {
+		free(job);
+		free(msg);
+		return;
+	}
+	
+	datum_protocol_tests_fill_job(job, &tmpl);
+	
+	// Worst case: a full merkle branch list and every coinbase at max size.
+	job->merklebranch_count = 24;
+	for (k = 0; k < MAX_COINBASE_TYPES; k++) {
+		job->coinbase[k].coinb1_len = STRATUM_COINBASE1_MAX_LEN >> 1;
+		job->coinbase[k].coinb2_len = STRATUM_COINBASE2_MAX_LEN >> 1;
+	}
+	job->subsidy_only_coinbase.coinb1_len = STRATUM_COINBASE1_MAX_LEN >> 1;
+	job->subsidy_only_coinbase.coinb2_len = STRATUM_COINBASE2_MAX_LEN >> 1;
+	
+	msg[i] = 0x28; i++;
+	msg[i] = 0; i++;
+	i = datum_protocol_append_job_data(msg, i, job, job->target_pot_index);
+	for (k = 0; k < MAX_COINBASE_TYPES; k++) {
+		i = datum_protocol_append_coinbase_data(msg, i, &job->coinbase[k], k);
+	}
+	i = datum_protocol_append_coinbase_data(msg, i, &job->subsidy_only_coinbase, 0xFF);
+	msg[i] = 0xFE; i++;
+	
+	// Plus the random tail and the MAC that mining_cmd appends in place.
+	datum_test((size_t)(i + 80 + crypto_box_MACBYTES) <= (size_t)DATUM_PROTOCOL_ANNOUNCE_MSG_SIZE);
+	
+	free(job);
+	free(msg);
+}
+
 // A field can sit in the config struct without ever being wired into the
 // options table, in which case setting it in the config file silently does
 // nothing. Pin the option to the field it is supposed to drive.
@@ -186,5 +229,6 @@ static void datum_protocol_tests_announce_option(void) {
 
 void datum_protocol_tests(void) {
 	datum_protocol_tests_job_data_encoding();
+	datum_protocol_tests_announce_buffer_bound();
 	datum_protocol_tests_announce_option();
 }

@@ -863,6 +863,10 @@ void *datum_coinbaser_thread(void *ptr) {
 					pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
 					need_coinbaser = false;
 				}
+				// Coinbases are final now, so the job can be announced.
+				if (s->is_datum_job) {
+					datum_protocol_announce_job(s->datum_job_idx);
+				}
 				DLOG_DEBUG("Generated and notified.");
 			}
 		}
