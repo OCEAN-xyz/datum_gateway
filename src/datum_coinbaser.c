@@ -851,6 +851,24 @@ void *datum_coinbaser_thread(void *ptr) {
 		if (need_coinbaser) {
 			// fetch remote coinbaser for job
 			DLOG_DEBUG("Job %d needs a coinbaser!", sjob);
+			// if the job already went out to miners -- this thread can pick a job up
+			// several seconds late when the previous job's fetch pinned it past the
+			// publish deadline -- any coinbaser fetched now could only be discarded
+			// below, so skip the round trip and leave the job exactly as published.
+			// the flag never reverts for a given job, so a publish landing mid-fetch
+			// is still caught by the locked check after the fetch.
+			locks_ready = need_coinbaser_rwlocks_init_done;
+			if (locks_ready) {
+				pthread_rwlock_rdlock(&need_coinbaser_rwlocks[sjob]);
+				if (s->coinbase_published) {
+					pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
+					DLOG_INFO("Job %s was published before its coinbaser fetch started; skipping fetch", s->job_id);
+					need_coinbaser = false;
+					usleep(12000);
+					continue;
+				}
+				pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
+			}
 			// datum_protocol_coinbaser_fetch() commits the response into the job as it
 			// parses it, before we get to decide whether we can still use it, so keep
 			// what we would have to put back if it turns out to be too late.
@@ -864,8 +882,10 @@ void *datum_coinbaser_thread(void *ptr) {
 			}
 			// hold the job's coinbaser lock across the check and the rewrite, so a
 			// stratum thread cannot decide to publish this job while the coinbase
-			// buffers it would read are half rewritten.  sample the init flag once:
-			// it is set by the stratum server thread, which is started after this one.
+			// buffers it would read are half rewritten.  re-sample the init flag
+			// after the fetch (it can only go false->true, and this sample alone
+			// governs the lock/unlock pair below): it is set by the stratum server
+			// thread, which is started after this one.
 			locks_ready = need_coinbaser_rwlocks_init_done;
 			if (locks_ready) {
 				pthread_rwlock_wrlock(&need_coinbaser_rwlocks[sjob]);
