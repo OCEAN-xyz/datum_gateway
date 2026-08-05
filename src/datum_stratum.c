@@ -401,6 +401,12 @@ bool stratum_job_coinbaser_ready(T_DATUM_STRATUM_THREADPOOL_DATA *sdata, T_DATUM
 	// backup timeout for coinbaser on these jobs
 	if ((sdata->loop_tsms > job->tsms) && (sdata->loop_tsms - job->tsms) > 5000) {
 		// enforce a timeout of 5 seconds on waiting on a coinbaser...
+		// this job is going out to miners with the coinbase it has right now, so
+		// latch it under the job's coinbaser lock.  a coinbaser that turns up after
+		// this point must not rewrite the buffers we are about to broadcast.
+		pthread_rwlock_wrlock(&need_coinbaser_rwlocks[job->global_index]);
+		job->coinbase_published = true;
+		pthread_rwlock_unlock(&need_coinbaser_rwlocks[job->global_index]);
 		sdata->full_coinbase_ready = false;
 		return true;
 	}
@@ -2076,6 +2082,7 @@ void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, i
 	} else {
 		s->need_coinbaser = false;
 	}
+	s->coinbase_published = false; // already covered by the memset above; explicit for documentation
 	
 	// if this is a new block, invalidate all old work
 	if (new_block) {

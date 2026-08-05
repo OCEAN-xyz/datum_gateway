@@ -831,6 +831,9 @@ void *datum_coinbaser_thread(void *ptr) {
 	int sjob = -1;
 	T_DATUM_STRATUM_JOB *s = NULL;
 	bool need_coinbaser = false;
+	bool locks_ready = false;
+	unsigned char saved_coinbaser_id = 0;
+	int saved_coinbaser_outputs = 0;
 	int i;
 	
 	DLOG_DEBUG("Coinbaser thread active");
@@ -855,22 +858,72 @@ void *datum_coinbaser_thread(void *ptr) {
 		if (need_coinbaser) {
 			// fetch remote coinbaser for job
 			DLOG_DEBUG("Job %d needs a coinbaser!", sjob);
+			// if the job already went out to miners -- this thread can pick a job up
+			// several seconds late when the previous job's fetch pinned it past the
+			// publish deadline -- any coinbaser fetched now could only be discarded
+			// below, so skip the round trip and leave the job exactly as published.
+			// the flag never reverts for a given job, so a publish landing mid-fetch
+			// is still caught by the locked check after the fetch.
+			locks_ready = need_coinbaser_rwlocks_init_done;
+			if (locks_ready) {
+				pthread_rwlock_rdlock(&need_coinbaser_rwlocks[sjob]);
+				if (s->coinbase_published) {
+					pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
+					DLOG_INFO("Job %s was published before its coinbaser fetch started; skipping fetch", s->job_id);
+					need_coinbaser = false;
+					usleep(12000);
+					continue;
+				}
+				pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
+			}
+			// datum_protocol_coinbaser_fetch() commits the response into the job as it
+			// parses it, before we get to decide whether we can still use it, so keep
+			// what we would have to put back if it turns out to be too late.
+			saved_coinbaser_id = s->datum_coinbaser_id;
+			saved_coinbaser_outputs = s->available_coinbase_outputs_count;
 			if (datum_protocol_is_active()) {
 				i = datum_protocol_coinbaser_fetch(s);
 			} else {
 				s->available_coinbase_outputs_count = 0;
 				i = 0;
 			}
+			// hold the job's coinbaser lock across the check and the rewrite, so a
+			// stratum thread cannot decide to publish this job while the coinbase
+			// buffers it would read are half rewritten.  re-sample the init flag
+			// after the fetch (it can only go false->true, and this sample alone
+			// governs the lock/unlock pair below): it is set by the stratum server
+			// thread, which is started after this one.
+			locks_ready = need_coinbaser_rwlocks_init_done;
+			if (locks_ready) {
+				pthread_rwlock_wrlock(&need_coinbaser_rwlocks[sjob]);
+			}
+			if ((i>=0) && (s->coinbase_published)) {
+				// this job was already broadcast with the coinbase it had.  its coinb1 and
+				// coinb2 are being copied out by send_mining_notify() and rebuilt by share
+				// validation without a lock, so rewriting them now would invalidate work
+				// that is already in flight with miners.  drop the late coinbaser and put
+				// the job back the way it was published -- the coinbaser ID travels with the
+				// job's POW submissions, so it has to keep describing the coinbase the job
+				// actually pays.  need_coinbaser stays set on the job: the full coinbase
+				// types were never built for it, so it has to keep going out with the base
+				// coinbase it was published with.
+				DLOG_INFO("Coinbaser for job %s arrived after its work was published; discarding", s->job_id);
+				s->datum_coinbaser_id = saved_coinbaser_id;
+				s->available_coinbase_outputs_count = saved_coinbaser_outputs;
+				need_coinbaser = false;
+				i = -1;
+			}
 			if (i>=0) {
 				DLOG_DEBUG("Generating coinbases for up to %d outputs", i);
 				generate_coinbase_txns_for_stratum_job(s, false);
-				if (need_coinbaser_rwlocks_init_done) {
-					pthread_rwlock_wrlock(&need_coinbaser_rwlocks[sjob]);
+				if (locks_ready) {
 					s->need_coinbaser = false;
-					pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
 					need_coinbaser = false;
 				}
 				DLOG_DEBUG("Generated and notified.");
+			}
+			if (locks_ready) {
+				pthread_rwlock_unlock(&need_coinbaser_rwlocks[sjob]);
 			}
 		}
 		

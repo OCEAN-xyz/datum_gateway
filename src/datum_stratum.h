@@ -172,6 +172,12 @@ typedef struct {
 	
 	bool need_coinbaser;
 	
+	// set once this job has been broadcast to miners with whatever coinbase it
+	// had at the time.  guarded by need_coinbaser_rwlocks[global_index] once the
+	// job is globally visible (update_stratum_job clears it, without the lock,
+	// before the job is published to the jobs array).
+	bool coinbase_published;
+
 	bool is_datum_job;
 	unsigned char datum_job_idx;
 	unsigned char datum_coinbaser_id;
