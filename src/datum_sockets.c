@@ -55,6 +55,7 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 
+#include "datum_blocktemplates.h"
 #include "datum_conf.h"
 #include "datum_gateway.h"
 #include "datum_protocol.h"
@@ -672,6 +673,7 @@ void *datum_gateway_listener_thread(void *arg) {
 	bool rejecting_now = false;
 	uint64_t last_reject_msg_tsms = 0, curtime_tsms = 0;
 	uint64_t reject_count = 0;
+	const char *reject_reason;
 	
 	T_DATUM_SOCKET_APP *app = (T_DATUM_SOCKET_APP *)arg;
 	
@@ -734,8 +736,15 @@ void *datum_gateway_listener_thread(void *arg) {
 	for (;;) {
 		nfds = epoll_wait(epollfd, events, MAX_EVENTS, 100);
 		if (nfds) {
+			curtime_tsms = monotonic_time_seconds();
 			if (datum_config.datum_pooled_mining_only && (!datum_protocol_is_active())) {
-				curtime_tsms = current_time_millis(); // we only need this if we're rejecting connections
+				reject_reason = "DATUM not connected and configured for pooled mining only!";
+			} else if (g_last_block_template_monotonic_secs + datum_config.bitcoind_work_update_stale_limit < curtime_tsms) {
+				reject_reason = "Failing to update block template!";
+			} else {
+				reject_reason = NULL;
+			}
+			if (reject_reason) {
 				if (!rejecting_now) {
 					last_reject_msg_tsms = curtime_tsms - 5000; // first disconnect triggers msg
 				}
@@ -755,7 +764,7 @@ void *datum_gateway_listener_thread(void *arg) {
 				if (rejecting_now) {
 					reject_count++;
 					if ((curtime_tsms - last_reject_msg_tsms) > 5000) {
-						DLOG_INFO("DATUM not connected and configured for pooled mining only! Rejecting connection. (%llu connections rejected since last noted)", (unsigned long long)reject_count);
+						DLOG_INFO("%s Rejecting connection. (%llu connections rejected since last noted)", reject_reason, (unsigned long long)reject_count);
 						last_reject_msg_tsms = curtime_tsms;
 						reject_count = 0;
 					}

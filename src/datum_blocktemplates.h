@@ -36,6 +36,8 @@
 #ifndef _DATUM_BLOCKTEMPLATE_H_
 #define _DATUM_BLOCKTEMPLATE_H_
 
+#include <stdatomic.h>
+
 #ifndef uint64_t
 	#include <stdint.h>
 #endif
@@ -187,6 +189,7 @@ typedef struct {
 } T_DATUM_TEMPLATE_DATA;
 
 extern const char *datum_blocktemplates_error;
+extern atomic_uint_fast64_t g_last_block_template_monotonic_secs;
 
 int datum_template_init(void);
 T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt);
