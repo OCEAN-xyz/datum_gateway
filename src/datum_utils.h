@@ -39,9 +39,23 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef __has_include
+#	if __has_include(<stdckdint.h>)
+#		include <stdckdint.h>
+#	endif
+#endif
+
 #include "datum_logger.h"
 
 void datum_utils_init(void);
+
+#ifndef ckd_add
+#	define ckd_add(res, a, b) __builtin_add_overflow((a), (b), (res))
+#endif
+
+#ifndef ckd_mul
+#	define ckd_mul(res, a, b) __builtin_mul_overflow((a), (b), (res))
+#endif
 
 extern unsigned int datum_test_failed;
 bool datum_test_fail_(const char *expr, const char *file, unsigned int line, const char *func);

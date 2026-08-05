@@ -10,7 +10,7 @@
  *
  * ---
  *
- * Copyright (c) 2024 Bitcoin Ocean, LLC & Jason Hughes
+ * Copyright (c) 2024 Bitcoin Ocean, LLC & Luke Dashjr
  *
  * Permission is hereby granted, free of charge, to any person obtaining
  * a copy of this software and associated documentation files (the
@@ -33,31 +33,29 @@
  *
  */
 
-#ifndef _DATUM_QUEUE_H_
-#define _DATUM_QUEUE_H_
+#include <assert.h>
+#include "datum_conf.h"
+#include "datum_utils.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+void datum_conf_test_expected_n_global_nonstale_shares(void) {
+	global_config_t cfg = {
+		.stratum_v1_max_clients_per_thread = 1,
+		.stratum_v1_vardiff_target_shares_min = 1,
+		.stratum_v1_share_stale_seconds = 60,
+	};
+	datum_test(datum_expected_n_global_nonstale_shares(&cfg) == 16);
+	
+	cfg.stratum_v1_max_clients_per_thread = 128;
+	cfg.stratum_v1_vardiff_target_shares_min = 8;
+	cfg.stratum_v1_share_stale_seconds = 120;
+	datum_test(datum_expected_n_global_nonstale_shares(&cfg) == 32768);
+	
+	cfg.stratum_v1_max_clients_per_thread = 4096;
+	cfg.stratum_v1_vardiff_target_shares_min = 8096;
+	cfg.stratum_v1_share_stale_seconds = 150;
+	datum_test(datum_expected_n_global_nonstale_shares(&cfg) == 1326448640UL);
+}
 
-typedef struct {
-	volatile bool initialized;
-	size_t max_entries;
-	pthread_rwlock_t active_buffer_rwlock;
-	int active_buffer;
-	uint64_t active_buffer_version;
-	pthread_rwlock_t buffer_rwlock[2];
-	size_t queue_next[2];
-	uint64_t queue_version[2];
-	size_t item_size;
-	void *buffer[2];
-	// pointer to processor function
-	int (*item_handler)(void *);
-} DATUM_QUEUE;
-
-int datum_queue_prep(DATUM_QUEUE *q, const size_t max_items, const size_t item_size, int (*item_handler)(void *));
-size_t datum_queue_process(DATUM_QUEUE *q);
-int datum_queue_add_item(DATUM_QUEUE *q, void *item);
-int datum_queue_free(DATUM_QUEUE *q);
-
-#endif
+void datum_conf_tests(void) {
+	datum_conf_test_expected_n_global_nonstale_shares();
+}

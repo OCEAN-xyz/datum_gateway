@@ -21,6 +21,7 @@ add_executable(datum_gateway
 	src/datum_blocktemplates.c
 	src/datum_coinbaser.c
 	src/datum_conf.c
+	src/datum_conf_tests.c
 	src/datum_gateway.c
 	src/datum_jsonrpc.c
 	src/datum_logger.c

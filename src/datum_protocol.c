@@ -1501,10 +1501,13 @@ void *datum_protocol_client(void *args) {
 	memset(&s_header, 0, sizeof(T_DATUM_PROTOCOL_HEADER));
 	
 	// Note: The pool can not set a LOWER vardiff minimum than the client has set, so this is safe to use for that calculation.
-	if (datum_queue_prep(&pow_queue, (datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16), sizeof(T_DATUM_PROTOCOL_POW), datum_protocol_pow) != 0) {
-		DLOG_FATAL("Could not setup work submission queue!");
-		datum_protocol_client_active = 0;
-		return 0;
+	{
+		const size_t n_global_nonstale_shares = datum_expected_n_global_nonstale_shares(&datum_config);
+		if ((!n_global_nonstale_shares) || datum_queue_prep(&pow_queue, n_global_nonstale_shares, sizeof(T_DATUM_PROTOCOL_POW), datum_protocol_pow) != 0) {
+			DLOG_FATAL("Could not setup work submission queue!");
+			datum_protocol_client_active = 0;
+			return 0;
+		}
 	}
 	
 	snprintf(port_str, sizeof(port_str)-1, "%d", datum_config.datum_pool_port);

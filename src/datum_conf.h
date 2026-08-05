@@ -41,7 +41,10 @@
 #define DATUM_CONFIG_MAX_STRING_ARRAY_LEN 1024
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#include "datum_utils.h"
 
 #define DATUM_CONF_BOOL 1
 #define DATUM_CONF_INT 2
@@ -133,5 +136,20 @@ extern global_config_t datum_config;
 
 int datum_read_config(const char *conffile);
 void datum_gateway_help(void);
+
+static inline
+size_t datum_expected_n_global_nonstale_shares(const global_config_t * const cfg) {
+	// NOTE: If we use size_t too early, 32-bit gets capped at a mere 71 MB
+	uint64_t c;
+	bool overflow =
+		ckd_mul(&c, cfg->stratum_v1_max_clients_per_thread,
+		               cfg->stratum_v1_vardiff_target_shares_min) ||
+		ckd_mul(&c, c, cfg->stratum_v1_share_stale_seconds) ||
+		ckd_mul(&c, c, 16) ||
+		ckd_add(&c, c, 59);
+	c /= 60;  // seconds per minute
+	overflow |= (c > SIZE_MAX);  // check *after* division
+	return overflow ? 0 : (size_t)c;
+}
 
 #endif

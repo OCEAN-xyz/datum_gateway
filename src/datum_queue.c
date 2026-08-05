@@ -82,10 +82,15 @@ int datum_queue_free(DATUM_QUEUE *q) {
 	return 0;
 }
 
-int datum_queue_prep(DATUM_QUEUE *q, const int max_items, const int item_size, int (*item_handler)(void *)) {
+int datum_queue_prep(DATUM_QUEUE * const q, const size_t max_items, const size_t item_size, int (* const item_handler)(void *)) {
 	memset(q, 0, sizeof(DATUM_QUEUE));
 	
 	q->initialized = false;
+	
+	if (max_items > (SIZE_MAX / 2) - 16) {
+		DLOG_FATAL("%s: max_items too large (%zu)", __func__, max_items);
+		return -1;
+	}
 	
 	if (pthread_rwlock_init(&q->active_buffer_rwlock, NULL) != 0) {
 		DLOG_FATAL("Could not initialize lock 1");
@@ -107,7 +112,7 @@ int datum_queue_prep(DATUM_QUEUE *q, const int max_items, const int item_size, i
 	
 	q->buffer[0] = calloc((max_items + 16)*2, item_size);
 	if (!q->buffer[0]) {
-		DLOG_FATAL("Could not allocate memory for queue items! (%d bytes)", (max_items + 16)*2*item_size);
+		DLOG_FATAL("Could not allocate memory for queue items! (%zu * %zu bytes)", (max_items + 16)*2, item_size);
 		return -1;
 	}
 	q->buffer[1] = ((char *)q->buffer[0]) + ((max_items + 16) * item_size);
@@ -174,16 +179,16 @@ int datum_queue_add_item(DATUM_QUEUE *q, void *item) {
 	return 0;
 }
 
-int datum_queue_process(DATUM_QUEUE *q) {
+size_t datum_queue_process(DATUM_QUEUE *q) {
 	// process any items in the specified queue
 	// only one thread should ever call this, realistically.
 	// if more than one thread needs to process a queue, this will need a good bit of modification.
 	
 	int buffer_id,offline_buffer_id;
-	int i;
+	size_t i;
 	void *item;
 	
-	if (!q->initialized) return -1;
+	if (!q->initialized) return 0;
 	
 	// We don't need to read lock to read this, as we're the only thread that writes to it.
 	buffer_id = q->active_buffer;
