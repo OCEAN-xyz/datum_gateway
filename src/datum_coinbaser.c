@@ -758,7 +758,7 @@ void generate_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool empty_o
 	}
 }
 
-int datum_coinbaser_v2_parse(T_DATUM_STRATUM_JOB *s, unsigned char *coinbaser, int cblen, bool must_free) {
+int datum_coinbaser_v2_parse(T_DATUM_STRATUM_JOB *s, unsigned char *coinbaser, int cblen) {
 	// parse raw outputs from DATUM connection into a useful coinbaser
 	uint64_t outval = 0;
 	uint64_t tally = 0;
@@ -822,7 +822,6 @@ int datum_coinbaser_v2_parse(T_DATUM_STRATUM_JOB *s, unsigned char *coinbaser, i
 	
 	s->datum_coinbaser_id = datum_id;
 	s->available_coinbase_outputs_count = cbvalid;
-	if (coinbaser && must_free) free(coinbaser);
 	return cbvalid;
 }
 

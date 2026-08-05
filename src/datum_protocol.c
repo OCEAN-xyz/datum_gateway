@@ -375,7 +375,7 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 	
 	// process received coinbase
 	if ((datum_coinbaser_v2_response) && (datum_coinbaser_v2_response_value[datum_coinbaser_v2_response_buf_idx] == value)) {
-		i = datum_coinbaser_v2_parse(s, datum_coinbaser_v2_response, datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx], false);
+		i = datum_coinbaser_v2_parse(s, datum_coinbaser_v2_response, datum_coinbaser_v2_response_len[datum_coinbaser_v2_response_buf_idx]);
 	}
 	
 	pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
