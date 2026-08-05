@@ -122,7 +122,6 @@ void datum_stratum_v1_shutdown_all(void) {
 	}
 	
 	DLOG_INFO("Sent disconnect request for all stratum clients to %u threads.", shutdown_threads);
-	return;
 }
 
 // Started as its own pthread during startup
@@ -854,11 +853,9 @@ void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
 		// adjust diff upward a tick
 		m->current_diff = m->current_diff << 1;
 		reset_vardiff_stats(c);
-		return;
 	}
 	
 	// nothing to do yet
-	return;
 }
 
 #define STAT_CYCLE_MS 60000
@@ -1663,55 +1660,48 @@ void datum_stratum_fingerprint_by_UA(T_DATUM_MINER_DATA *m) {
 	// S21 Pro NOT confirmed to work this way (yet)... so keep the /
 	if (strstr(m->useragent, "Antminer S21/") == m->useragent) {
 		m->coinbase_selection = 5; // ANTMAIN2
-		return;
 	}
 	
 	// the ePIC control boards can handle almost any size coinbase
 	// UA starts with: PowerPlay-BM/
-	if (strstr(m->useragent, "PowerPlay-BM/") == m->useragent) {
+	else if (strstr(m->useragent, "PowerPlay-BM/") == m->useragent) {
 		m->coinbase_selection = 4; // YUGE
-		return;
 	}
 	
 	// "vinsh" reports as xminer
 	// Tested to handle up to 16KB
-	if (strstr(m->useragent, "xminer-1.") == m->useragent) {
+	else if (strstr(m->useragent, "xminer-1.") == m->useragent) {
 		m->coinbase_selection = 4; // YUGE
-		return;
 	}
 	
 	// whatsminer works fine with about a 6.5 KB coinbase
 	// UA starts with: whatsminer/v1
-	if (strstr(m->useragent, "whatsminer/v1") == m->useragent) {
+	else if (strstr(m->useragent, "whatsminer/v1") == m->useragent) {
 		m->coinbase_selection = 3; // RESPECTABLE
-		return;
 	}
 	
 	// Braiins firmware
 	// Appears to handle arbitrary coinbase sizes, however not extensively tested on all firmware versions
 	// feed the S21-like coinbase for now, which is at least moderately sized
 	// UA contains: bosminer-plus-tuner
-	if (strstr(m->useragent, "bosminer-plus-tuner") != NULL) { // match anywhere in string, not just beginning
+	else if (strstr(m->useragent, "bosminer-plus-tuner") != NULL) { // match anywhere in string, not just beginning
 		m->coinbase_selection = 5; // ANTMAIN2
-		return;
 	}
 	
 	// Nicehash, sadly needs a smaller coinbase than even antminer s19s
 	// they also need a high minimum difficulty
-	if (strstr(m->useragent, "NiceHash/") == m->useragent) {
+	else if (strstr(m->useragent, "NiceHash/") == m->useragent) {
 		m->current_diff=524288;
 		m->forced_high_min_diff=524288;
 		m->coinbase_selection = 1; // TINY
-		return;
 	}
 	
 	// The Bitaxe is tested to work with a large coinbase
 	// However, it does slow work changes slightly when they're YUGE, so we'll go with
-	// the whatsminer tested size as a compromise.  also should save some bandwidth, which
+	// the whatsminer tested size as a compromise.  Also should save some bandwidth, which
 	// is probably not a bad plan, given the low odds of a bitaxe finding a block.
-	if (strstr(m->useragent, "bitaxe") == m->useragent) {
+	else if (strstr(m->useragent, "bitaxe") == m->useragent) {
 		m->coinbase_selection = 3; // RESPECTABLE
-		return;
 	}
 }
 
@@ -1894,7 +1884,6 @@ void stratum_job_merkle_root_calc(T_DATUM_STRATUM_JOB *s, unsigned char *coinbas
 	}
 	
 	memcpy(merkle_root_output, next, 32);
-	return;
 }
 
 void stratum_calculate_merkle_branches(T_DATUM_STRATUM_JOB *s) {
@@ -2129,8 +2118,6 @@ void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, i
 	pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
 	
 	DLOG_DEBUG("Updated to job %d, ncb = %d, state = %d", s->global_index, s->need_coinbaser?1:0, s->job_state);
-	
-	return;
 }
 
 int assembleBlockAndSubmit(uint8_t *block_header, uint8_t *coinbase_txn, size_t coinbase_txn_size, T_DATUM_STRATUM_JOB *job, T_DATUM_STRATUM_THREADPOOL_DATA *sdata, const char *block_hash_hex, bool empty_work) {
