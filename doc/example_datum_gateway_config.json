@@ -27,8 +27,7 @@
 		"log_level_file": 1
 	},
 	"datum": {
-		"pool_pass_workers": true,
-		"pool_pass_full_users": true,
+		"pool_username_behaviour": "passthrough",
 		"pooled_mining_only": true
 	}
 }

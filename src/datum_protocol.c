@@ -1310,6 +1310,23 @@ int datum_protocol_pow_submit(
 	return datum_queue_add_item(&pow_queue, &pow);
 }
 
+int datum_protocol_submit_username(char * const username, const size_t username_sz, const global_config_t * const cfg, const char * const input_username) {
+	if (((!cfg->datum_pool_pass_workers) && ((!cfg->datum_pool_pass_full_users) || input_username[0] == '.')) || input_username[0] == '\0') {
+		return snprintf(username, username_sz, "%s", cfg->mining_pool_address);
+	} else if (cfg->datum_pool_pass_full_users && input_username[0] != '.') {
+		const char * const endpos = cfg->datum_pool_pass_workers ? NULL : strchr(input_username, '.');
+		// TODO: Make sure the usernames are addresses, and if not use one of the configured addresses
+		if (endpos) {
+			return snprintf(username, username_sz, "%.*s", (int)(endpos - input_username), input_username);
+		} else {
+			return snprintf(username, username_sz, "%s", input_username);
+		}
+	} else {
+		// append the miner's username to the configured address as .workername
+		return snprintf(username, username_sz, "%s%s%s", cfg->mining_pool_address, (input_username[0] == '.') ? "" : ".", input_username);
+	}
+}
+
 // {"params": ["mzjP9Hn7aqaCLM5pSgMSQzgs3gnxSFv91B", "662599770700", "f40c000000000000", "66259976", "48220d13", "00d30000"], "id": 182, "method": "mining.submit"}
 int datum_protocol_pow(void *arg) {
 	T_DATUM_PROTOCOL_POW *pow = arg;
@@ -1339,16 +1356,15 @@ int datum_protocol_pow(void *arg) {
 	memcpy(&msg[i], pow->extranonce, 12); i+=12; // extranonce1+2 17
 	
 	char * const username = (char *)&msg[i];
-	if (((!datum_config.datum_pool_pass_full_users) && (!datum_config.datum_pool_pass_workers)) || pow->username[0] == '\0') {
-		i+=snprintf(username, 385, "%s", datum_config.mining_pool_address);
-	} else if (datum_config.datum_pool_pass_full_users && pow->username[0] != '.') {
-		// TODO: Make sure the usernames are addresses, and if not use one of the configured addresses
-		i+=snprintf(username, 385, "%s", pow->username);
-	} else if (datum_config.datum_pool_pass_full_users || datum_config.datum_pool_pass_workers) {
-		// append the miner's username to the configured address as .workername
-		i+=snprintf(username, 385, "%s%s%s", datum_config.mining_pool_address, (pow->username[0] == '.') ? "" : ".", pow->username);
+	j = datum_protocol_submit_username(username, DATUM_PROTOCOL_MAX_USERNAME_LEN + 1, &datum_config, pow->username);
+	if (j < 0) {
+		DLOG_ERROR("Unexpected error copying username to POW!");
+		// Still submit it without a username in case it's a block
+		username[0] = '\0';
+		j = 0;
 	}
-	i++;  // already 0 from snprintf
+	if (j > DATUM_PROTOCOL_MAX_USERNAME_LEN) j = DATUM_PROTOCOL_MAX_USERNAME_LEN;
+	i += j + 1;  // including final null byte
 	
 	// reserve 4 bytes for future use
 	memset(&msg[i], 0, 4); i+=4;

@@ -57,7 +57,57 @@ const char *datum_conf_var_type_text[] = {
 	"string",
 	"string_array",
 	"{\"modname\":{\"address\":proportion,...},...}",
+	NULL,  // func
 };
+
+static int datum_conf_username_behaviour(const T_DATUM_CONFIG_ITEM * const c, const json_t * const j, const char ** const out_type) {
+	if (out_type) {
+		*out_type = "string";
+	}
+	if (json_is_string(j)) {
+		const char * const s = json_string_value(j);
+		switch (json_string_length(j)) {
+			case 4:
+				if (0 == strcasecmp("pass", s)) break;
+				return -1;
+			case 6:
+				if (0 == strcasecmp("worker", s)) {
+					datum_config.datum_pool_pass_full_users = false;
+					datum_config.datum_pool_pass_workers = true;
+					return 0;
+				}
+				if (0 == strcasecmp("ignore", s)) {
+					datum_config.datum_pool_pass_full_users = false;
+					datum_config.datum_pool_pass_workers = false;
+					return 0;
+				}
+				return -1;
+			case 8:
+				if (0 == strcasecmp("passthru", s)) break;
+				return -1;
+			case 11:
+				if (0 == strcasecmp("passthrough", s)) break;
+				return -1;
+			case 12:
+				if (0 == strcasecmp("strip_worker", s)) {
+					datum_config.datum_pool_pass_full_users = true;
+					datum_config.datum_pool_pass_workers = false;
+					return 0;
+				}
+				return -1;
+			default:
+				return -1;
+		}
+	} else if (json_is_null(j) || !j) {
+		// fallthrough
+	} else {
+		return -1;
+	}
+	// Only "passthrough" and variants reach here
+	datum_config.datum_pool_pass_full_users = true;
+	datum_config.datum_pool_pass_workers = true;
+	return 0;
+}
 
 const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	// Bitcoind configs
@@ -177,12 +227,15 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.datum_pool_port, .default_int = 28915 },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "datum", 		.name = "pool_pubkey",					.description = "Public key of the DATUM server for initiating encrypted connection. Get from secure location, or set to empty to auto-fetch.",
 		.required = false, .ptr = datum_config.datum_pool_pubkey,		.default_string[0] = "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003", .max_string_len = sizeof(datum_config.datum_pool_pubkey) },
-	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_workers",			.description = "Pass stratum miner usernames as sub-worker names to the pool (pool_username.miner's username)",
-		.example_default = true,
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_workers",
+		// DEPRECATED (but CAUTION if removing - this currently is responsible for initialising the default value!)
 		.required = false, .ptr = &datum_config.datum_pool_pass_workers, 		.default_bool = true },
-	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_full_users",			.description = "Pass stratum miner usernames as raw usernames to the pool (use if putting multiple payout addresses on miners behind this gateway)",
-		.example_default = true,
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pool_pass_full_users",
+		// DEPRECATED (but CAUTION if removing - this currently is responsible for initialising the default value!)
 		.required = false, .ptr = &datum_config.datum_pool_pass_full_users, 	.default_bool = true },
+	{ .var_type = DATUM_CONF_FUNC, 		.category = "datum", 		.name = "pool_username_behaviour",		.description = "Whether and how to Pass stratum miner usernames to the pool: \"passthrough\" sends it as-is (overriding mining.pool_address), \"worker\" appends it after mining.pool_address, \"ignore\" disregards it entirely, and \"strip_worker\" passes only the username up until the first period character",
+		.example_default = true,
+		.required = false, .ptr_func = &datum_conf_username_behaviour,		 .default_string[0] = "\"passthrough\"" },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "always_pay_self",				.description = "Always include my datum.pool_username payout in my blocks if possible",
 		.required = false, .ptr = &datum_config.datum_always_pay_self, 	.default_bool = true },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "datum", 		.name = "pooled_mining_only",			.description = "If the DATUM pool server becomes unavailable, terminate miner connections (otherwise, 100% of any blocks you find pay mining.pool_address)",
@@ -221,6 +274,15 @@ json_t *load_json_from_file(const char *file_path) {
 	return root;
 }
 
+const char *datum_config_get_type_string(const T_DATUM_CONFIG_ITEM * const c) {
+	if (c->var_type == DATUM_CONF_FUNC) {
+		const char *expected_type;
+		c->ptr_func(c, NULL, &expected_type);
+		return expected_type;
+	}
+	return datum_conf_var_type_text[c->var_type];
+}
+
 void datum_config_set_default(const T_DATUM_CONFIG_ITEM *c) {
 	// set the default
 	switch(c->var_type) {
@@ -250,6 +312,13 @@ void datum_config_set_default(const T_DATUM_CONFIG_ITEM *c) {
 			struct datum_username_mod ** const umods_p = c->ptr;
 			free(*umods_p);
 			*umods_p = NULL;
+			break;
+		}
+		
+		case DATUM_CONF_FUNC: {
+			json_t * const j_null = json_null();
+			c->ptr_func(c, j_null, NULL);
+			json_decref(j_null);
 			break;
 		}
 	}
@@ -410,6 +479,10 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 		case DATUM_CONF_USERNAME_MODS: {
 			return datum_config_parse_username_mods(c->ptr, item, true);
 		}
+		
+		case DATUM_CONF_FUNC: {
+			return c->ptr_func(c, item, NULL);
+		}
 	}
 	
 	return -1;
@@ -452,14 +525,42 @@ int datum_read_config(const char *conffile) {
 			continue;
 		}
 		
-		// item might be valid
+		// item might be valid*
 		j = datum_config_parse_value(&datum_config_options[i], item);
 		if (j == -1) {
-			DLOG_ERROR("Could not parse configuration option %s.%s.  Type should be %s", datum_config_options[i].category, datum_config_options[i].name, datum_conf_var_type_text[datum_config_options[i].var_type]);
+			const T_DATUM_CONFIG_ITEM * const c = &datum_config_options[i];
+			const char * const expected_type = datum_config_get_type_string(c);
+			DLOG_ERROR("Could not parse configuration option %s.%s.  Type should be %s",
+					   c->category, c->name, expected_type);
 			return -1;
 		} else if (j == -2) {
 			DLOG_ERROR("Configuration option %s.%s exceeds maximum length of %d", datum_config_options[i].category, datum_config_options[i].name, datum_config_options[i].max_string_len - 1);
 			return -1;
+		}
+	}
+	
+	cat = json_object_get(config, "datum");
+	if (json_is_object(cat)) {
+		item = json_object_get(cat, "pool_pass_full_users");
+		if (item && (!json_is_false(item)) ? !(datum_config.datum_pool_pass_full_users && datum_config.datum_pool_pass_workers) : datum_config.datum_pool_pass_full_users) {
+			DLOG_WARN("Deprecated configuration option %s.%s ignored (%s.%s overrides)",
+			          "datum", "pool_pass_full_users",
+			          "datum", "pool_username_behaviour");
+		} else {
+			item = json_object_get(cat, "pool_pass_workers");
+			if (item && (!json_is_false(item)) != datum_config.datum_pool_pass_workers) {
+				DLOG_WARN("Deprecated configuration option %s.%s ignored (%s.%s overrides)",
+				          "datum", "pool_pass_workers",
+				          "datum", "pool_username_behaviour");
+			}
+		}
+		item = json_object_get(cat, "pool_username_behaviour");
+		if (((!item) || json_is_null(item)) && datum_config.datum_pool_pass_full_users && !datum_config.datum_pool_pass_workers) {
+			datum_config.datum_pool_pass_workers = true;
+			DLOG_WARN("Deprecated configuration option %s.%s ignored (also-deprecated %s.%s overrides; consider migrating to %s.%s)",
+			          "datum", "pool_pass_workers",
+			          "datum", "pool_pass_full_users",
+			          "datum", "pool_username_behaviour");
 		}
 	}
 	
@@ -625,6 +726,7 @@ void datum_gateway_help(const char * const argv0) {
 	puts("Configuration file options:\n\n{");
 	for (unsigned int i = 0; i < NUM_CONFIG_ITEMS; ++i) {
 		const T_DATUM_CONFIG_ITEM * const opt = &datum_config_options[i];
+		if (!opt->description[0]) continue;  // deprecated/hidden options
 		if (strcmp(opt->category, lastcat)) {
 			if (i) { puts("    },"); }
 			printf("    \"%s\": {\n", opt->category);
@@ -632,7 +734,8 @@ void datum_gateway_help(const char * const argv0) {
 		}
 		p = 30 - strlen(opt->name);
 		if (p < 0) p = 0;
-		printf("        \"%s\": %.*s %s (%s", opt->name, p, paddots, opt->description, datum_conf_var_type_text[opt->var_type]);
+		const char * const expected_type = datum_config_get_type_string(opt);
+		printf("        \"%s\": %.*s %s (%s", opt->name, p, paddots, opt->description, expected_type);
 		if (opt->required) {
 			puts(", REQUIRED)");
 		} else {
@@ -649,6 +752,13 @@ void datum_gateway_help(const char * const argv0) {
 				
 				case DATUM_CONF_STRING: {
 					printf(", default: \"%s\")\n", opt->default_string[0]);
+					break;
+				}
+				
+				case DATUM_CONF_FUNC: {
+					if (opt->default_string[0]) {
+						printf(", default: %s)\n", opt->default_string[0]);
+					}
 					break;
 				}
 				
@@ -710,6 +820,15 @@ void datum_gateway_example_conf(void) {
 				
 				case DATUM_CONF_USERNAME_MODS: {
 					puts("{}");
+					break;
+				}
+				
+				case DATUM_CONF_FUNC: {
+					if (opt->default_string[0]) {
+						printf("%s", opt->default_string[0]);
+					} else {
+						printf("null");
+					}
 					break;
 				}
 			}

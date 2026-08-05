@@ -81,6 +81,7 @@ struct arguments {
 	char *config_file;
 };
 
+void datum_protocol_tests(void);
 void datum_stratum_tests(void);
 void datum_conf_tests(void);
 void datum_utils_tests(void);
@@ -105,6 +106,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 		case 0x101:  // test
 			datum_utils_tests();
 			datum_conf_tests();
+			datum_protocol_tests();
 			datum_stratum_tests();
 			exit(datum_test_failed);
 		default:
