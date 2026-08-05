@@ -868,9 +868,10 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	double hr;
 	unsigned char astat;
 	double thr = 0.0;
-	
+	uint64_t total_diff_accepted = 0, total_diff_rejected = 0;
+
 	const int max_threads = global_stratum_app ? global_stratum_app->max_threads : 0;
-	
+
 	for (i = 0; i < max_threads; ++i) {
 		connected_clients+=global_stratum_app->datum_threads[i].connected_clients;
 	}
@@ -920,7 +921,10 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 						hr = ((double)m->share_diff_rejected / (double)(m->share_diff_accepted + m->share_diff_rejected))*100.0;
 					}
 					sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%"PRIu64" (%"PRIu64") %.2f%%</TD>", m->share_diff_rejected, m->share_count_rejected, hr);
-					
+
+					total_diff_accepted += m->share_diff_accepted;
+					total_diff_rejected += m->share_diff_rejected;
+
 					astat = m->stats.active_index?0:1; // inverted
 					hr = 0.0;
 					if ((m->stats.last_swap_ms > 0) && (m->stats.diff_accepted[astat] > 0)) {
@@ -953,7 +957,11 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>", thr);
+	hr = 0.0;
+	if ((total_diff_accepted + total_diff_rejected) > 0) {
+		hr = ((double)total_diff_rejected / (double)(total_diff_accepted + total_diff_rejected))*100.0;
+	}
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s | Global DiffA (A): %"PRIu64" &nbsp; DiffR (R): %"PRIu64" (%.2f%%)</p><script>", thr, total_diff_accepted, total_diff_rejected, hr);
 	sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
 	sz += snprintf(&output[sz], max_sz-1-sz, "</script>%s", www_foot_html);
 	
