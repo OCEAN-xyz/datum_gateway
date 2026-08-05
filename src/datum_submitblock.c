@@ -164,9 +164,13 @@ void datum_submitblock_trigger(const char *ptr, const char *hash) {
 	return;
 }
 
-void datum_submitblock_init(void) {
+int datum_submitblock_init(void) {
 	// TODO: Handle rare issues.
 	pthread_t pthread_datum_submitblock_thread;
-	pthread_create(&pthread_datum_submitblock_thread, NULL, datum_submitblock_thread, NULL);
-	return;
+	const int result = pthread_create(&pthread_datum_submitblock_thread, NULL, datum_submitblock_thread, NULL);
+	if (0 != result) {
+		DLOG_FATAL("pthread_create for block submission thread failed with code %d (%s)", result, strerror(result));
+		return -1;
+	}
+	return 0;
 }

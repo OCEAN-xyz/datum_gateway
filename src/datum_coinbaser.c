@@ -882,7 +882,7 @@ int datum_coinbaser_init(void) {
 	int result = pthread_create(&pthread_datum_coinbaser_thread, NULL, datum_coinbaser_thread, NULL);
 
 	if (result != 0) {
-		DLOG_FATAL("datum_coinbaser_init: pthread_create failed with code %d", result);
+		DLOG_FATAL("%s: pthread_create failed with code %d (%s)", __func__, result, strerror(result));
 		return -1;
 	}
 

@@ -1515,7 +1515,10 @@ int datum_api_config_post(struct MHD_Connection * const connection, char * const
 		DLOG_INFO("Config change requires restarting gateway, proceeding");
 		struct MHD_Daemon * const mhd = MHD_get_connection_info(connection, MHD_CONNECTION_INFO_DAEMON)->daemon;
 		pthread_t pthread_datum_restart_thread;
-		pthread_create(&pthread_datum_restart_thread, NULL, datum_restart_thread, mhd);
+		const int result = pthread_create(&pthread_datum_restart_thread, NULL, datum_restart_thread, mhd);
+		if (0 != result) {
+			DLOG_ERROR("Failed to create restart thread (%d: %s). Some changes have not taken effect", result, strerror(result));
+		}
 	}
 	
 	return ret;
@@ -1888,7 +1891,11 @@ int datum_api_init(void) {
 		DLOG_INFO("INFO: No API port configured. API disabled.");
 		return 0;
 	}
-	pthread_create(&pthread_datum_api_thread, NULL, datum_api_thread, NULL);
+	const int result = pthread_create(&pthread_datum_api_thread, NULL, datum_api_thread, NULL);
+	if (0 != result) {
+		DLOG_ERROR("%s: pthread_create failed with code %d (%s)", __func__, result, strerror(result));
+		return -1;
+	}
 	
 	return 0;
 }

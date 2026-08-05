@@ -1895,8 +1895,9 @@ void datum_protocol_start_connector(void) {
 	if (!datum_protocol_client_active) {
 		datum_protocol_client_active = 1; // no delay!
 		DLOG_DEBUG("Starting DATUM " DATUM_PROTOCOL_VERSION " client...");
-		if (pthread_create(&pthread_datum_protocol_client, NULL, datum_protocol_client, NULL) != 0) {
-			DLOG_ERROR("Could not start thread for DATUM Protocol");
+		const int result = pthread_create(&pthread_datum_protocol_client, NULL, datum_protocol_client, NULL);
+		if (result != 0) {
+			DLOG_ERROR("Could not start thread for DATUM Protocol (%d: %s)", result, strerror(result));
 			datum_protocol_client_active = 0;
 			return;
 		}

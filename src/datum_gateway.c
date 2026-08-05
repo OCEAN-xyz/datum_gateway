@@ -183,7 +183,9 @@ int main(const int argc, const char * const * const argv) {
 	datum_gateway_config_filename = arguments.config_file;
 	
 	// Initialize logger thread
-	datum_logger_init();
+	if (0 != datum_logger_init()) {
+		exit(1);
+	}
 	
 	if (datum_protocol_init()) {
 		DLOG_FATAL("Error initializing the DATUM protocol!");
@@ -193,11 +195,7 @@ int main(const int argc, const char * const * const argv) {
 	last_datum_protocol_connect_tsms = current_time_millis();
 	
 #ifdef ENABLE_API
-	if (datum_api_init()) {
-		DLOG_FATAL("Error initializing API interface");
-		usleep(100000);
-		exit(1);
-	}
+	datum_api_init();
 #endif
 	
 	if (datum_coinbaser_init()) {
@@ -224,11 +222,25 @@ int main(const int argc, const char * const * const argv) {
 	}
 	
 	DLOG_DEBUG("Starting template fetcher thread");
-	pthread_create(&pthread_datum_gateway_template, NULL, datum_gateway_template_thread, NULL);
+	{
+		const int result = pthread_create(&pthread_datum_gateway_template, NULL, datum_gateway_template_thread, NULL);
+		if (0 != result) {
+			DLOG_FATAL("pthread_create for template fetcher thread failed with code %d (%s)", result, strerror(result));
+			usleep(100000);
+			exit(1);
+		}
+	}
 	
 	// Note: The stratum thread will wait for a template to be available for some time before panicking.
 	DLOG_DEBUG("Starting Stratum v1 server");
-	pthread_create(&pthread_datum_stratum_v1, NULL, datum_stratum_v1_socket_server, NULL);
+	{
+		const int result = pthread_create(&pthread_datum_stratum_v1, NULL, datum_stratum_v1_socket_server, NULL);
+		if (0 != result) {
+			DLOG_FATAL("pthread_create for Stratum v1 server thread failed with code %d (%s)", result, strerror(result));
+			usleep(100000);
+			exit(1);
+		}
+	}
 	
 	// Randomize the reconnect delay from 5 to 20 seconds to prevent hammering the server
 	next_reconnect_attempt_ms = ( 5000 + (rand() % 15001) );

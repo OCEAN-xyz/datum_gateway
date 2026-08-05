@@ -219,7 +219,10 @@ void *datum_stratum_v1_socket_server(void *arg) {
 	
 	// Backup thread for submitting blocks found to our node and additional nodes.
 	DLOG_DEBUG("Starting submitblock thread");
-	datum_submitblock_init();
+	if (0 != datum_submitblock_init()) {
+		panic_from_thread(__LINE__);
+		return NULL;
+	}
 	
 	pthread_rwlock_rdlock(&stratum_global_job_ptr_lock);
 	i = global_latest_stratum_job_index;
@@ -246,7 +249,7 @@ void *datum_stratum_v1_socket_server(void *arg) {
 	DLOG_DEBUG("Starting listener thread %p",app);
 	ret = pthread_create(&pthread_datum_stratum_socket_server, NULL, datum_gateway_listener_thread, app);
 	if (ret != 0) {
-		DLOG_FATAL("Could not pthread_create for DATUM socket listener!: %s", strerror(ret));
+		DLOG_FATAL("Could not pthread_create for DATUM socket listener! %d (%s)", ret, strerror(ret));
 		panic_from_thread(__LINE__);
 		return NULL;
 	}
