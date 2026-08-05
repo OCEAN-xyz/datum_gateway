@@ -102,45 +102,6 @@ void datum_utils_init(void) {
 	process_start_time = monotonic_time_seconds();
 }
 
-#ifdef __GNUC__
-// faster, less portable
-uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
-	return 1ULL << (63 - __builtin_clzll(x));
-}
-
-unsigned char floorPoT(uint64_t x) {
-	if (x == 0) {
-		return 0;
-	}
-	
-	return (63 - __builtin_clzll(x));
-}
-
-#else
-// More portable but slower
-uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
-	x |= x >> 1;
-	x |= x >> 2;
-	x |= x >> 4;
-	x |= x >> 8;
-	x |= x >> 16;
-	x |= x >> 32;
-	return x - (x >> 1);
-}
-
-unsigned char floorPoT(uint64_t x) {
-	if (x == 0) {
-		return 0;
-	}
-	
-	unsigned char pos = 0;
-	while (x >>= 1) {
-		pos++;
-	}
-	return pos;
-}
-#endif
-
 uint64_t monotonic_time_seconds(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts); // SAFE from system time changes (e.g., NTP adjustments, manual clock changes)
