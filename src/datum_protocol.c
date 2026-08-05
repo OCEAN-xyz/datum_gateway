@@ -1533,10 +1533,7 @@ void *datum_protocol_client(void *args) {
 		
 		// TCP_NODELAY!  Probably not needed since we group sends, but can't hurt.
 		if (setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int)) < 0) {
-			DLOG_FATAL("setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
-			close(sockfd);
-			sockfd = -1;
-			continue;
+			DLOG_WARN("setsockopt(TCP_NODELAY) failed: %s", strerror(errno));
 		}
 		
 		// Start the connection process.
