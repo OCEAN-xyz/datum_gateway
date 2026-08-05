@@ -1317,7 +1317,6 @@ int datum_protocol_pow(void *arg) {
 	
 	unsigned char msg[32768 + crypto_box_MACBYTES];
 	int i = 0, j;
-	bool w=false;
 	// this is called when processing queued shares in our thread
 	//DLOG_DEBUG("DATUM POW @ %p: time %d nonce %8.8X", pow, pow->ntime, pow->nonce);
 	
@@ -1361,7 +1360,7 @@ int datum_protocol_pow(void *arg) {
 		return 0;
 	}
 	
-	if (!datum_jobs[pow->datum_job_id].server_has_merkle_branches) {
+	if (!atomic_load_explicit(&datum_jobs[pow->datum_job_id].server_has_merkle_branches, memory_order_relaxed)) {
 		// we need to send the merkle branches with this job
 		// also send the prevblockhash
 		msg[i] = 0x01; i++;
@@ -1382,15 +1381,11 @@ int datum_protocol_pow(void *arg) {
 		memcpy(&msg[i], &sjob->merklebranches_bin[0][0], sjob->merklebranch_count * 32);
 		i+=sjob->merklebranch_count * 32;
 		
-		// switch us to a write lock
-		pthread_rwlock_unlock(&datum_jobs_rwlock);
-		pthread_rwlock_wrlock(&datum_jobs_rwlock);
-		w = true;
-		datum_jobs[pow->datum_job_id].server_has_merkle_branches = true;
+		atomic_store_explicit(&datum_jobs[pow->datum_job_id].server_has_merkle_branches, true, memory_order_relaxed);
 	}
 	
 	if (pow->subsidy_only) {
-		if (!datum_jobs[pow->datum_job_id].server_has_coinbase_empty) {
+		if (!atomic_load_explicit(&datum_jobs[pow->datum_job_id].server_has_coinbase_empty, memory_order_relaxed)) {
 			msg[i] = 0x02; i++;
 			msg[i] = 0xFF; i++; // subsidy only coinbase! yes, I know we specified above in the flags as well
 			pk_u16le(msg, i, sjob->subsidy_only_coinbase.coinb1_len); i += 2;  // len1
@@ -1400,16 +1395,10 @@ int datum_protocol_pow(void *arg) {
 			memcpy(&msg[i], sjob->subsidy_only_coinbase.coinb2_bin, sjob->subsidy_only_coinbase.coinb2_len);
 			i+=sjob->subsidy_only_coinbase.coinb2_len;
 			
-			if (!w) {
-				pthread_rwlock_unlock(&datum_jobs_rwlock);
-				pthread_rwlock_wrlock(&datum_jobs_rwlock);
-				w = true;
-			}
-			
-			datum_jobs[pow->datum_job_id].server_has_coinbase_empty = true;
+			atomic_store_explicit(&datum_jobs[pow->datum_job_id].server_has_coinbase_empty, true, memory_order_relaxed);
 		}
 	} else {
-		if (!datum_jobs[pow->datum_job_id].server_has_coinbase[pow->coinbase_id]) {
+		if (!atomic_load_explicit(&datum_jobs[pow->datum_job_id].server_has_coinbase[pow->coinbase_id], memory_order_relaxed)) {
 			msg[i] = 0x02; i++;
 			msg[i] = pow->coinbase_id; i++;
 			pk_u16le(msg, i, sjob->coinbase[pow->coinbase_id].coinb1_len); i += 2;  // len1
@@ -1419,13 +1408,7 @@ int datum_protocol_pow(void *arg) {
 			memcpy(&msg[i], sjob->coinbase[pow->coinbase_id].coinb2_bin, sjob->coinbase[pow->coinbase_id].coinb2_len);
 			i+=sjob->coinbase[pow->coinbase_id].coinb2_len;
 			
-			if (!w) {
-				pthread_rwlock_unlock(&datum_jobs_rwlock);
-				pthread_rwlock_wrlock(&datum_jobs_rwlock);
-				w = true;
-			}
-			
-			datum_jobs[pow->datum_job_id].server_has_coinbase[pow->coinbase_id] = true;
+			atomic_store_explicit(&datum_jobs[pow->datum_job_id].server_has_coinbase[pow->coinbase_id], true, memory_order_relaxed);
 		}
 	}
 	
@@ -1479,17 +1462,13 @@ void *datum_protocol_client(void *args) {
 	int sent = 0;
 	T_DATUM_PROTOCOL_HEADER s_header;
 	
-	pthread_rwlock_wrlock(&datum_jobs_rwlock);
 	for(i=0;i<MAX_DATUM_PROTOCOL_JOBS;i++) {
-		datum_jobs[i].server_has_merkle_branches = false;
-		datum_jobs[i].server_has_coinbase_empty = false;
-		datum_jobs[i].server_has_short_txnlist = false;
-		datum_jobs[i].server_has_validated_block = false;
+		atomic_store_explicit(&datum_jobs[i].server_has_merkle_branches, false, memory_order_relaxed);
+		atomic_store_explicit(&datum_jobs[i].server_has_coinbase_empty, false, memory_order_relaxed);
 		for(n=0;n<8;n++) {
-			datum_jobs[i].server_has_coinbase[n] = false;
+			atomic_store_explicit(&datum_jobs[i].server_has_coinbase[n], false, memory_order_relaxed);
 		}
 	}
-	pthread_rwlock_unlock(&datum_jobs_rwlock);
 	pthread_mutex_lock(&datum_protocol_send_buffer_lock);
 	sending_header_key = 0xDC871829;
 	receiving_header_key = 0;

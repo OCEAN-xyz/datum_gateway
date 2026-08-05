@@ -37,6 +37,7 @@
 #define _DATUM_PROTOCOL_H_
 
 #include <sodium.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 
 #include "datum_stratum.h"
@@ -89,13 +90,10 @@ typedef struct T_DATUM_PROTOCOL_JOB {
 	unsigned char datum_job_id;
 	T_DATUM_STRATUM_JOB *sjob;
 	
-	bool server_has_merkle_branches;
+	atomic_bool server_has_merkle_branches;
 	
-	bool server_has_coinbase[8];
-	bool server_has_coinbase_empty;
-	bool server_has_short_txnlist;
-	
-	bool server_has_validated_block;
+	atomic_bool server_has_coinbase[8];
+	atomic_bool server_has_coinbase_empty;
 } T_DATUM_PROTOCOL_JOB;
 
 typedef struct {
