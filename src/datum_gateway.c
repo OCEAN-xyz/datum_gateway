@@ -127,6 +127,10 @@ void datum_print_banner(void) {
 	fflush(stdout);
 }
 
+void datum_log_version(void) {
+	DLOG_INFO("DATUM Gateway version: %s", DATUM_PROTOCOL_VERSION);
+}
+
 void handle_sigusr1(int sig) {
 	datum_blocktemplates_notifynew_sighandler();
 }
@@ -184,6 +188,8 @@ int main(const int argc, const char * const * const argv) {
 	
 	// Initialize logger thread
 	datum_logger_init();
+	
+	datum_log_version();
 	
 	if (datum_protocol_init()) {
 		DLOG_FATAL("Error initializing the DATUM protocol!");
