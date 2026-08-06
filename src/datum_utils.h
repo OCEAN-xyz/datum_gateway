@@ -39,7 +39,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 #include "datum_logger.h"
+
+#ifndef HAVE_PTHREAD_SETNAME_NP
+#define pthread_setname_np(thread, name) ((void)0)
+#endif
 
 void datum_utils_init(void);
 

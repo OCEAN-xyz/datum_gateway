@@ -350,6 +350,7 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 }
 
 void *datum_gateway_fallback_notifier(void *args) {
+	pthread_setname_np(pthread_self(), "fallback");
 	CURL *tcurl = NULL;
 	char req[512];
 	char p1[72];
@@ -395,6 +396,7 @@ void *datum_gateway_fallback_notifier(void *args) {
 }
 
 void *datum_gateway_template_thread(void *args) {
+	pthread_setname_np(pthread_self(), "template");
 	CURL *tcurl = NULL;
 	json_t *gbt = NULL, *res_val;
 	uint64_t i = 0;
