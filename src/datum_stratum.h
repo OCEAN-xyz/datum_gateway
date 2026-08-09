@@ -37,6 +37,7 @@
 #define _DATUM_STRATUM_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifndef T_DATUM_CLIENT_DATA
 	#include "datum_sockets.h"

@@ -38,6 +38,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,6 +132,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	{ .var_type = DATUM_CONF_STRING, 	.category = "api",	 		.name = "admin_password",			.description = "API password for actions/changes (username 'admin'; disabled if blank)",
 		.example = "\"\"",
 		.required = false, .ptr = datum_config.api_admin_password,						.default_string[0] = "", .max_string_len = sizeof(datum_config.api_admin_password) },
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "api", 			.name = "allow_insecure_auth",		.description = "Allow insecure authentication (required for Safari)",
+		.required = false, .ptr = &datum_config.api_allow_insecure_auth,				.default_bool = false },
 	{ .var_type = DATUM_CONF_STRING, 	.category = "api", 			.name = "listen_addr",					.description = "IP address to listen for API/dashboard requests",
 		.required = false, .ptr = datum_config.api_listen_addr,				.default_string[0] = "", .max_string_len = sizeof(datum_config.api_listen_addr) },
 	{ .var_type = DATUM_CONF_INT, 		.category = "api",	 		.name = "listen_port",				.description = "Port to listen for API/dashboard requests (0=disabled)",
@@ -294,7 +297,11 @@ int datum_config_parse_username_mods(struct datum_username_mod ** const umods_p,
 	}
 	
 	uint8_t *p = malloc(sz);
-	assert(p);
+	if (!p) {
+		fprintf(stderr, "%s: Couldn't allocate memory (%llu bytes)\n", __func__, (unsigned long long)sz);
+		fflush(stderr);
+		abort();
+	}
 	*umods_p = (struct datum_username_mod*)p;
 	json_object_foreach(item, modname, moddefn) {
 		if (json_is_null(moddefn)) continue;
@@ -396,16 +403,19 @@ int datum_config_parse_value(const T_DATUM_CONFIG_ITEM *c, json_t *item) {
 			size_t index;
 			json_t *value;
 			int i = 0;
+			char (* const arr)[DATUM_MAX_SUBMIT_URL_LEN] = c->ptr;
 			
 			json_array_foreach(item, index, value) {
 				if (!json_is_string(value)) return -1;
-				if (i < (DATUM_CONFIG_MAX_ARRAY_ENTRIES-1)) {
-					strncpy(((char (*)[1024])c->ptr)[i], json_string_value(value), c->max_string_len-1);
-					((char (*)[1024])c->ptr)[i][c->max_string_len-1] = 0;
-					i++;
-				}
+				if (i >= DATUM_CONFIG_MAX_ARRAY_ENTRIES - 1) return -3;
+				const size_t value_len = json_string_length(value);
+				if (value_len == 0) return -4;
+				if (value_len > c->max_string_len - 1) return -2;
+				memcpy(arr[i], json_string_value(value), value_len);
+				arr[i][value_len] = '\0';
+				i++;
 			}
-			((char (*)[1024])c->ptr)[i][0] = 0;
+			arr[i][0] = '\0';
 			return 1;
 		}
 		
@@ -461,6 +471,12 @@ int datum_read_config(const char *conffile) {
 			return -1;
 		} else if (j == -2) {
 			DLOG_ERROR("Configuration option %s.%s exceeds maximum length of %d", datum_config_options[i].category, datum_config_options[i].name, datum_config_options[i].max_string_len - 1);
+			return -1;
+		} else if (j == -3) {
+			DLOG_ERROR("Configuration option %s.%s exceeds maximum list size of %u", datum_config_options[i].category, datum_config_options[i].name, (unsigned int)(DATUM_CONFIG_MAX_ARRAY_ENTRIES - 1));
+			return -1;
+		} else if (j == -4) {
+			DLOG_ERROR("Configuration option %s.%s cannot include empty strings", datum_config_options[i].category, datum_config_options[i].name);
 			return -1;
 		}
 	}
@@ -706,7 +722,7 @@ void datum_gateway_example_conf(void) {
 				}
 				
 				case DATUM_CONF_STRING_ARRAY: {
-					puts("[]");
+					printf("[]");
 					break;
 				}
 				

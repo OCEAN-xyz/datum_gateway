@@ -109,13 +109,13 @@ char *basic_http_call(CURL *curl, const char *url) {
 	
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
-	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
+	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_err_str);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5); // quick timeout!
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5); // quick timeout!
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L); // quick timeout!
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L); // quick timeout!
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 	
 	rc = curl_easy_perform(curl);
@@ -146,21 +146,20 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	struct upload_buffer upload_data;
 	json_error_t err = { };
 	struct curl_slist *headers = NULL;
-	char len_hdr[64];
 	char curl_err_str[CURL_ERROR_SIZE];
 	bool check_for_result = true;
 	
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_ENCODING, "");
-	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1);
-	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1);
+	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+	curl_easy_setopt(curl, CURLOPT_TCP_NODELAY, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, all_data_cb);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, upload_data_cb);
 	curl_easy_setopt(curl, CURLOPT_READDATA, &upload_data);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_err_str);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5); // quick timeout!
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5); // quick timeout!
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L); // quick timeout!
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L); // quick timeout!
 	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 	
 	if (userpass) {
@@ -168,14 +167,13 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 		curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
 	}
 	
-	curl_easy_setopt(curl, CURLOPT_POST, 1);
+	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	
 	upload_data.buf = rpc_req;
 	upload_data.len = strlen(rpc_req);
-	sprintf(len_hdr, "Content-Length: %lu",(unsigned long) upload_data.len);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)upload_data.len);
 	
 	headers = curl_slist_append(headers, "Content-type: application/json");
-	headers = curl_slist_append(headers, len_hdr);
 	headers = curl_slist_append(headers, "Expect:");
 	
 	if (extra_header) {

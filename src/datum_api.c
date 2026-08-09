@@ -37,6 +37,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -447,38 +448,41 @@ bool datum_api_check_admin_password_only(struct MHD_Connection * const connectio
 	return false;
 }
 
-static enum MHD_DigestAuthAlgorithm datum_api_pick_digest_algo(struct MHD_Connection * const connection, const bool nonce_is_stale) {
-	const char * const ua = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "User-Agent");
-	if (strstr(ua, "AppleWebKit/") && !(strstr(ua, "Chrome/") || strstr(ua, "Brave/") || strstr(ua, "Edge/"))) {
-		static bool safari_warned = false;
-		if (!(nonce_is_stale && safari_warned)) {
-			DLOG_WARN("Detected login request from Apple Safari. For some reason, this browser only supports obsolete and insecure MD5 digest authentication. Login at your own risk!");
-			safari_warned = true;
+static enum MHD_DigestAuthAlgorithm datum_api_pick_digest_algo(struct MHD_Connection * const connection) {
+	const char *ua = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "User-Agent");
+	if (!ua) ua = "";
+	if (datum_config.api_allow_insecure_auth) {
+		if (strstr(ua, "AppleWebKit/") && !(strstr(ua, "Chrome/") || strstr(ua, "Brave/") || strstr(ua, "Edge/"))) {
+			return MHD_DIGEST_ALG_MD5;
 		}
-		return MHD_DIGEST_ALG_MD5;
 	}
 	return MHD_DIGEST_ALG_SHA256;
 }
 
 bool datum_api_check_admin_password_httponly(struct MHD_Connection * const connection, const create_response_func_t auth_failure_response_creator) {
 	int ret;
+	static bool safari_warned = false;
 	
 	char * const username = MHD_digest_auth_get_username(connection);
+	const enum MHD_DigestAuthAlgorithm algo = datum_api_pick_digest_algo(connection);
 	const char * const realm = "DATUM Gateway";
 	if (username) {
-		ret = MHD_digest_auth_check2(connection, realm, username, datum_config.api_admin_password, 300, MHD_DIGEST_ALG_AUTO);
+		ret = MHD_digest_auth_check2(connection, realm, username, datum_config.api_admin_password, 300, algo);
 		free(username);
 	} else {
 		ret = MHD_NO;
+	}
+	if (algo == MHD_DIGEST_ALG_MD5 && (ret == MHD_NO || !safari_warned)) {
+		DLOG_WARN("Detected login request from Apple Safari. For some reason, this browser only supports obsolete and insecure MD5 digest authentication. Login at your own risk!");
+		safari_warned = true;
 	}
 	if (ret != MHD_YES) {
 		const bool nonce_is_stale = (ret == MHD_INVALID_NONCE);
 		if (username && !nonce_is_stale) {
 			DLOG_DEBUG("Wrong password in HTTP authentication");
 		}
-		const enum MHD_DigestAuthAlgorithm algo = datum_api_pick_digest_algo(connection, nonce_is_stale);
 		struct MHD_Response * const response = auth_failure_response_creator();
-		ret = MHD_queue_auth_fail_response2(connection, realm, datum_config.api_csrf_token, response, nonce_is_stale ? MHD_YES : MHD_NO, algo);
+		ret = MHD_queue_auth_fail_response2(connection, realm, "x", response, nonce_is_stale ? MHD_YES : MHD_NO, algo);
 		MHD_destroy_response(response);
 		return false;
 	}
@@ -536,6 +540,10 @@ size_t datum_api_fill_authfail_error(const char * const var_start, const size_t 
 	assert(replacement_max_len >= www_auth_failed_html_sz);
 	memcpy(replacement, www_auth_failed_html, www_auth_failed_html_sz);
 	return www_auth_failed_html_sz;
+}
+
+static struct MHD_Response *datum_api_create_response_authfail_config_view() {
+	return datum_api_create_response_authfail(www_config_noauth_top_html, www_config_noauth_top_html_sz);
 }
 
 static struct MHD_Response *datum_api_create_response_authfail_config() {
@@ -773,7 +781,8 @@ int datum_api_coinbaser(struct MHD_Connection *connection) {
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
-int datum_api_thread_dashboard(struct MHD_Connection *connection) {
+static
+struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	struct MHD_Response *response;
 	int sz=0, max_sz = 0, j, ii;
 	char *output = NULL;
@@ -789,15 +798,16 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 	max_sz = www_threads_top_html_sz + www_foot_html_sz + (max_threads * 512) + 2048; // approximate max size of each row
 	output = calloc(max_sz+16,1);
 	if (!output) {
-		return MHD_NO;
+		return datum_api_create_empty_mhd_response();
 	}
-	
-	const bool have_admin = datum_config.api_admin_password_len;
 	
 	tsms = current_time_millis();
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_threads_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
+	if (have_admin) {
+		sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' />", datum_config.api_csrf_token);
+	}
+	sz += snprintf(&output[sz], max_sz-1-sz, "<TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>");
 	for (j = 0; j < max_threads; ++j) {
 		thr = 0.0;
 		subs = 0;
@@ -830,9 +840,9 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 			sz += snprintf(&output[sz], max_sz-1-sz, ">Disconnect All</button></TD></TR>");
 		}
 	}
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form>");
+	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE>");
 	if (have_admin) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "<script>");
+		sz += snprintf(&output[sz], max_sz-1-sz, "</form><script>");
 		sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
 		sz += snprintf(&output[sz], max_sz-1-sz, "</script>");
 	}
@@ -840,6 +850,20 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 	
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
 	MHD_add_response_header(response, "Content-Type", "text/html");
+	return response;
+}
+
+static
+struct MHD_Response *datum_api_thread_dashboard_inner_noadmin() {
+	return datum_api_thread_dashboard_inner(/*have_admin*/ false);
+}
+
+static
+int datum_api_thread_dashboard(struct MHD_Connection *connection) {
+	if (!datum_api_check_admin_password_httponly(connection, datum_api_thread_dashboard_inner_noadmin)) {
+		return MHD_YES;
+	}
+	struct MHD_Response * const response = datum_api_thread_dashboard_inner(/*have_admin*/ true);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
@@ -870,14 +894,6 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	
 	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
 	
-	if (!datum_config.api_admin_password_len) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "This page requires admin access (add \"admin_password\" to \"api\" section of config file)");
-		sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
-		
-		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
-		MHD_add_response_header(response, "Content-Type", "text/html");
-		return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
-	}
 	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_clients)) {
 		return MHD_YES;
 	}
@@ -1091,6 +1107,10 @@ int datum_api_config_dashboard(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	size_t sz = 0, max_sz = 0;
 	char *output = NULL;
+	
+	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_config_view)) {
+		return MHD_YES;
+	}
 	
 	max_sz = www_config_html_sz * 2;
 	output = malloc(max_sz);
@@ -1348,7 +1368,7 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		status->need_restart = true;
 	} else if (0 == strcmp(key, "bitcoind_rpcurl")) {
 		if (0 == strcmp(val, datum_config.bitcoind_rpcurl)) return true;
-		if (strlen(val) > 128) {
+		if (strlen(val) >= sizeof(datum_config.bitcoind_rpcurl)) {
 			json_array_append_new(errors, json_string_nocheck("bitcoind RPC URL is too long"));
 			return false;
 		}
@@ -1356,7 +1376,7 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		datum_api_json_modify_new("bitcoind", "rpcurl", json_string(val));
 	} else if (0 == strcmp(key, "bitcoind_rpcuser")) {
 		if (0 == strcmp(val, datum_config.bitcoind_rpcuser)) return true;
-		if (strlen(val) > 128) {
+		if (strlen(val) >= sizeof(datum_config.bitcoind_rpcuser)) {
 			json_array_append_new(errors, json_string_nocheck("bitcoind RPC user is too long"));
 			return false;
 		}
@@ -1366,7 +1386,7 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 	} else if (0 == strcmp(key, "bitcoind_rpcpassword")) {
 		if (0 == strcmp(val, datum_config.bitcoind_rpcpassword)) return true;
 		if (!val[0]) return true;  // no password change
-		if (strlen(val) > 128) {
+		if (strlen(val) >= sizeof(datum_config.bitcoind_rpcpassword)) {
 			json_array_append_new(errors, json_string_nocheck("bitcoind RPC password is too long"));
 			return false;
 		}
@@ -1848,7 +1868,8 @@ static struct MHD_Daemon *datum_api_try_start(unsigned int flags, const int sock
 	                          NULL, NULL,  // accept policy filter
 	                          &datum_api_answer, NULL,  // default URI handler
 	                          MHD_OPTION_LISTEN_SOCKET, sock,
-	                          MHD_OPTION_CONNECTION_LIMIT, 128,
+	                          MHD_OPTION_CONNECTION_LIMIT, (unsigned int)128,
+	                          MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int)120,
 	                          MHD_OPTION_NOTIFY_COMPLETED, datum_api_request_completed, NULL,
 	                          MHD_OPTION_LISTENING_ADDRESS_REUSE, (unsigned int)1,
 	                          MHD_OPTION_END);

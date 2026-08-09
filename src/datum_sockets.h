@@ -40,12 +40,14 @@
 	#include "datum_blocktemplates.h"
 #endif
 
+#include <stdint.h>
 #if defined(__APPLE__) || defined(__BSD__)
 #include <sys/event.h>  // macOS uses kqueue instead of epoll
 #include <mach/mach_time.h>
 #else
 #include <sys/epoll.h>  // Linux-specific
 #endif
+
 #include <pthread.h>
 
 typedef struct T_DATUM_THREAD_DATA T_DATUM_THREAD_DATA;

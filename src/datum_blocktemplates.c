@@ -69,7 +69,7 @@ void datum_blocktemplates_notifynew(const char * const prevhash, const int heigh
 	if (prevhash && *prevhash) pthread_mutex_lock(&new_notify_lock);
 	new_notify_threadsafe = 1;
 	if (prevhash) {
-		if (prevhash[0] > 0) {
+		if (prevhash[0]) {
 			strncpy((char *)new_notify_blockhash, prevhash, 66);
 			if (height > new_notify_height) {
 				new_notify_height = height;
@@ -152,7 +152,7 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 	T_DATUM_TEMPLATE_DATA *tdata;
 	const char *s;
 	int i,j;
-	json_t *tx_array;
+	json_t *tx_array, *jval;
 	
 	tdata = get_next_template_ptr();
 	if (!tdata) {
@@ -208,37 +208,37 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 		return NULL;
 	}
 	
-	s = json_string_value(json_object_get(gbt, "bits"));
-	if (!s) {
-		DLOG_ERROR("Missing data from GBT JSON (bits)");
-		return NULL;
-	}
-	if (strlen(s) != 8) {
+	jval = json_object_get(gbt, "bits");
+	if (json_string_length(jval) != 8) {
 		DLOG_ERROR("Wrong bits length from GBT JSON");
 		return NULL;
 	}
+	s = json_string_value(jval);
 	strcpy(tdata->bits, s);
 	
-	s = json_string_value(json_object_get(gbt, "previousblockhash"));
-	if (!s) {
+	jval = json_object_get(gbt, "previousblockhash");
+	if (json_string_length(jval) != 64) {
 		DLOG_ERROR("Missing data from GBT JSON (previousblockhash)");
 		return NULL;
 	}
-	strncpy(tdata->previousblockhash, s, 71);
+	s = json_string_value(jval);
+	strcpy(tdata->previousblockhash, s);
 	
-	s = json_string_value(json_object_get(gbt, "target"));
-	if (!s) {
+	jval = json_object_get(gbt, "target");
+	if (json_string_length(jval) != 64) {
 		DLOG_ERROR("Missing data from GBT JSON (target)");
 		return NULL;
 	}
-	strncpy(tdata->block_target_hex, s, 71);
+	s = json_string_value(jval);
+	strcpy(tdata->block_target_hex, s);
 	
-	s = json_string_value(json_object_get(gbt, "default_witness_commitment"));
-	if (!s) {
+	jval = json_object_get(gbt, "default_witness_commitment");
+	if (json_string_length(jval) < 38 || json_string_length(jval) > 95) {
 		DLOG_ERROR("Missing data from GBT JSON (default_witness_commitment)");
 		return NULL;
 	}
-	strncpy(tdata->default_witness_commitment, s, 95);
+	s = json_string_value(jval);
+	strcpy(tdata->default_witness_commitment, s);
 	
 	// "20000000", "192e17d5", "66256be5"
 	// version, bits, time
@@ -289,20 +289,22 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 			tdata->txns[i].index_raw = i+1;
 			
 			// txid
-			s = json_string_value(json_object_get(tx, "txid"));
-			if (!s) {
+			jval = json_object_get(tx, "txid");
+			if (json_string_length(jval) != 64) {
 				DLOG_ERROR("Missing data from GBT JSON transactions[%d] (txid)",i);
 				return NULL;
 			}
+			s = json_string_value(jval);
 			strcpy(tdata->txns[i].txid_hex, s);
 			hex_to_bin_le(tdata->txns[i].txid_hex, tdata->txns[i].txid_bin);
 			
 			// hash
-			s = json_string_value(json_object_get(tx, "hash"));
-			if (!s) {
+			jval = json_object_get(tx, "hash");
+			if (json_string_length(jval) != 64) {
 				DLOG_ERROR("Missing data from GBT JSON transactions[%d] (hash)",i);
 				return NULL;
 			}
+			s = json_string_value(jval);
 			strcpy(tdata->txns[i].hash_hex, s);
 			hex_to_bin_le(tdata->txns[i].hash_hex, tdata->txns[i].hash_bin);
 			

@@ -38,6 +38,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <stdint.h>
 
 #include "datum_stratum_dupes.h"
 #include "datum_stratum.h"
@@ -111,7 +112,7 @@ int find_first_less_than(T_DATUM_STRATUM_DUPE_ITEM *ptr, size_t max_items, uint6
 		if (mid > (max_items-1)) mid = max_items-1;
 		
 		// more sanity
-		if (ptr[mid].job_index < 0 || ptr[mid].job_index > MAX_STRATUM_JOBS) {
+		if (ptr[mid].job_index < 0 || ptr[mid].job_index >= MAX_STRATUM_JOBS) {
 			tsms = 0;
 		} else if (global_cur_stratum_jobs[ptr[mid].job_index] != NULL) {
 			tsms = global_cur_stratum_jobs[ptr[mid].job_index]->tsms;

@@ -34,7 +34,10 @@
  */
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
+
+#include <jansson.h>
 
 #include "datum_conf.h"
 #include "datum_jsonrpc.h"

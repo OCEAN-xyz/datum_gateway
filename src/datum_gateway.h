@@ -36,6 +36,8 @@
 #ifndef _DATUM_GATEWAY_H_
 #define _DATUM_GATEWAY_H_
 
+#include <stdint.h>
+
 #include "git_version.h"
 
 #ifndef GIT_COMMIT_HASH

@@ -124,6 +124,58 @@ void datum_stratum_mod_username_tests() {
 	datum_test(0 == strcmp(buf, "def.ghi"));
 	datum_test(datum_stratum_mod_username(s, buf, sizeof(buf), 0x8000, modname, 2) == pool_addr);
 	datum_test(datum_stratum_mod_username(s, buf, sizeof(buf), 0xffff, modname, 2) == pool_addr);
+	
+	// Intentionally overflow buf with address: we lose the worker name, but get the full address via its umod buffer
+	s = "def.ghi~x";
+	modname = &s[8];
+	memset(buf, 0x0e, 8);
+	res = datum_stratum_mod_username(s, buf, 2, 0, modname, 1);
+	datum_test(res != buf);
+	datum_test(res != pool_addr);
+	datum_test(buf[2] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA"));
+	res = datum_stratum_mod_username(s, buf, 2, 0x4ccc, modname, 1);
+	datum_test(0 == strcmp(res, "addrA"));
+	datum_test(datum_stratum_mod_username(s, buf, 2, 0x4ccd, modname, 1) == pool_addr);
+	datum_test(datum_stratum_mod_username(s, buf, 2, 0xffff, modname, 1) == pool_addr);
+	datum_test(buf[2] == 0x0e);
+	datum_test(buf[6] == 0x0e);
+	res = datum_stratum_mod_username(s, buf, 6, 0, modname, 1);
+	datum_test(res == buf);
+	datum_test(res != pool_addr);
+	datum_test(buf[6] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA"));
+	memset(buf, 0x0e, 9);
+	datum_test(datum_stratum_mod_username(s, buf, 7, 0, modname, 1) == buf);
+	datum_test(buf[8] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA."));
+	memset(buf, 0x0e, 10);
+	datum_test(datum_stratum_mod_username(s, buf, 8, 0, modname, 1) == buf);
+	datum_test(buf[9] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA.g"));
+	memset(buf, 0x0e, 11);
+	datum_test(datum_stratum_mod_username(s, buf, 9, 0, modname, 1) == buf);
+	datum_test(buf[10] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA.gh"));
+	memset(buf, 0x0e, 12);
+	datum_test(datum_stratum_mod_username(s, buf, 10, 0, modname, 1) == buf);
+	datum_test(buf[11] == 0x0e);
+	datum_test(0 == strcmp(res, "addrA.ghi"));
+	s = "def.ghi~:)";
+	modname = &s[8];
+	memset(buf, 0x0e, 9);
+	datum_test(datum_stratum_mod_username(s, buf, 2, 0, modname, 2) == buf);
+	datum_test(buf[2] == 0x0e);
+	datum_test(0 == strcmp(res, "d"));
+	datum_test(datum_stratum_mod_username(s, buf, 6, 0, modname, 2) == buf);
+	datum_test(buf[6] == 0x0e);
+	datum_test(0 == strcmp(res, "def.g"));
+	datum_test(datum_stratum_mod_username(s, buf, 7, 0, modname, 2) == buf);
+	datum_test(buf[7] == 0x0e);
+	datum_test(0 == strcmp(res, "def.gh"));
+	datum_test(datum_stratum_mod_username(s, buf, 8, 0, modname, 2) == buf);
+	datum_test(buf[8] == 0x0e);
+	datum_test(0 == strcmp(res, "def.ghi"));
 }
 
 void datum_stratum_tests(void) {

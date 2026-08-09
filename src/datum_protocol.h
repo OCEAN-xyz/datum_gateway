@@ -38,6 +38,7 @@
 
 #include <sodium.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "datum_stratum.h"
 
@@ -45,11 +46,12 @@
 // Works out to over 5 minutes of jobs at 30-40 second work change intervals. No miner should be holding on to work this long.
 #define MAX_DATUM_PROTOCOL_JOBS 8
 
-#define DATUM_PROTOCOL_VERSION "v0.4.0-beta" // this is sent to the server as a UA
+#define DATUM_PROTOCOL_VERSION "v0.4.1-beta" // this is sent to the server as a UA
 #define DATUM_PROTOCOL_CONNECT_TIMEOUT 30
 
 #define DATUM_PROTOCOL_MAX_CMD_DATA_SIZE 4194304 // 2^22 - protocol limit!
 #define DATUM_PROTOCOL_BUFFER_SIZE (DATUM_PROTOCOL_MAX_CMD_DATA_SIZE*3)
+#define DATUM_PROTOCOL_MAX_USERNAME_LEN 384
 
 #define MAX_DATUM_CLIENT_EVENTS 32
 

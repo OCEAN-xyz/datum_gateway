@@ -36,6 +36,8 @@
 #ifndef _DATUM_QUEUE_H_
 #define _DATUM_QUEUE_H_
 
+#include <pthread.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
