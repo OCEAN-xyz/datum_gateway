@@ -79,17 +79,26 @@ if(LIBM)
 endif()
 
 set(ARGP_LIBS "")
+set(ARGP_INCLUDE_DIRS "")
 check_function_exists(argp_parse HAVE_ARGP_PARSE)
 if(NOT HAVE_ARGP_PARSE)
-	check_library_exists(argp argp_parse "" ARGP)
-	if(NOT ARGP AND CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-		# Workaround bug where CMake doesn't check the standard install location on FreeBSD
-		unset(ARGP CACHE)
-		check_library_exists(argp argp_parse "/usr/local/lib" ARGP)
-	endif()
-	if(ARGP)
-		list(APPEND ARGP_LIBS "argp")
-	endif()
+   check_library_exists(argp argp_parse "" ARGP)
+   if(NOT ARGP AND CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+      # Workaround bug where CMake doesn't check the standard install location on FreeBSD
+      unset(ARGP CACHE)
+      check_library_exists(argp argp_parse "/usr/local/lib" ARGP)
+   endif()
+   if(ARGP)
+      list(APPEND ARGP_LIBS "argp")
+   else()
+      find_path(ARGP_INCLUDE_DIR argp.h)
+      find_library(ARGP_LIBRARY argp)
+      if(NOT ARGP_INCLUDE_DIR OR NOT ARGP_LIBRARY)
+         message(FATAL_ERROR "argp not found")
+      endif()
+      list(APPEND ARGP_INCLUDE_DIRS "${ARGP_INCLUDE_DIR}")
+      list(APPEND ARGP_LIBS "${ARGP_LIBRARY}")
+   endif()
 endif()
 
 check_function_exists(epoll_wait HAVE_EPOLL_WAIT)
@@ -121,6 +130,7 @@ add_custom_command(
 target_include_directories(datum_gateway
 	PRIVATE
 	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
+   ${ARGP_INCLUDE_DIRS}
 	${EPOLL_SHIM_INCLUDE_DIRS}
 	${CURL_INCLUDE_DIRS}
 	${JANSSON_INCLUDE_DIRS}
