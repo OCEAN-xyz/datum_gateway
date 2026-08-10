@@ -129,6 +129,7 @@ target_include_directories(datum_gateway
 target_link_directories(datum_gateway
 	PUBLIC
 	${CURL_LIBRARY_DIRS}
+   ${EPOLL_SHIM_LIBRARY_DIRS}
 	${JANSSON_LIBRARY_DIRS}
 	${SODIUM_LIBRARY_DIRS}
 )
