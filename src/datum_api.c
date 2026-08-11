@@ -38,6 +38,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -323,6 +324,31 @@ size_t datum_api_fill_vars(const char *input, char *output, size_t max_output_si
 	output[output_len] = 0;
 	
 	return output_len;
+}
+
+/* Append helpers that never let sz += snprintf() underflow the remaining length. */
+static size_t datum_buf_append_snprintf(char *buf, size_t buf_sz, size_t sz, const char *fmt, ...)
+	__attribute__((format(printf, 4, 5)));
+
+static size_t datum_buf_append_snprintf(char *buf, size_t buf_sz, size_t sz, const char *fmt, ...) {
+	if (sz >= buf_sz) return buf_sz;
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(buf + sz, buf_sz - sz, fmt, ap);
+	va_end(ap);
+	if (n < 0) return sz;
+	if ((size_t)n >= buf_sz - sz) return buf_sz; /* truncated / would overflow */
+	return sz + (size_t)n;
+}
+
+static size_t datum_buf_append_html_escape(char *buf, size_t buf_sz, size_t sz, const char *src) {
+	if (sz >= buf_sz) return buf_sz;
+	/* leave room for a trailing NUL the way callers historically did with max_sz-1 */
+	size_t room = buf_sz - sz;
+	if (room == 0) return buf_sz;
+	/* strncpy_html_escape writes at most n chars and does not NUL-terminate; match prior usage */
+	size_t wrote = strncpy_html_escape(buf + sz, src, room > 0 ? room - 1 : 0);
+	return sz + wrote;
 }
 
 size_t strncpy_html_escape(char *dest, const char *src, size_t n) {
@@ -862,7 +888,9 @@ int datum_api_thread_dashboard(struct MHD_Connection *connection) {
 int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	int connected_clients = 0;
-	int i, sz = 0, max_sz = 0, j, ii;
+	int i, j, ii;
+	size_t sz = 0;
+	size_t max_sz = 0;
 	char *output = NULL;
 	T_DATUM_MINER_DATA *m = NULL;
 	uint64_t tsms;
@@ -870,57 +898,58 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	unsigned char astat;
 	double thr = 0.0;
 	
+	// Auth before sizing/allocating - unauthenticated callers must not force large calloc.
+	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_clients)) {
+		return MHD_YES;
+	}
+	
 	const int max_threads = global_stratum_app ? global_stratum_app->max_threads : 0;
 	
 	for (i = 0; i < max_threads; ++i) {
 		connected_clients+=global_stratum_app->datum_threads[i].connected_clients;
 	}
 	
-	max_sz = www_clients_top_html_sz + www_foot_html_sz + (connected_clients * 1024) + 2048; // approximate max size of each row
-	output = calloc(max_sz+16,1);
+	// Worst-case escaped row ~1146 (user) + ~508 (ua) + cells; 3072 B/row + slack.
+	max_sz = www_clients_top_html_sz + www_foot_html_sz + ((size_t)connected_clients * 3072) + 4096;
+	output = calloc(max_sz + 16, 1);
 	if (!output) {
 		return MHD_NO;
 	}
 	
 	tsms = current_time_millis();
 	
-	sz = snprintf(output, max_sz-1-sz, "%s", www_clients_top_html);
-	
-	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_clients)) {
-		return MHD_YES;
-	}
-	
-	sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
+	sz = datum_buf_append_snprintf(output, max_sz, 0, "%s", www_clients_top_html);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
 	
 	for (j = 0; j < max_threads; ++j) {
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
 			if (global_stratum_app->datum_threads[j].client_data[ii].fd > 0) {
 				m = (T_DATUM_MINER_DATA *)global_stratum_app->datum_threads[j].client_data[ii].app_client_data;
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d/%d</TD>", j,ii);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TR><TD>%d/%d</TD>", j,ii);
 				
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%s</TD>", global_stratum_app->datum_threads[j].client_data[ii].rem_host);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%s</TD>", global_stratum_app->datum_threads[j].client_data[ii].rem_host);
 				
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TD>");
-				sz += strncpy_html_escape(&output[sz], m->last_auth_username, max_sz-1-sz);
-				sz += snprintf(&output[sz], max_sz-1-sz, "</TD>");
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>");
+				sz = datum_buf_append_html_escape(output, max_sz, sz, m->last_auth_username);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "</TD>");
 				
 				if (m->subscribed) {
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD> <span style=\"font-family: monospace;\">%4.4x</span> %.1fs</TD>", m->sid, (double)(tsms - m->subscribe_tsms)/1000.0);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD> <span style=\"font-family: monospace;\">%4.4x</span> %.1fs</TD>", m->sid, (double)(tsms - m->subscribe_tsms)/1000.0);
 					
 					if (m->stats.last_share_tsms) {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%.1fs</TD>", (double)(tsms - m->stats.last_share_tsms)/1000.0);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%.1fs</TD>", (double)(tsms - m->stats.last_share_tsms)/1000.0);
 					} else {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>N/A</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>N/A</TD>");
 					}
 					
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%"PRIu64"</TD>", m->current_diff);
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%"PRIu64" (%"PRIu64")</TD>", m->share_diff_accepted, m->share_count_accepted);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64"</TD>", m->current_diff);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64" (%"PRIu64")</TD>", m->share_diff_accepted, m->share_count_accepted);
 					
 					hr = 0.0;
 					if (m->share_diff_accepted > 0) {
 						hr = ((double)m->share_diff_rejected / (double)(m->share_diff_accepted + m->share_diff_rejected))*100.0;
 					}
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%"PRIu64" (%"PRIu64") %.2f%%</TD>", m->share_diff_rejected, m->share_count_rejected, hr);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64" (%"PRIu64") %.2f%%</TD>", m->share_diff_rejected, m->share_count_rejected, hr);
 					
 					astat = m->stats.active_index?0:1; // inverted
 					hr = 0.0;
@@ -931,32 +960,32 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 						thr += hr;
 					}
 					if (m->share_diff_accepted > 0) {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%.2f Th/s (%.1fs)</TD>", hr, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%.2f Th/s (%.1fs)</TD>", hr, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
 					} else {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>N/A</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>N/A</TD>");
 					}
 					
 					if (m->coinbase_selection < (sizeof(cbnames) / sizeof(cbnames[0]))) {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>%s</TD>", cbnames[m->coinbase_selection]);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%s</TD>", cbnames[m->coinbase_selection]);
 					} else {
-						sz += snprintf(&output[sz], max_sz-1-sz, "<TD>Unknown</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>Unknown</TD>");
 					}
 					
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD>");
-					sz += strncpy_html_escape(&output[sz], m->useragent, max_sz-1-sz);
-					sz += snprintf(&output[sz], max_sz-1-sz, "</TD>");
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>");
+					sz = datum_buf_append_html_escape(output, max_sz, sz, m->useragent);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "</TD>");
 				} else {
-					sz += snprintf(&output[sz], max_sz-1-sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
 				}
 				
-				sz += snprintf(&output[sz], max_sz-1-sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d,t:%lu,id:%lu}); return false;\">Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id, j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d,t:%lu,id:%lu}); return false;\">Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id, j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
 			}
 		}
 	}
 	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>", thr);
-	sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
-	sz += snprintf(&output[sz], max_sz-1-sz, "</script>%s", www_foot_html);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>", thr);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, www_assets_post_js, datum_config.api_csrf_token);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</script>%s", www_foot_html);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
