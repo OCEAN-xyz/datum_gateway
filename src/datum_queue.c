@@ -56,8 +56,9 @@
 #include "datum_utils.h"
 
 int datum_queue_free(DATUM_QUEUE *q) {
-	if (!q->initialized) return -1;
+	if (!q || !q->initialized) return -1;
 	
+	// Caller must quiesce producers/consumers first (destroying held locks is UB).
 	pthread_rwlock_wrlock(&q->active_buffer_rwlock);
 	pthread_rwlock_wrlock(&q->buffer_rwlock[0]);
 	pthread_rwlock_wrlock(&q->buffer_rwlock[1]);
@@ -83,6 +84,8 @@ int datum_queue_free(DATUM_QUEUE *q) {
 }
 
 int datum_queue_prep(DATUM_QUEUE *q, const int max_items, const int item_size, int (*item_handler)(void *)) {
+	// Not safe on a live queue; free first after quiescing if re-prepping.
+	if (!q || !item_handler || max_items <= 0 || item_size <= 0) return -1;
 	memset(q, 0, sizeof(DATUM_QUEUE));
 	
 	q->initialized = false;
