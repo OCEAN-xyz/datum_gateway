@@ -280,13 +280,16 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	}
 	
 	// Coinbaser response from server. stash appropriately!
-	struct timespec ts;
 	int rc;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += 5; // Set timeout to 5 seconds from now
 	uint32_t x;
 	uint64_t v;
 	
+#ifndef __APPLE__
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += 5; // Set timeout to 5 seconds from now
+#endif
+
 	v = upk_u64le(data, 0);
 	x = upk_u32le(data, 8);
 	
@@ -294,10 +297,19 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		DLOG_DEBUG("Invalid coinbaser received! %lu %lu", (unsigned long)x, (unsigned long)(len-12));
 		return 0;
 	}
-	
+
+#ifdef __APPLE__
+	rc = pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
+#else
 	rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+#endif
+
 	if (rc != 0) {
+#ifdef __APPLE__
+		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex... bug?");
+#else
 		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex after 5 seconds... bug?");
+#endif
 		return 0;
 	}
 	
