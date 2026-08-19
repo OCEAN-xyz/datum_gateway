@@ -35,6 +35,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -117,7 +118,29 @@ void datum_utils_tests_secure_strequals(void) {
 	datum_test(datum_secure_strequals(NULL, 0, ""));
 }
 
+void datum_utils_tests_difficulty(void) {
+	const uint8_t pdiff_1_target[32] = {[28] = 0x01};
+	const uint8_t pdiff_2_target[32] = {[27] = 0x80};
+	uint8_t target[32];
+	long double difficulty;
+
+	get_target_from_diff(target, 1);
+	datum_test(memcmp(target, pdiff_1_target, sizeof(target)) == 0);
+	datum_test(fabsl(get_approx_achieved_diff(target) - 1.0L) < 1e-12L);
+
+	get_target_from_diff(target, 2);
+	datum_test(memcmp(target, pdiff_2_target, sizeof(target)) == 0);
+	datum_test(fabsl(get_approx_achieved_diff(target) - 2.0L) < 1e-12L);
+
+	difficulty = calc_network_difficulty("1d010000");
+	datum_test(fabsl(difficulty - 1.0L) < 1e-12L);
+
+	difficulty = calc_network_difficulty("1d00ffff");
+	datum_test(fabsl(difficulty - (65536.0L / 65535.0L)) < 1e-12L);
+}
+
 void datum_utils_tests(void) {
 	datum_utils_tests_hex();
 	datum_utils_tests_secure_strequals();
+	datum_utils_tests_difficulty();
 }

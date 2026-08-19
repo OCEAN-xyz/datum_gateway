@@ -59,6 +59,7 @@ void build_hex_lookup(void);
 bool my_sha256(void *digest, const void *buffer, size_t length);
 void nbits_to_target(uint32_t nbits, uint8_t *target);
 int compare_hashes(const uint8_t *hash1, const uint8_t *hash2);
+long double get_approx_achieved_diff(const unsigned char *bytes);
 unsigned long long block_reward(unsigned int block_height);
 int append_bitcoin_varint_hex(uint64_t n, char *s);
 int append_UNum_hex(uint64_t n, char *s);

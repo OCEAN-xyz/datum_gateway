@@ -72,7 +72,7 @@ bool datum_test_fail_(const char *expr, const char *file, unsigned int line, con
 }
 
 void get_target_from_diff(unsigned char *result, uint64_t diff) {
-	uint64_t dividend_parts[4] = {0, 0, 0, 0x00000000FFFF0000};
+	uint64_t dividend_parts[4] = {0, 0, 0, 0x0000000100000000};
 	uint64_t remainder = 0;
 	uint64_t quotient;
 	
@@ -225,13 +225,13 @@ long double get_approx_achieved_diff(const unsigned char *bytes) {
 		return 0.0L;
 	}
 	
-	// bdiff 1
+	// pdiff 1
 	unsigned char dividendBytes[32] = {
 		// Least significant byte at index 0
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00
+		0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
 		// Most significant byte at index 31
 	};
 	
@@ -618,9 +618,9 @@ bool strncpy_uachars(char *out, const char *in, size_t maxlen) {
 }
 
 long double calc_network_difficulty(const char *bits_hex) {
-	// given a share solution in hex, calculate the network difficulty
+	// given a share solution in hex, calculate the network pdiff
 	// Postgres code for this (with hex_to_int added function)
-	// (pow(10,  ( (29-tpower_val)*2.4082399653118495617099111577959 ) + log( (65535 / tvalue_val) )   )  ) as network_difficulty
+	// (pow(10,  ( (29-tpower_val)*2.4082399653118495617099111577959 ) + log( (65536 / tvalue_val) )   )  ) as network_difficulty
 	
 	char tpower[3];
 	char tvalue[7];
@@ -640,7 +640,7 @@ long double calc_network_difficulty(const char *bits_hex) {
 	tpower_val = (unsigned char)strtoul(tpower, &ep, 16);
 	tvalue_val = strtoul(tvalue, &ep, 16);
 	s = (signed short)29 - (signed short)tpower_val;
-	d = powl(10.0,(double)s*(long double)2.4082399653118495617099111577959 + log10(65535.0 / (double)tvalue_val));
+	d = powl(10.0,(double)s*(long double)2.4082399653118495617099111577959 + log10(65536.0 / (double)tvalue_val));
 	return d;
 }
 
