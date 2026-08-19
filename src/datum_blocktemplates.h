@@ -59,6 +59,12 @@
 
 #define MAX_BLOCK_SIZE_BYTES 4000000
 
+// Consensus limits the coinbase transaction's scriptSig to 100 bytes.
+#define MAX_COINBASE_SCRIPTSIG_SIZE 100
+
+// The largest DATUM PoT/identifier push is 8 bytes including its push opcode.
+#define MAX_DATUM_COINBASE_ID_SIZE 8
+
 // Assumption notes
 
 // max possible transactions = 16394-ish .. close enough to say 16384, since we're just not going to be idiots
@@ -169,6 +175,11 @@ typedef struct {
 	uint8_t		previousblockhash_bin[32]; //
 	char		default_witness_commitment[96]; //
 	uint8_t		default_witness_commitment_bin[48]; //
+
+	// Concatenated BIP22 coinbaseaux values, in JSON object iteration order.
+	// Binary data: coinbaseaux_len is authoritative; no NUL terminator is used.
+	uint8_t		coinbaseaux[MAX_COINBASE_SCRIPTSIG_SIZE];
+	uint8_t		coinbaseaux_len;
 	
 	char		block_target_hex[72]; //
 	uint8_t		block_target[32]; // calculated from bits
@@ -189,6 +200,7 @@ typedef struct {
 extern const char *datum_blocktemplates_error;
 
 int datum_template_init(void);
+bool datum_gbt_parse_coinbaseaux(T_DATUM_TEMPLATE_DATA *tdata, json_t *coinbaseaux);
 T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt);
 void *datum_gateway_template_thread(void *args);
 void datum_blocktemplates_notifynew_sighandler();

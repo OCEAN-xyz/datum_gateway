@@ -60,18 +60,50 @@ const char *cbstart_hex = "01000000010000000000000000000000000000000000000000000
 
 #define MAX_COINBASE_TAG_SPACE 86 // leaves space for BIP34 height, extranonces, datum prime tag, etc.
 
-int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
+static int coinbase_tag_payload_size(const int primary_len, const int secondary_len) {
+	if (secondary_len) return primary_len + secondary_len + 2;
+	if (primary_len) return primary_len + 1;
+	return 0;
+}
+
+static int coinbase_tag_encoded_size(const int primary_len, const int secondary_len) {
+	const int payload_size = coinbase_tag_payload_size(primary_len, secondary_len);
+	if (!payload_size) return 2; // Preserve the legacy PUSH 0 marker when it fits.
+	return payload_size + (payload_size <= 75 ? 1 : 2);
+}
+
+int generate_coinbase_input(const T_DATUM_STRATUM_JOB *s, char *cb, int *target_pot_index) {
 	int cb_input_sz = 0;
 	int tag_len[2] = { 0, 0 };
 	int k, m, i;
 	int excess;
 	bool datum_active = false;
+	bool short_identifier = false;
+	bool include_empty_tag = true;
+
+	if (!s || !s->block_template || !cb) return -1;
 	
 	// let's figure out our coinbase tags w/BIP34 height
-	i = append_UNum_hex(height, &cb[0]);
+	i = append_UNum_hex(s->height, &cb[0]);
 	cb_input_sz += i>>1;
+
+	// BIP22: include only the object values, byte-for-byte, after BIP34 height.
+	// A single data push keeps arbitrary auxiliary bytes from being interpreted as
+	// script opcodes while preserving their received order and exact contents.
+	if (s->block_template->coinbaseaux_len) {
+		if (s->block_template->coinbaseaux_len <= 75) {
+			uchar_to_hex(&cb[i], s->block_template->coinbaseaux_len); i += 2; cb_input_sz++;
+		} else {
+			uchar_to_hex(&cb[i], 0x4c); i += 2; cb_input_sz++;
+			uchar_to_hex(&cb[i], s->block_template->coinbaseaux_len); i += 2; cb_input_sz++;
+		}
+		for (m = 0; m < s->block_template->coinbaseaux_len; ++m) {
+			uchar_to_hex(&cb[i], s->block_template->coinbaseaux[m]); i += 2; cb_input_sz++;
+		}
+	}
 	
 	datum_active = datum_protocol_is_active();
+	short_identifier = (datum_config.prime_id == 0) && !datum_active;
 	
 	// Handle coinbase tagging
 	// The first push after the height should be:
@@ -83,35 +115,51 @@ int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
 		tag_len[0] = strlen(datum_config.override_mining_coinbase_tag_primary);
 	}
 	tag_len[1] = strlen(datum_config.mining_coinbase_tag_secondary);
-	k = tag_len[0] + tag_len[1] + 2;
-	if (!tag_len[1]) {
-		k--;
-		if (!tag_len[0]) {
+
+	if (!s->block_template->coinbaseaux_len) {
+		// Preserve the pre-coinbaseaux path exactly for existing templates.
+		k = tag_len[0] + tag_len[1] + 2;
+		if (!tag_len[1]) {
 			k--;
+			if (!tag_len[0]) k--;
 		}
-	}
-	
-	if (k > MAX_COINBASE_TAG_SPACE) {
-		// something still needs truncating
-		excess = k - MAX_COINBASE_TAG_SPACE;
-		if (tag_len[1] > excess) {
-			// truncating tag1 is enough to cover us
-			tag_len[1] -= excess;
-			k = MAX_COINBASE_TAG_SPACE;
-		} else {
-			// not enough, so need to remove this tag entirely
-			if (tag_len[1]) {
+		if (k > MAX_COINBASE_TAG_SPACE) {
+			excess = k - MAX_COINBASE_TAG_SPACE;
+			if (tag_len[1] > excess) {
+				tag_len[1] -= excess;
+				k = MAX_COINBASE_TAG_SPACE;
+			} else if (tag_len[1]) {
 				tag_len[1] = 0;
-				k-=tag_len[1]+1;
+				k -= tag_len[1] + 1;
 			}
 		}
-	}
-	
-	if (k > MAX_COINBASE_TAG_SPACE) {
-		// one tag should never exceed 64 bytes, so we're going to panic here.
-		DLOG_FATAL("Could not fit coinbase primary tag alone somehow. This is probably a bug. Panicking. :(");
-		panic_from_thread(__LINE__);
-		sleep(1000000);
+		if (k > MAX_COINBASE_TAG_SPACE) {
+			DLOG_FATAL("Could not fit coinbase primary tag alone somehow. This is probably a bug. Panicking. :(");
+			panic_from_thread(__LINE__);
+			sleep(1000000);
+		}
+	} else {
+		// Required auxiliary bytes consume optional tag space first: secondary,
+		// then primary. The PoT/identifier push remains required by DATUM.
+		const int identifier_size = short_identifier ? 4 : 8;
+		int tag_budget = MAX_COINBASE_TAG_SPACE + 2; // includes worst-case PUSHDATA1
+		const int remaining = MAX_COINBASE_SCRIPTSIG_SIZE - cb_input_sz - identifier_size;
+		if (remaining < 0) {
+			DLOG_ERROR("Required coinbase input data exceeds the %d-byte scriptSig limit", MAX_COINBASE_SCRIPTSIG_SIZE);
+			return -1;
+		}
+		if (tag_budget > remaining) tag_budget = remaining;
+		while (coinbase_tag_encoded_size(tag_len[0], tag_len[1]) > tag_budget) {
+			if (tag_len[1]) {
+				--tag_len[1];
+			} else if (tag_len[0]) {
+				--tag_len[0];
+			} else {
+				include_empty_tag = false;
+				break;
+			}
+		}
+		k = coinbase_tag_payload_size(tag_len[0], tag_len[1]);
 	}
 	
 	if (k > 0) {
@@ -153,14 +201,14 @@ int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
 			}
 			uchar_to_hex(&cb[i], 0x00); i+=2; cb_input_sz++;
 		}
-	} else {
+	} else if (include_empty_tag) {
 		// we'll push a null char to be consistent, and to not parse the UID as if it were a pool name
 		uchar_to_hex(&cb[i], 0x01); i+=2; cb_input_sz++;
 		uchar_to_hex(&cb[i], 0x00); i+=2; cb_input_sz++;
 	}
 	
 	// append the coinbase unique ID tag
-	if ((datum_config.prime_id == 0) && (!datum_active)) {
+	if (short_identifier) {
 		uchar_to_hex(&cb[i], 0x03); i+=2; cb_input_sz++;
 		if (target_pot_index != NULL) *target_pot_index = cb_input_sz;
 		uchar_to_hex(&cb[i], 0xFF); i+=2; cb_input_sz++; // placehodler for PoT target
@@ -177,7 +225,12 @@ int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
 		uchar_to_hex(&cb[i], ((datum_config.prime_id>>16)&0xFF)); i+=2; cb_input_sz++;
 		uchar_to_hex(&cb[i], ((datum_config.prime_id>>24)&0xFF)); i+=2; cb_input_sz++;
 	}
-	
+
+	if (cb_input_sz > MAX_COINBASE_SCRIPTSIG_SIZE) {
+		DLOG_ERROR("Generated coinbase input exceeds the %d-byte scriptSig limit", MAX_COINBASE_SCRIPTSIG_SIZE);
+		return -1;
+	}
+
 	return cb_input_sz;
 }
 
@@ -368,7 +421,8 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	memcpy(&s->coinbase[0].coinb1[0], cbstart_hex, j);
 	cb1idx[0] = j;
 	
-	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index);
+	cb_input_sz = generate_coinbase_input(s, &cb[0], &target_pot_index);
+	if (cb_input_sz < 0) return;
 	i = cb_input_sz << 1;
 	
 	// null terminate... probably not needed
@@ -547,7 +601,8 @@ void generate_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool empty_o
 		cb1idx[i] = j;
 	}
 	
-	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index);
+	cb_input_sz = generate_coinbase_input(s, &cb[0], &target_pot_index);
+	if (cb_input_sz < 0) return;
 	s->target_pot_index = target_pot_index;
 	i = cb_input_sz << 1;
 	

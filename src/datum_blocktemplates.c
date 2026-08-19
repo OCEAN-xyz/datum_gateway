@@ -123,6 +123,7 @@ int datum_template_init(void) {
 
 void datum_template_clear(T_DATUM_TEMPLATE_DATA* p) {
 	p->coinbasevalue = 0;
+	p->coinbaseaux_len = 0;
 	p->txn_count = 0;
 	p->txn_total_size = 0;
 	p->txn_data_offset = 0;
@@ -146,6 +147,85 @@ T_DATUM_TEMPLATE_DATA *get_next_template_ptr(void) {
 	}
 	
 	return p;
+}
+
+static int coinbaseaux_hex_digit(const char c) {
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return -1;
+}
+
+bool datum_gbt_parse_coinbaseaux(T_DATUM_TEMPLATE_DATA *tdata, json_t *coinbaseaux) {
+	const char *key;
+	json_t *value;
+	size_t entry_index = 0;
+	size_t parsed_len = 0;
+	uint8_t parsed[MAX_COINBASE_SCRIPTSIG_SIZE];
+
+	if (!tdata) return false;
+	tdata->coinbaseaux_len = 0;
+
+	// coinbaseaux is optional, but if present BIP22 requires an object.
+	if (!coinbaseaux) return true;
+	if (!json_is_object(coinbaseaux)) {
+		DLOG_ERROR("Invalid GBT coinbaseaux: expected an object");
+		return false;
+	}
+
+	json_object_foreach(coinbaseaux, key, value) {
+		const char *hex;
+		size_t hex_len, value_len;
+		(void)key; // BIP22 includes values only; keys are deliberately ignored.
+
+		if (!json_is_string(value)) {
+			DLOG_ERROR("Invalid GBT coinbaseaux entry %zu: expected a hex string", entry_index);
+			return false;
+		}
+
+		hex = json_string_value(value);
+		hex_len = json_string_length(value);
+		if (hex_len & 1) {
+			DLOG_ERROR("Invalid GBT coinbaseaux entry %zu: hex string has odd length", entry_index);
+			return false;
+		}
+
+		value_len = hex_len >> 1;
+		if (value_len > sizeof(parsed) - parsed_len) {
+			DLOG_ERROR("Invalid GBT coinbaseaux: decoded values exceed the bounded %d-byte buffer", MAX_COINBASE_SCRIPTSIG_SIZE);
+			return false;
+		}
+
+		for (size_t i = 0; i < value_len; ++i) {
+			const int high = coinbaseaux_hex_digit(hex[i << 1]);
+			const int low = coinbaseaux_hex_digit(hex[(i << 1) + 1]);
+			if (high < 0 || low < 0) {
+				DLOG_ERROR("Invalid GBT coinbaseaux entry %zu: value is not hexadecimal", entry_index);
+				return false;
+			}
+			parsed[parsed_len + i] = (high << 4) | low;
+		}
+
+		parsed_len += value_len;
+		++entry_index;
+	}
+
+	if (parsed_len) {
+		char height_hex[24];
+		const size_t height_size = append_UNum_hex(tdata->height, height_hex) >> 1;
+		const size_t aux_push_size = parsed_len + (parsed_len <= 75 ? 1 : 2);
+		const size_t required_size = height_size + aux_push_size + MAX_DATUM_COINBASE_ID_SIZE;
+
+		if (required_size > MAX_COINBASE_SCRIPTSIG_SIZE) {
+			DLOG_ERROR("Invalid GBT coinbaseaux: BIP34 height, required auxiliary data, and DATUM identifier need %zu bytes (maximum %d)", required_size, MAX_COINBASE_SCRIPTSIG_SIZE);
+			return false;
+		}
+	}
+
+	memcpy(tdata->coinbaseaux, parsed, parsed_len);
+	tdata->coinbaseaux_len = parsed_len;
+
+	return true;
 }
 
 T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
@@ -205,6 +285,10 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 	tdata->version = json_integer_value(json_object_get(gbt, "version"));
 	if (!tdata->version) {
 		DLOG_ERROR("Missing data from GBT JSON (version)");
+		return NULL;
+	}
+
+	if (!datum_gbt_parse_coinbaseaux(tdata, json_object_get(gbt, "coinbaseaux"))) {
 		return NULL;
 	}
 	
