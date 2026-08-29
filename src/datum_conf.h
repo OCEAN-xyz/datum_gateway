@@ -137,6 +137,7 @@ typedef struct {
 	int api_listen_port;
 	bool api_allow_insecure_auth;
 	bool api_modify_conf;
+	char api_custom_css_file[1024];
 	json_t *config_json;
 	
 	int extra_block_submissions_count;

@@ -137,6 +137,8 @@ Run the datum_gateway executable with the -? flag for detailed configuration inf
 There is an [example configuration file included in the doc/ directory](doc/example_datum_gateway_config.json) you may wish to use as a template.
 Note that the API/web admin password is also used for preventing CSRF attacks, so it is crucial you set it to something reasonably secure (or disable the API/web interface entirely).
 
+The dashboard's stylesheet can be replaced without rebuilding: set `api`.`custom_css_file` to the path of a CSS file and it is served in place of the built-in `/assets/style.css`. The file is read once at startup, so a change to it means a gateway restart; if it cannot be read, the gateway logs an error and serves the built-in stylesheet. An example is in [doc/skins/](doc/skins/); the page markup it has to cover is in `www/`, and the per-page `<style>` blocks there still apply on top of it, so a replacement needs slightly more specific selectors to override those.
+
 You should review the [documentation on usernames](doc/usernames.md) next.
 Once you have everything running, you can point miners at the Gateway.
 

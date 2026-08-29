@@ -1,0 +1,315 @@
+/*
+ * graphite: a replacement dashboard stylesheet for the DATUM Gateway.
+ *
+ * Use it with  "api": { "custom_css_file": "/path/to/graphite.css" }.
+ * It covers the same class names as www/assets/style.css. The pages in
+ * www/ also carry their own <style> blocks, which load after this file,
+ * so the rules here that compete with those use one extra level of
+ * specificity (body button, .setting-row label.label) rather than
+ * !important. The one !important is on the active menu link, whose
+ * background is set inline in the templates.
+ */
+
+:root {
+	--bg: #14161a;
+	--panel: #1d2026;
+	--panel-edge: #2a2e36;
+	--row: #181b20;
+	--label: #22262d;
+	--text: #d8dbe0;
+	--muted: #8d939c;
+	--accent: #7fb3ff;
+	--accent-strong: #a9cdff;
+	--warn: #e0a458;
+	--bad: #e06c6c;
+	--font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	--mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html {
+	background: var(--bg);
+}
+
+body {
+	background: var(--bg);
+	color: var(--text);
+	margin: 0;
+	font-family: var(--font);
+	font-size: 15px;
+	line-height: 1.45;
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+a:hover {
+	color: var(--accent-strong);
+	text-decoration: underline;
+}
+
+/* Header and menu */
+
+.container {
+	max-width: 960px;
+	margin: 0 auto;
+	padding: 18px 16px 0;
+}
+
+.header {
+	background: transparent;
+	color: var(--text);
+	text-align: center;
+	padding: 0;
+	margin: 0;
+	border-radius: 0;
+}
+
+.header h1 {
+	margin: 0 0 12px;
+	font-size: 1.35rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+}
+
+.header h1 span {
+	color: var(--muted);
+	font-weight: 400;
+}
+
+.header-content img,
+.header h1 img {
+	vertical-align: text-top;
+}
+
+.menu-container {
+	background: transparent;
+	padding: 0;
+	text-align: center;
+	border-radius: 0;
+	border-bottom: 1px solid var(--panel-edge);
+	padding-bottom: 12px;
+}
+
+.menu-container a {
+	display: inline-block;
+	background: var(--panel);
+	color: var(--muted);
+	padding: 7px 16px;
+	margin: 3px;
+	border: 1px solid var(--panel-edge);
+	border-radius: 999px;
+	font-weight: 500;
+	font-size: 0.95rem;
+	transition: none;
+}
+
+.menu-container a:hover {
+	background: var(--label);
+	color: var(--text);
+	text-decoration: none;
+}
+
+/* The templates mark the current page with an inline background color. */
+.menu-container a[style] {
+	background: var(--label) !important;
+	color: var(--accent-strong);
+	border-color: var(--accent);
+}
+
+/* Panels and tables */
+
+.content {
+	margin-bottom: 20px;
+}
+
+.tables-container {
+	width: 100%;
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 0 8px;
+	box-sizing: border-box;
+}
+
+.table-wrapper {
+	display: flex;
+	flex-wrap: wrap;
+}
+
+.table-container {
+	background: var(--panel);
+	border: 1px solid var(--panel-edge);
+	border-radius: 8px;
+	padding: 16px;
+	margin: 10px;
+	flex: 1 1 100%;
+	box-sizing: border-box;
+	overflow-x: auto;
+}
+
+.table-container h2 {
+	color: var(--text);
+	text-align: left;
+	font-size: 1rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	margin: 0 0 10px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--panel-edge);
+}
+
+table {
+	width: 100%;
+	table-layout: auto;
+	border-collapse: collapse;
+}
+
+th {
+	text-align: left;
+	color: var(--muted);
+	font-weight: 600;
+	font-size: 0.85rem;
+	padding: 8px 10px;
+	border-bottom: 1px solid var(--panel-edge);
+}
+
+tr {
+	border-bottom: 1px solid var(--panel-edge);
+}
+
+tr:last-child {
+	border-bottom: none;
+}
+
+td {
+	padding: 8px 10px;
+	color: var(--text);
+	vertical-align: top;
+}
+
+td.label {
+	background: var(--label);
+	color: var(--muted);
+	width: 1%;
+	white-space: nowrap;
+}
+
+td:not(.label) {
+	background: var(--row);
+}
+
+.table-footer {
+	text-align: center;
+	margin-top: 24px;
+}
+
+@media (min-width: 1100px) {
+	.table-wrapper {
+		flex-wrap: nowrap;
+	}
+	
+	.table-container {
+		flex: 1 1 800px;
+		margin: 14px;
+	}
+	
+	.table-wrapper + .table-container {
+		flex: 1 1 800px;
+		margin: 14px auto;
+	}
+}
+
+.fixed-width {
+	font-family: var(--mono);
+	font-size: 0.9em;
+}
+
+.leading_zeros {
+	color: var(--muted);
+}
+
+.note {
+	text-align: center;
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.err {
+	color: var(--bad);
+}
+
+/* Config page: these outrank the block in www/config.html */
+
+body button {
+	background: var(--label);
+	color: var(--accent);
+	border: 1px solid var(--panel-edge);
+	border-radius: 6px;
+	padding: 8px 18px;
+	margin: 4px;
+	font: inherit;
+	font-weight: 600;
+	cursor: pointer;
+	transition: none;
+}
+
+body button:hover {
+	color: var(--accent-strong);
+	border-color: var(--accent);
+}
+
+body button[disabled] {
+	color: var(--muted);
+	background: var(--panel);
+	border-color: var(--panel-edge);
+	cursor: default;
+}
+
+.table-container .setting-row {
+	border-bottom: 1px solid var(--panel-edge);
+}
+
+.table-container .setting-row:last-child {
+	border-bottom: none;
+}
+
+.setting-row label.label {
+	padding: 10px;
+	background: var(--label);
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.setting-row label.tip {
+	display: block;
+	padding: 2px 10px 10px;
+	background: var(--label);
+	color: var(--muted);
+	font-size: 0.8rem;
+	font-style: normal;
+}
+
+body input,
+body select {
+	color: var(--text);
+	background: var(--row);
+	border: 1px solid var(--panel-edge);
+	border-radius: 4px;
+	padding: 6px 8px;
+	font: inherit;
+	z-index: 1;
+}
+
+body input:focus,
+body select:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+body input[readonly],
+body input[disabled],
+body select[readonly] {
+	color: var(--muted);
+}

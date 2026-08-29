@@ -142,6 +142,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "api",	 		.name = "modify_conf",				.description = "Enable modifying the config file from API/dashboard",
 		.example_default = true,
 		.required = false, .ptr = &datum_config.api_modify_conf, 						.default_bool = false },
+	{ .var_type = DATUM_CONF_STRING, 	.category = "api",	 		.name = "custom_css_file",			.description = "Path to a CSS file that replaces the built-in dashboard stylesheet (read once at startup; blank = built-in)",
+		.required = false, .ptr = datum_config.api_custom_css_file,					.default_string[0] = "", .max_string_len = sizeof(datum_config.api_custom_css_file) },
 	
 	// extra block submissions list
 	{ .var_type = DATUM_CONF_STRING_ARRAY, 	.category = "extra_block_submissions", 	.name = "urls",		.description = "Array of bitcoind RPC URLs to submit our blocks to directly.  Include auth info: http://user:pass@IP",

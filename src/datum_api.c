@@ -36,6 +36,7 @@
 // This is quick and dirty for now.  Will be improved over time.
 
 #include <assert.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -555,6 +556,63 @@ static struct MHD_Response *datum_api_create_response_authfail_config() {
 
 static struct MHD_Response *datum_api_create_response_authfail_threads() {
 	return datum_api_create_response_authfail(www_threads_top_html, www_threads_top_html_sz);
+}
+
+// Operator-supplied replacement for /assets/style.css (api.custom_css_file), loaded once at startup
+static char *datum_api_custom_css = NULL;
+static size_t datum_api_custom_css_sz = 0;
+static char datum_api_custom_css_etag[67];
+
+#define DATUM_API_CUSTOM_CSS_MAX_SZ (1024*1024)
+
+static void datum_api_load_custom_css(void) {
+	const char * const path = datum_config.api_custom_css_file;
+	if (!path[0]) return;
+	
+	FILE * const f = fopen(path, "rb");
+	if (!f) {
+		DLOG_ERROR("Could not open api.custom_css_file %s: %s (using the built-in stylesheet)", path, strerror(errno));
+		return;
+	}
+	if (fseek(f, 0, SEEK_END)) {
+		DLOG_ERROR("Could not read api.custom_css_file %s: %s (using the built-in stylesheet)", path, strerror(errno));
+		fclose(f);
+		return;
+	}
+	const long len = ftell(f);
+	if (len < 0 || len > DATUM_API_CUSTOM_CSS_MAX_SZ) {
+		DLOG_ERROR("api.custom_css_file %s is %ld bytes; the limit is %d (using the built-in stylesheet)", path, len, DATUM_API_CUSTOM_CSS_MAX_SZ);
+		fclose(f);
+		return;
+	}
+	rewind(f);
+	char * const buf = malloc(len + 1);
+	if (!buf) {
+		DLOG_ERROR("Could not allocate %ld bytes for api.custom_css_file (using the built-in stylesheet)", len);
+		fclose(f);
+		return;
+	}
+	if (fread(buf, 1, len, f) != (size_t)len) {
+		DLOG_ERROR("Could not read api.custom_css_file %s (using the built-in stylesheet)", path);
+		free(buf);
+		fclose(f);
+		return;
+	}
+	fclose(f);
+	buf[len] = 0;
+	
+	unsigned char digest[32];
+	my_sha256(digest, buf, len);
+	datum_api_custom_css_etag[0] = '"';
+	for (int i = 0; i < 32; ++i) {
+		snprintf(&datum_api_custom_css_etag[1 + (i * 2)], 3, "%02x", digest[i]);
+	}
+	datum_api_custom_css_etag[65] = '"';
+	datum_api_custom_css_etag[66] = 0;
+	
+	datum_api_custom_css = buf;
+	datum_api_custom_css_sz = len;
+	DLOG_INFO("Dashboard stylesheet replaced by %s (%ld bytes)", path, len);
 }
 
 static int datum_api_asset(struct MHD_Connection * const connection, const char * const mimetype, const char * const data, const size_t datasz, const char * const etag) {
@@ -1772,6 +1830,9 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 			} else if (!strcmp(url, "/assets/icons/favicon.ico")) {
 				return datum_api_asset(connection, "image/x-icon", www_assets_icons_favicon_ico, www_assets_icons_favicon_ico_sz, www_assets_icons_favicon_ico_etag);
 			} else if (!strcmp(url, "/assets/style.css")) {
+				if (datum_api_custom_css) {
+					return datum_api_asset(connection, "text/css", datum_api_custom_css, datum_api_custom_css_sz, datum_api_custom_css_etag);
+				}
 				return datum_api_asset(connection, "text/css", www_assets_style_css, www_assets_style_css_sz, www_assets_style_css_etag);
 			}
 			break;
@@ -1867,6 +1928,9 @@ void *datum_api_thread(void *ptr) {
 	if (!datum_sockets_setup_listening_sockets("API", datum_config.api_listen_addr, datum_config.api_listen_port, listen_socks, &listen_socks_len)) {
 		return NULL;
 	}
+	
+	// Load before the daemon starts so no request can race the swap
+	datum_api_load_custom_css();
 	
 	daemon = datum_api_try_start(0, listen_socks[0]);
 	
