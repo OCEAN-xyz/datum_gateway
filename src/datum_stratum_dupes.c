@@ -59,15 +59,26 @@ void datum_stratum_dupes_init(void *sdata_v) {
 	}
 	
 	dupes = sdata->dupes;
-	
-	dupes->ptr = calloc((datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16), sizeof(T_DATUM_STRATUM_DUPE_ITEM) );
+
+	// Sized once, then allocated, so the array and max_items cannot disagree.
+	//
+	// The floor is because stratum.max_clients_per_thread is range checked for an upper
+	// bound and not a lower one, and this is the product of three configured values. A zero
+	// or a negative sizes the table at nothing, and nothing is not a table that merely
+	// overflows quickly: the expand grows it by 25%, 25% of zero is zero, and the gateway
+	// takes a share it then has nowhere to put. Sixteen is also the point below which the
+	// same rounding stops the table growing at all.
+	int max_items = datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16;
+	if (max_items < 16) max_items = 16;
+
+	dupes->ptr = calloc(max_items, sizeof(T_DATUM_STRATUM_DUPE_ITEM) );
 	if (!dupes->ptr) {
-		DLOG_FATAL("Could not allocate RAM for dupe struct (big one, %lu bytes)",(unsigned long)(datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16) * sizeof(T_DATUM_STRATUM_DUPE_ITEM));
+		DLOG_FATAL("Could not allocate RAM for dupe struct (big one, %lu bytes)",(unsigned long)max_items * sizeof(T_DATUM_STRATUM_DUPE_ITEM));
 		panic_from_thread(__LINE__);
 		return;
 	}
-	
-	dupes->max_items = (datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16);
+
+	dupes->max_items = max_items;
 	dupes->current_items = 0;
 	
 	DLOG_DEBUG("Initialized dupe check thread data. %"PRIu64" bytes of RAM used for %d max entries @ %p for %p", (uint64_t)dupes->max_items * (uint64_t)sizeof(T_DATUM_STRATUM_DUPE_ITEM), dupes->max_items, dupes, sdata);
@@ -206,6 +217,12 @@ void datum_stratum_dupes_cleanup(T_DATUM_STRATUM_DUPES *dupes, bool full_wipe) {
 	if (full_wipe) {
 		// we're just cleaning up after a new block or whatever
 		memset(dupes->ptr, 0, sizeof(T_DATUM_STRATUM_DUPE_ITEM) * dupes->max_items);
+		// The buckets have to go with the items they point at. Leaving them meant every
+		// bucket still named a slot that had just been zeroed and was about to be handed
+		// out again to a new entry, so the first share on such a bucket could link a slot
+		// to itself and the next walk of that chain would never terminate. Nothing calls
+		// this with full_wipe today, which is the only reason that has not been seen.
+		memset(dupes->index, 0, sizeof(dupes->index));
 		dupes->current_items = 0;
 		return;
 	}
@@ -247,7 +264,21 @@ void datum_stratum_dupes_cleanup(T_DATUM_STRATUM_DUPES *dupes, bool full_wipe) {
 
 T_DATUM_STRATUM_DUPE_ITEM *datum_stratum_add_new_dupe(T_DATUM_STRATUM_DUPES *dupes, unsigned int nonce, unsigned short job_index, unsigned int ntime_val, unsigned int version_bits, unsigned char *extranonce_bin, T_DATUM_STRATUM_DUPE_ITEM *insert_after) {
 	T_DATUM_STRATUM_DUPE_ITEM *i;
-	
+
+	// The caller makes room before it walks the list, so this is a bug rather than a
+	// full table. Refusing the entry loses one share's dupe protection; writing past
+	// the end of the array corrupts the heap.
+	if (dupes->current_items >= dupes->max_items) {
+		// Once per run, not once per share. This fires on the share path, so a bug that
+		// made it reachable would otherwise write a line per share submitted.
+		static bool reported = false;
+		if (!reported) {
+			reported = true;
+			DLOG_ERROR("Dupe table full at insert (%d/%d); dropping the entry rather than writing past it. This should not be reachable; please report it.", dupes->current_items, dupes->max_items);
+		}
+		return NULL;
+	}
+
 	i = &dupes->ptr[dupes->current_items];
 	if (!i) {
 		DLOG_FATAL("Could not add entry to dupe table!");
@@ -269,11 +300,14 @@ T_DATUM_STRATUM_DUPE_ITEM *datum_stratum_add_new_dupe(T_DATUM_STRATUM_DUPES *dup
 		insert_after->next = i;
 	}
 	dupes->current_items++;
-	
-	if (dupes->current_items >= dupes->max_items) {
-		datum_stratum_dupes_cleanup(dupes, false);
-	}
-	
+
+	// The cleanup that used to be here ran between taking this pointer and returning it,
+	// and both of the things it can do invalidate it: the sort moves every item, and the
+	// expand reallocates the array. The caller stores what it gets back into the bucket
+	// index, so the index ended up holding a pointer into the freed array and the next
+	// share on that nonce read it. It has moved to the top of datum_stratum_check_for_dupe,
+	// which is the only place there is no insertion point to invalidate.
+
 	return i;
 }
 
@@ -294,7 +328,14 @@ bool datum_stratum_check_for_dupe(T_DATUM_STRATUM_THREADPOOL_DATA *t, unsigned i
 	}
 	
 	dupes = t->dupes;
-	
+
+	// Make room before reading anything out of the table. Everything below this line
+	// either holds a pointer into the array or an insertion point in a bucket, and a
+	// cleanup invalidates both, so this is the last moment it can safely run.
+	if (dupes->current_items >= dupes->max_items) {
+		datum_stratum_dupes_cleanup(dupes, false);
+	}
+
 	if (dupes->index[nonce_high] == NULL) {
 		// first nonce of its kind!
 		// not a duplicate
@@ -316,6 +357,8 @@ bool datum_stratum_check_for_dupe(T_DATUM_STRATUM_THREADPOOL_DATA *t, unsigned i
 			} else {
 				// we need to replace the first item in a list, so... let's make a new entry
 				p = datum_stratum_add_new_dupe(dupes, nonce, job_index, ntime_val, version_bits, extranonce_bin, NULL);
+				// A refused entry leaves the bucket as it was rather than unlinking it
+				if (!p) return false;
 				dupes->index[nonce_high] = p;
 				p->next = i;
 			}
