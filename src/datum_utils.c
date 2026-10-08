@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sodium.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -819,6 +820,12 @@ void datum_reexec() {
 	} else {
 		DLOG_ERROR("%s: Failed to close files, this could cause issues! (Is /proc mounted?)", __func__);
 	}
+	
+	// Prefer the kernel's self exe link over argv[0] (relative paths / renames).
+	// Exec the path directly - do not readlink()+exec the target (TOCTOU / " (deleted)").
+	execv("/proc/self/exe", (char * const *)datum_argv);
+	DLOG_ERROR("%s: execv(/proc/self/exe) failed: %s - falling back to argv[0]",
+	           __func__, strerror(errno));
 	
 	execv((void*)datum_argv[0], (void*)datum_argv);
 	// execv shouldn't return!
