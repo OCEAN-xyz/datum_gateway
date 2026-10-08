@@ -60,6 +60,7 @@
 #include "datum_api.h"
 #include "datum_coinbaser.h"
 #include "datum_protocol.h"
+#include "datum_rsk.h"
 
 const char *datum_gateway_config_filename = NULL;
 
@@ -225,6 +226,9 @@ int main(const int argc, const char * const * const argv) {
 	
 	DLOG_DEBUG("Starting template fetcher thread");
 	pthread_create(&pthread_datum_gateway_template, NULL, datum_gateway_template_thread, NULL);
+	
+	DLOG_DEBUG("Starting Rootstock thread");
+	datum_rsk_init(&datum_config);
 	
 	// Note: The stratum thread will wait for a template to be available for some time before panicking.
 	DLOG_DEBUG("Starting Stratum v1 server");

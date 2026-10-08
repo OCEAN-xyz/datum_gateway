@@ -147,6 +147,12 @@ uint64_t monotonic_time_seconds(void) {
 	return (uint64_t)ts.tv_sec;
 }
 
+uint64_t monotonic_time_millis(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ((uint64_t)ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+}
+
 uint64_t current_time_millis(void) {
 	struct timeval te;
 	gettimeofday(&te, NULL); // get current time
@@ -360,9 +366,9 @@ void hex_to_bin_le(const char *hex, unsigned char *bin) {
 }
 
 void hex_to_bin(const char *hex, unsigned char *bin) {
-	size_t len = strlen(hex);
-	for (size_t i = 0; i < len>>1; i++) {
-		bin[i] = hex2bin_uchar(&hex[(i<<1)]);
+	while (hex[0] && hex[1]) {
+		*(bin++) = hex2bin_uchar(hex);
+		hex = &hex[2];
 	}
 }
 
@@ -381,15 +387,16 @@ void panic_from_thread(int a) {
 	while(1) sleep(1);
 }
 
-void hash2hex(unsigned char *bytes, char *hexString) {
+void bin2hex(char * const hexString, const void * const bytes, const size_t len, const bool terminate) {
+	const uint8_t * const bytes_u8 = bytes;
 	const char hexDigits[] = "0123456789abcdef";
 	
-	for (int i = 0; i < 32; ++i) {
-		hexString[i * 2]     = hexDigits[(bytes[i] >> 4) & 0x0F];
-		hexString[i * 2 + 1] = hexDigits[bytes[i] & 0x0F];
+	for (int i = 0; i < len; ++i) {
+		hexString[i * 2]     = hexDigits[(bytes_u8[i] >> 4) & 0x0F];
+		hexString[i * 2 + 1] = hexDigits[bytes_u8[i] & 0x0F];
 	}
 	
-	hexString[64] = '\0';
+	if (terminate) hexString[len * 2] = '\0';
 }
 
 int addr_2_output_script(const char *addr, unsigned char *script, int max_len) {
