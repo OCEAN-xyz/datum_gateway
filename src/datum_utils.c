@@ -105,6 +105,7 @@ void datum_utils_init(void) {
 #ifdef __GNUC__
 // faster, less portable
 uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
+	if (x == 0) return 0;  // __builtin_clzll(0) is undefined
 	return 1ULL << (63 - __builtin_clzll(x));
 }
 
