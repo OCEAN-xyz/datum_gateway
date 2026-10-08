@@ -465,5 +465,14 @@ int datum_logger_init(void) {
 	
 	pthread_create(&pthread_datum_logger_thread, NULL, datum_logger_thread, NULL);
 	
+	// Messages logged before the writer thread is up go to the console or
+	// nowhere, so give it a moment to open the log file before returning.
+	for (int i = 0; i < 2000 && !datum_logger_initialized; ++i) {
+		usleep(1000);
+	}
+	if (!datum_logger_initialized) {
+		DLOG_WARN("Logger thread not ready after 2 seconds; early startup messages may be lost");
+	}
+	
 	return 0;
 }
