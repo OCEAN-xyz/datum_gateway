@@ -118,6 +118,8 @@ typedef struct {
 	int stratum_v1_vardiff_quickdiff_delta;
 	int stratum_v1_share_stale_seconds;
 	bool stratum_v1_fingerprint_miners;
+	char stratum_v1_coinbase_selection_mode[16];
+	char stratum_v1_coinbase_selection[32];
 	int stratum_v1_idle_timeout_no_subscribe;
 	int stratum_v1_idle_timeout_no_share;
 	int stratum_v1_idle_timeout_max_last_work;
