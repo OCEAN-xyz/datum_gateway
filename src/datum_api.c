@@ -1410,8 +1410,13 @@ void *datum_restart_thread(void *ptr) {
 	// FIXME: css/svg/etc might fail (we don't support caching them yet)
 	struct MHD_Daemon * const mhd = ptr;
 	MHD_quiesce_daemon(mhd);
-	while (MHD_get_daemon_info(mhd, MHD_DAEMON_INFO_CURRENT_CONNECTIONS)->num_connections > 0) {
-		usleep(100);
+	/* Bound the wait: a pinned keep-alive connection must not starve reexec forever.
+	 * After ~5s force-stop even if connections remain. */
+	for (int waited_ms = 0;
+	     waited_ms < 5000 &&
+	     MHD_get_daemon_info(mhd, MHD_DAEMON_INFO_CURRENT_CONNECTIONS)->num_connections > 0;
+	     waited_ms += 10) {
+		usleep(10000);
 	}
 	MHD_stop_daemon(mhd);
 	
