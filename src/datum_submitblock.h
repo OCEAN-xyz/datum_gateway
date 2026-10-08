@@ -36,6 +36,21 @@
 #ifndef _DATUM_SUBMITBLOCK_H_
 #define _DATUM_SUBMITBLOCK_H_
 
+#include <stdbool.h>
+#include <jansson.h>
+
+// What a submitblock reply means. The RPC helper returns NULL for the null
+// result the node sends on acceptance, so NULL is "accepted" here.
+typedef enum {
+	DATUM_SUBMITBLOCK_ACCEPTED = 0,	// null result: the node took the block
+	DATUM_SUBMITBLOCK_DUPLICATE,	// "duplicate": the node already had it, and it is valid
+	DATUM_SUBMITBLOCK_REJECTED,		// anything else, including "duplicate-invalid"
+} datum_submitblock_status;
+
+datum_submitblock_status datum_submitblock_reply_status(const json_t *reply);
+bool datum_submitblock_log_reply(const json_t *reply, const char *block_hash_hex);
+void datum_submitblock_tests(void);
+
 void datum_submitblock_init(void);
 void datum_submitblock_trigger(const char *ptr, const char *hash);
 void datum_submitblock_waitfree(void);

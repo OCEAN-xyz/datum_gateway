@@ -32,6 +32,7 @@ add_executable(datum_gateway
 	src/datum_stratum_dupes.c
 	src/datum_stratum_tests.c
 	src/datum_submitblock.c
+	src/datum_submitblock_tests.c
 	src/datum_utils.c
 	src/datum_utils_tests.c
 	src/thirdparty_base58.c
