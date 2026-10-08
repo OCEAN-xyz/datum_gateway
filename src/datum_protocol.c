@@ -280,10 +280,7 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 	}
 	
 	// Coinbaser response from server. stash appropriately!
-	struct timespec ts;
 	int rc;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += 5; // Set timeout to 5 seconds from now
 	uint32_t x;
 	uint64_t v;
 	
@@ -294,10 +291,10 @@ int datum_protocol_coinbaser_fetch_response(int len, unsigned char *data) {
 		DLOG_DEBUG("Invalid coinbaser received! %lu %lu", (unsigned long)x, (unsigned long)(len-12));
 		return 0;
 	}
-	
-	rc = pthread_mutex_timedlock(&datum_protocol_coinbaser_fetch_mutex, &ts);
+
+	rc = pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
 	if (rc != 0) {
-		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex after 5 seconds... bug?");
+		DLOG_DEBUG("Could not get a lock on the coinbaser reception mutex... bug?");
 		return 0;
 	}
 	
@@ -352,25 +349,29 @@ int datum_protocol_coinbaser_fetch(void *sptr) {
 		return 0;
 	}
 	
-	datum_protocol_mining_cmd(msg, i);
-	
 	// spin here for up to 5 seconds while awaiting a coinbaser response from DATUM Prime
+	pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
+	datum_coinbaser_v2_response = NULL;
+
+	datum_protocol_mining_cmd(msg, i);
+
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += 5; // Set timeout to 5 seconds
-	
-	pthread_mutex_lock(&datum_protocol_coinbaser_fetch_mutex);
-	
-	rc = pthread_cond_timedwait(&datum_protocol_coinbaser_fetch_cond, &datum_protocol_coinbaser_fetch_mutex, &ts);
-	if (rc == ETIMEDOUT) {
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
-		DLOG_DEBUG("Timeout waiting for coinbaser response from DATUM Prime");
-		return 0;
-	}
-	
-	if (rc != 0) {
-		DLOG_DEBUG("Error waiting for coinbaser response from DATUM Prime");
-		pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
-		return 0;
+
+	while ((!datum_coinbaser_v2_response) ||
+	       (datum_coinbaser_v2_response_value[datum_coinbaser_v2_response_buf_idx] != value)) {
+		rc = pthread_cond_timedwait(&datum_protocol_coinbaser_fetch_cond, &datum_protocol_coinbaser_fetch_mutex, &ts);
+		if (rc == ETIMEDOUT) {
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+			DLOG_DEBUG("Timeout waiting for coinbaser response from DATUM Prime");
+			return 0;
+		}
+
+		if (rc != 0) {
+			DLOG_DEBUG("Error waiting for coinbaser response from DATUM Prime");
+			pthread_mutex_unlock(&datum_protocol_coinbaser_fetch_mutex);
+			return 0;
+		}
 	}
 	i = 0;
 	
