@@ -252,7 +252,10 @@ T_DATUM_TEMPLATE_DATA *datum_gbt_parser(json_t *gbt) {
 		tdata->bits_bin[3-i] = hex2bin_uchar(&tdata->bits[i<<1]);
 	}
 	tdata->bits_uint = upk_u32le(tdata->bits_bin, 0);
-	nbits_to_target(tdata->bits_uint, tdata->block_target);
+	if (!nbits_to_target(tdata->bits_uint, tdata->block_target)) {
+		DLOG_ERROR("Invalid bits from GBT JSON (%s)", tdata->bits);
+		return NULL;
+	}
 	
 	// store binary default witness commitment
 	j = strlen(tdata->default_witness_commitment);

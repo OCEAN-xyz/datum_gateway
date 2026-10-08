@@ -250,22 +250,30 @@ long double get_approx_achieved_diff(const unsigned char *bytes) {
 	return dividend / divisor;
 }
 
-void nbits_to_target(uint32_t nbits, uint8_t *target) {
+bool nbits_to_target(uint32_t nbits, uint8_t *target) {
 	uint32_t exponent = (nbits >> 24) & 0xff;
 	uint32_t mantissa = nbits & 0xffffff;
 	int i;
 	
 	memset(target, 0, 32);
+	
+	if ((mantissa & 0x800000) || (mantissa == 0)) return false;
+	if ((exponent > 34) || ((mantissa > 0xff) && (exponent > 33)) || ((mantissa > 0xffff) && (exponent > 32))) return false;
+	
 	if (exponent <= 3) {
 		mantissa >>= 8 * (3 - exponent);
+		if (!mantissa) return false;
 		for (i = 0; i < 3; i++) {
 			target[i] = (mantissa >> (8 * i)) & 0xff;
 		}
 	} else {
 		for (i = 0; i < 3; i++) {
-			target[i + exponent - 3] = (mantissa >> (8 * i)) & 0xff;
+			if ((i + exponent - 3) < 32) {
+				target[i + exponent - 3] = (mantissa >> (8 * i)) & 0xff;
+			}
 		}
 	}
+	return true;
 }
 
 int compare_hashes(const uint8_t *share_hash, const uint8_t *target) {
