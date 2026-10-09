@@ -1186,7 +1186,18 @@ int datum_protocol_handshake_response(T_DATUM_PROTOCOL_HEADER *h, unsigned char 
 
 int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 	int i;
+	bool is_authenticated = false;
 	//DLOG_DEBUG("Server msg: %d bytes cmd %d", h->cmd_len, h->proto_cmd);
+	
+	if ((h->is_encrypted_pubkey) && (h->is_encrypted_channel)) {
+		DLOG_ERROR("Received DATUM server message with conflicting encryption flags!");
+		return -1;
+	}
+	
+	if ((h->is_encrypted_channel) && (datum_state < 2)) {
+		DLOG_ERROR("Received channel-encrypted message from DATUM server before handshake!");
+		return -1;
+	}
 	
 	if ((h->is_encrypted_pubkey) && (!h->is_encrypted_channel)) {
 		// this is a sealed message to our session pubkey
@@ -1205,6 +1216,7 @@ int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 			DLOG_ERROR("Could not decrypt standard message from DATUM server!");
 			return -1;
 		}
+		is_authenticated = true;
 	}
 	
 	// message is decrypted by now
@@ -1228,6 +1240,16 @@ int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 		
 		// signature good... strip it!
 		h->cmd_len -= crypto_sign_BYTES;
+		is_authenticated = true;
+	}
+	
+	if (!is_authenticated) {
+		if ((h->proto_cmd == 1) || (h->proto_cmd == 7)) {
+			DLOG_WARN("Ignoring unauthenticated protocol command 0x%2.2x from DATUM server", h->proto_cmd);
+			return 1;
+		}
+		DLOG_ERROR("Received unauthenticated protocol command 0x%2.2x from DATUM server!", h->proto_cmd);
+		return -1;
 	}
 	
 	latest_server_msg_tsms = datum_protocol_mainloop_tsms;
