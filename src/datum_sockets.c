@@ -97,6 +97,9 @@ int get_remote_ip(int fd, char *ip, size_t max_len) {
 
 void *datum_threadpool_thread(void *arg) {
 	T_DATUM_THREAD_DATA *my = (T_DATUM_THREAD_DATA *)arg;
+	char thread_name[16];
+	snprintf(thread_name, sizeof(thread_name), "worker-%x", (unsigned int)my->thread_id);
+	pthread_setname_np(pthread_self(), thread_name);
 	int i, nfds, n, cidx, j;
 	size_t leftover = 0;
 	
@@ -668,6 +671,7 @@ bool datum_sockets_setup_listening_sockets(const char * const purpose, const cha
 }
 
 void *datum_gateway_listener_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "listener");
 	int i, ret;
 	bool rejecting_now = false;
 	uint64_t last_reject_msg_tsms = 0, curtime_tsms = 0;

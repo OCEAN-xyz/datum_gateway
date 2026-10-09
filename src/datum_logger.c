@@ -250,6 +250,7 @@ time_t get_midnight_timestamp(void) {
 }
 
 void * datum_logger_thread(void *ptr) {
+	pthread_setname_np(pthread_self(), "logger");
 	int buffer_id,offline_buffer_id;
 	int i,j;
 	uint64_t sts,ets,lflush;

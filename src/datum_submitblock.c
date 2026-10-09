@@ -89,6 +89,7 @@ void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req,
 }
 
 void *datum_submitblock_thread(void *ptr) {
+	pthread_setname_np(pthread_self(), "submitblock");
 	CURL *tcurl = NULL;
 	int i;
 	
