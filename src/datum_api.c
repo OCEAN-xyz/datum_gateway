@@ -460,6 +460,12 @@ bool datum_api_check_admin_password_httponly(struct MHD_Connection * const conne
 	int ret;
 	static bool safari_warned = false;
 	
+	if (!datum_config.api_admin_password_len) {
+		struct MHD_Response * const response = auth_failure_response_creator();
+		datum_api_submit_uncached_response(connection, MHD_HTTP_FORBIDDEN, response);
+		return false;
+	}
+	
 	char * const username = MHD_digest_auth_get_username(connection);
 	const enum MHD_DigestAuthAlgorithm algo = datum_api_pick_digest_algo(connection);
 	const char * const realm = "DATUM Gateway";
