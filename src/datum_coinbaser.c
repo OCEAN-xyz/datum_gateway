@@ -60,12 +60,13 @@ const char *cbstart_hex = "01000000010000000000000000000000000000000000000000000
 
 #define MAX_COINBASE_TAG_SPACE 86 // leaves space for BIP34 height, extranonces, datum prime tag, etc.
 
-int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
+int generate_coinbase_input(int height, char *cb, int *target_pot_index, uint32_t *prime_id_out) {
 	int cb_input_sz = 0;
 	int tag_len[2] = { 0, 0 };
 	int k, m, i;
 	int excess;
 	bool datum_active = false;
+	const uint32_t prime_id = datum_config.prime_id;
 	
 	// let's figure out our coinbase tags w/BIP34 height
 	i = append_UNum_hex(height, &cb[0]);
@@ -160,22 +161,24 @@ int generate_coinbase_input(int height, char *cb, int *target_pot_index) {
 	}
 	
 	// append the coinbase unique ID tag
-	if ((datum_config.prime_id == 0) && (!datum_active)) {
+	if ((prime_id == 0) && (!datum_active)) {
 		uchar_to_hex(&cb[i], 0x03); i+=2; cb_input_sz++;
 		if (target_pot_index != NULL) *target_pot_index = cb_input_sz;
 		uchar_to_hex(&cb[i], 0xFF); i+=2; cb_input_sz++; // placehodler for PoT target
 		uchar_to_hex(&cb[i], (datum_config.coinbase_unique_id&0xFF)); i+=2; cb_input_sz++;
 		uchar_to_hex(&cb[i], ((datum_config.coinbase_unique_id>>8)&0xFF)); i+=2; cb_input_sz++;
+		if (prime_id_out != NULL) *prime_id_out = 0;
 	} else {
 		uchar_to_hex(&cb[i], 0x07); i+=2; cb_input_sz++;
 		if (target_pot_index != NULL) *target_pot_index = cb_input_sz;
 		uchar_to_hex(&cb[i], 0xFF); i+=2; cb_input_sz++; // placeholder for PoT target
 		uchar_to_hex(&cb[i], (datum_config.coinbase_unique_id&0xFF)); i+=2; cb_input_sz++;
 		uchar_to_hex(&cb[i], ((datum_config.coinbase_unique_id>>8)&0xFF)); i+=2; cb_input_sz++;
-		uchar_to_hex(&cb[i], (datum_config.prime_id&0xFF)); i+=2; cb_input_sz++;
-		uchar_to_hex(&cb[i], ((datum_config.prime_id>>8)&0xFF)); i+=2; cb_input_sz++;
-		uchar_to_hex(&cb[i], ((datum_config.prime_id>>16)&0xFF)); i+=2; cb_input_sz++;
-		uchar_to_hex(&cb[i], ((datum_config.prime_id>>24)&0xFF)); i+=2; cb_input_sz++;
+		uchar_to_hex(&cb[i], (prime_id&0xFF)); i+=2; cb_input_sz++;
+		uchar_to_hex(&cb[i], ((prime_id>>8)&0xFF)); i+=2; cb_input_sz++;
+		uchar_to_hex(&cb[i], ((prime_id>>16)&0xFF)); i+=2; cb_input_sz++;
+		uchar_to_hex(&cb[i], ((prime_id>>24)&0xFF)); i+=2; cb_input_sz++;
+		if (prime_id_out != NULL) *prime_id_out = prime_id;
 	}
 	
 	return cb_input_sz;
@@ -368,7 +371,7 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	memcpy(&s->coinbase[0].coinb1[0], cbstart_hex, j);
 	cb1idx[0] = j;
 	
-	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index);
+	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index, &s->prime_id);
 	i = cb_input_sz << 1;
 	
 	// null terminate... probably not needed
@@ -547,7 +550,7 @@ void generate_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool empty_o
 		cb1idx[i] = j;
 	}
 	
-	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index);
+	cb_input_sz = generate_coinbase_input(s->height, &cb[0], &target_pot_index, &s->prime_id);
 	s->target_pot_index = target_pot_index;
 	i = cb_input_sz << 1;
 	

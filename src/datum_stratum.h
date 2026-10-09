@@ -175,6 +175,7 @@ typedef struct {
 	bool is_datum_job;
 	unsigned char datum_job_idx;
 	unsigned char datum_coinbaser_id;
+	uint32_t prime_id;
 } T_DATUM_STRATUM_JOB;
 
 typedef struct T_DATUM_STRATUM_THREADPOOL_DATA {

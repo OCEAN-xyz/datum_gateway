@@ -113,6 +113,7 @@ typedef struct {
 	uint32_t ntime;
 	uint32_t nonce;
 	uint32_t version;
+	uint32_t prime_id;
 } T_DATUM_PROTOCOL_POW;
 
 int datum_protocol_init(void);

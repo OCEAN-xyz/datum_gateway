@@ -1302,6 +1302,7 @@ int datum_protocol_pow_submit(
 	pow.ntime = upk_u32le(block_header, 68);
 	pow.nonce = upk_u32le(block_header, 76);
 	pow.version = upk_u32le(block_header, 0);
+	pow.prime_id = job->prime_id;
 	
 	//DLOG_DEBUG("ADD: DATUM POW: time %d nonce %8.8X", pow.ntime, pow.nonce);
 	
@@ -1322,6 +1323,15 @@ int datum_protocol_pow(void *arg) {
 	if ((pow->coinbase_id > 7) && (!(pow->coinbase_id == 0xff) && pow->subsidy_only)) {
 		DLOG_ERROR("Could not process POW to DATUM server! Bad coinbase ID.");
 		return 0;
+	}
+	
+	// Only submit work generated for the current connection. Work tagged with another
+	// connection's UID would just be rejected by the server.
+	if (pow->prime_id != datum_config.prime_id) {
+		if (!pow->is_block) {
+			DLOG_DEBUG("Dropping POW from connection UID %8.8lx, current is %8.8lx", (unsigned long)pow->prime_id, (unsigned long)datum_config.prime_id);
+			return 0;
+		}
 	}
 	
 	msg[0] = 0x27; i++; // submit POW
@@ -1630,8 +1640,10 @@ void *datum_protocol_client(void *args) {
 			}
 		}
 		
-		// Queue up sends for PoW submissions
-		datum_protocol_pow_queue_submits();
+		// Queue up sends for PoW submissions but only once the handshake is complete.
+		if (datum_state >= 3) {
+			datum_protocol_pow_queue_submits();
+		}
 		
 		pthread_mutex_lock(&datum_protocol_send_buffer_lock);
 		if (server_out_buf) {
