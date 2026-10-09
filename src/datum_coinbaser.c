@@ -351,6 +351,11 @@ void generate_base_coinbase_txns_for_stratum_job(T_DATUM_STRATUM_JOB *s, bool ne
 	
 	if (datum_protocol_is_active()) {
 		// DATUM
+		if (datum_config.override_mining_pool_scriptsig_len > sizeof(s->pool_addr_script)) {
+			DLOG_FATAL("Pool payout scriptsig length %d exceeds %zu-byte field! Refusing to generate coinbase.", datum_config.override_mining_pool_scriptsig_len, sizeof(s->pool_addr_script));
+			panic_from_thread(__LINE__);
+			return;
+		}
 		s->pool_addr_script_len = datum_config.override_mining_pool_scriptsig_len;
 		memcpy(&s->pool_addr_script[0], datum_config.override_mining_pool_scriptsig, datum_config.override_mining_pool_scriptsig_len);
 		s->is_datum_job = true;

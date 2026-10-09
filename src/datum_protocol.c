@@ -408,6 +408,14 @@ err:
 	if (i >= len) goto err;
 	a = data[i]; i++;
 	if (i + a > len) goto err;
+	if (!a) {
+		DLOG_ERROR("Pool payout scriptsig from server is empty. Is this client up to date?");
+		return 0;
+	}
+	if (a > sizeof(((T_DATUM_STRATUM_JOB *)0)->pool_addr_script)) {
+		DLOG_ERROR("Pool payout scriptsig from server is too large (%u > %zu bytes). Is this client up to date?", (unsigned)a, sizeof(((T_DATUM_STRATUM_JOB *)0)->pool_addr_script));
+		return 0;
+	}
 	memcpy(datum_config.override_mining_pool_scriptsig, &data[i], a); i+=a;
 	datum_config.override_mining_pool_scriptsig_len = a;
 	
