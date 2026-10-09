@@ -44,6 +44,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <jansson.h>
+#include <sodium.h>
 
 #include "datum_conf.h"
 #include "datum_jsonrpc.h"
@@ -532,16 +533,13 @@ int datum_read_config(const char *conffile) {
 #else
 	datum_config.api_admin_password_len = strlen(datum_config.api_admin_password);
 	if (datum_config.api_admin_password_len) {
-		static const char hash_tag[] = "DATUM Anti-CSRF Token";
-		const size_t data_max_sz = sizeof(hash_tag) + sizeof(datum_config.api_listen_port) + sizeof(datum_config.api_admin_password);
-		const size_t data_sz = sizeof(hash_tag) + sizeof(datum_config.api_listen_port) + datum_config.api_admin_password_len;
-		char data[data_max_sz];
-		strcpy(data, hash_tag);
-		memcpy(&data[sizeof(hash_tag)], &datum_config.api_listen_port, sizeof(datum_config.api_listen_port));
-		strcpy(&data[sizeof(hash_tag)+sizeof(datum_config.api_listen_port)], datum_config.api_admin_password);
-		unsigned char hash[32];
-		my_sha256(hash, data, data_sz);
-		hash2hex(hash, datum_config.api_csrf_token);
+		if (sodium_init() < 0) {
+			DLOG_FATAL("libsodium initialization failed");
+			return 0;
+		}
+		unsigned char token[32];
+		randombytes_buf(token, sizeof(token));
+		hash2hex(token, datum_config.api_csrf_token);
 	}
 #endif
 	
