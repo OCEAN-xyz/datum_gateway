@@ -39,9 +39,26 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef __has_include
+#	if __has_include(<stdbit.h>)
+#		include <stdbit.h>
+#	endif
+#	if __has_include(<stdckdint.h>)
+#		include <stdckdint.h>
+#	endif
+#endif
+
 #include "datum_logger.h"
 
 void datum_utils_init(void);
+
+#ifndef ckd_add
+#	define ckd_add(res, a, b) __builtin_add_overflow((a), (b), (res))
+#endif
+
+#ifndef ckd_mul
+#	define ckd_mul(res, a, b) __builtin_mul_overflow((a), (b), (res))
+#endif
 
 extern unsigned int datum_test_failed;
 bool datum_test_fail_(const char *expr, const char *file, unsigned int line, const char *func);
@@ -68,7 +85,53 @@ void hex_to_bin_le(const char *hex, unsigned char *bin);
 void hex_to_bin(const char *hex, unsigned char *bin);
 void hash2hex(unsigned char *bytes, char *hexString);
 void get_target_from_diff(unsigned char *result, uint64_t diff);
-uint64_t roundDownToPowerOfTwo_64(uint64_t x);
+
+#if defined(stdc_bit_floor) && defined(stdc_bit_width)
+// standard C23 (but converting arg to 64-bit)
+static inline
+uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
+	return stdc_bit_floor(x);
+}
+
+static inline
+unsigned char floorPoT(uint64_t x) {
+	return stdc_bit_width(x) - 1;
+}
+#elif defined(__GNUC__)
+// faster, less portable
+static inline
+uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
+	return 1ULL << (63 - __builtin_clzll(x));
+}
+
+static inline
+unsigned char floorPoT(uint64_t x) {
+	return (63 - __builtin_clzll(x));
+}
+
+#else
+// More portable but slower
+static inline
+uint64_t roundDownToPowerOfTwo_64(uint64_t x) {
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x |= x >> 32;
+	return x - (x >> 1);
+}
+
+static inline
+unsigned char floorPoT(uint64_t x) {
+	unsigned char pos = 0;
+	while (x >>= 1) {
+		pos++;
+	}
+	return pos;
+}
+#endif
+
 int addr_2_output_script(const char *addr, unsigned char *script, int max_len);
 int output_script_2_addr(const unsigned char *script, const int len, char *addr);
 int base64_decode(const char *in, size_t inLen, unsigned char *out, size_t *outLen);
@@ -77,7 +140,6 @@ int get_bitcoin_varint_len_bytes(uint64_t n);
 bool strncpy_uachars(char *out, const char *in, size_t maxlen);
 bool strncpy_workerchars(char *out, const char *in, size_t maxlen);
 long double calc_network_difficulty(const char *bits_hex);
-unsigned char floorPoT(uint64_t x);
 uint64_t datum_siphash(const void *src, uint64_t sz, const unsigned char key[16]);
 uint64_t datum_siphash_mod8(const void *src, uint64_t sz, const unsigned char key[16]);
 unsigned int datum_double_precision(double *inout_dbl);

@@ -815,12 +815,12 @@ void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
 		
 		// reusing this var...
 		// try to set the difficulty quickly to a value that makes some sense based on how many shares we just saw
-		delta_tsms = roundDownToPowerOfTwo_64((target_ms_share / ms_per_share) * m->current_diff);
-		if (delta_tsms < (m->current_diff << 2)) {
-			delta_tsms = (m->current_diff << 2);
+		delta_tsms = roundDownToPowerOfTwo_64(target_ms_share / ms_per_share);
+		if (delta_tsms < 4) {
+			delta_tsms = 4;
 		}
 		
-		m->current_diff = delta_tsms;
+		m->current_diff *= delta_tsms;
 		
 		// send a special clean=true stratum job to the client
 		// this will send the new diff also
