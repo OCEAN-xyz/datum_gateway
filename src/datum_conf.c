@@ -95,6 +95,10 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.stratum_v1_trust_proxy, 	.default_int = -1 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_min",				.description = "Work difficulty floor",
 		.required = false, .ptr = &datum_config.stratum_v1_vardiff_min, 				.default_int = 16384 },
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "stratum", 		.name = "password_difficulty",		.description = "Let a client request its difficulty via the stratum password (d=N or fd=N). Off by default",
+		.required = false, .ptr = &datum_config.stratum_v1_password_difficulty, 		.default_bool = false },
+	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_client_min",		.description = "Lowest difficulty a client may request for itself via the stratum password",
+		.required = false, .ptr = &datum_config.stratum_v1_vardiff_client_min, 			.default_int = 1024 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_target_shares_min",.description = "Adjust work difficulty to target this many shares per minute",
 		.required = false, .ptr = &datum_config.stratum_v1_vardiff_target_shares_min, 	.default_int = 8 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "vardiff_quickdiff_count",	.description = "How many shares before considering a quick diff update",
@@ -589,6 +593,20 @@ int datum_read_config(const char *conffile) {
 	if (datum_config.stratum_v1_vardiff_min < 1) {
 		DLOG_FATAL("Stratum server stratum.vardiff_min must be at least 1 (suggest at least 1024, but more likely 32768)");
 		return 0;
+	}
+
+	// Range first, then the power-of-two adjustment. roundDownToPowerOfTwo_64 is
+	// 1ULL << (63 - __builtin_clzll(x)) and __builtin_clzll(0) is undefined, so a
+	// configured 0 has to be rejected before it is rounded rather than after.
+	if (datum_config.stratum_v1_vardiff_client_min < 1) {
+		DLOG_FATAL("Stratum server stratum.vardiff_client_min must be at least 1");
+		return 0;
+	}
+
+	if (roundDownToPowerOfTwo_64(datum_config.stratum_v1_vardiff_client_min) != datum_config.stratum_v1_vardiff_client_min) {
+		const int nv = roundDownToPowerOfTwo_64(datum_config.stratum_v1_vardiff_client_min);
+		DLOG_WARN("stratum.vardiff_client_min MUST be a power of two. adjusting from %d to %d", datum_config.stratum_v1_vardiff_client_min, nv);
+		datum_config.stratum_v1_vardiff_client_min = nv;
 	}
 	
 	if (datum_config.stratum_v1_max_clients > (datum_config.stratum_v1_max_clients_per_thread*datum_config.stratum_v1_max_threads)) {

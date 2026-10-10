@@ -252,7 +252,17 @@ typedef struct {
 	uint8_t quickdiff_target[32];
 	
 	uint64_t forced_high_min_diff;
-	
+
+	// Difficulty the client asked for itself, via "d=" in the stratum password.
+	// Zero means it did not ask, and the global stratum.vardiff_min applies as before.
+	// This is a floor as well as a starting point: vardiff clamps every downward step
+	// to a minimum, so setting only the starting difficulty would be undone on the
+	// first adjustment for exactly the small miners the request is meant to help.
+	uint64_t client_min_diff;
+
+	// Set by "fd=" instead of "d=": hold the difficulty exactly, no vardiff at all.
+	bool client_fixed_diff;
+
 	int last_sent_stratum_job_index;
 	
 	T_DATUM_STRATUM_USER_STATS stats;
@@ -265,6 +275,7 @@ extern pthread_rwlock_t stratum_global_job_ptr_lock;
 extern T_DATUM_STRATUM_JOB *global_cur_stratum_jobs[MAX_STRATUM_JOBS];
 
 const char *datum_stratum_mod_username(const char *username_s, char *username_buf, size_t username_buf_sz, uint16_t share_rnd, const char *modname, size_t modname_len);
+void datum_stratum_apply_password_opts(T_DATUM_MINER_DATA *m, const char *pw);
 
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block);
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state);
