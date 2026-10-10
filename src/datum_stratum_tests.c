@@ -184,9 +184,26 @@ static void datum_stratum_password_opts_tests(void) {
 	T_DATUM_MINER_DATA m;
 	const int saved_client_min = datum_config.stratum_v1_vardiff_client_min;
 	const int saved_vardiff_min = datum_config.stratum_v1_vardiff_min;
+	const bool saved_password_difficulty = datum_config.stratum_v1_password_difficulty;
 
 	datum_config.stratum_v1_vardiff_client_min = 1024;
 	datum_config.stratum_v1_vardiff_min = 16384;
+
+	// Off unless the operator turns it on. Before this the password was discarded, and
+	// nobody knows what miners already put in it, so a password that happens to read as
+	// a request must change nothing on a Gateway that has not opted in.
+	datum_config.stratum_v1_password_difficulty = false;
+	memset(&m, 0, sizeof(m));
+	m.current_diff = 16384;
+	datum_stratum_apply_password_opts(&m, "d=8192");
+	datum_test(m.client_min_diff == 0);
+	datum_test(m.current_diff == 16384);
+	datum_stratum_apply_password_opts(&m, "fd=8192");
+	datum_test(m.client_min_diff == 0);
+	datum_test(m.current_diff == 16384);
+	datum_test(m.client_fixed_diff == false);
+
+	datum_config.stratum_v1_password_difficulty = true;
 
 	// The password miners already send. DATUM ignored it before this existed and must
 	// keep ignoring it, or every existing miner's difficulty would move on upgrade.
@@ -331,6 +348,7 @@ static void datum_stratum_password_opts_tests(void) {
 
 	datum_config.stratum_v1_vardiff_client_min = saved_client_min;
 	datum_config.stratum_v1_vardiff_min = saved_vardiff_min;
+	datum_config.stratum_v1_password_difficulty = saved_password_difficulty;
 }
 
 // A client that asked for a low difficulty has to keep it. Parsing the password is

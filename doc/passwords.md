@@ -1,9 +1,19 @@
 ## General
 
 DATUM Gateway historically ignored the Stratum password entirely. It still does by
-default: a password the Gateway does not recognise is discarded exactly as before, so
-the near-universal filler `x` continues to mean nothing, and upgrading does not move
-any existing miner's difficulty.
+default. Reading it is opt-in:
+
+```json
+"stratum": {
+	"password_difficulty": true
+}
+```
+
+With `stratum`.`password_difficulty` left at its default of `false`, every password is
+discarded exactly as before, including one that happens to look like a request, so
+upgrading does not move any existing miner's difficulty. With it on, a password the
+Gateway does not recognise is still discarded, so the near-universal filler `x`
+continues to mean nothing.
 
 What the password can now carry is a difficulty request. This exists because the
 Stratum password is often the only field an operator can set. Rental marketplaces and

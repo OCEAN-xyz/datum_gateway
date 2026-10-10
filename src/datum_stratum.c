@@ -1480,6 +1480,9 @@ void datum_stratum_apply_password_opts(T_DATUM_MINER_DATA *m, const char *pw) {
 	char buf[256];
 	char *tok, *save = NULL;
 
+	// Opt-in. Miners put all sorts of things in the password, and before this it was
+	// discarded, so an operator who has not asked for it keeps exactly that.
+	if (!datum_config.stratum_v1_password_difficulty) return;
 	if ((!pw) || (!pw[0])) return;
 
 	strncpy(buf, pw, sizeof(buf) - 1);
