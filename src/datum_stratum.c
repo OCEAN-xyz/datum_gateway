@@ -1872,8 +1872,10 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 		return 0;
 	}
 	
-	// set default diff
-	m->current_diff = datum_config.stratum_v1_vardiff_min;
+	// set default diff. Nothing makes a miner subscribe before it authorizes, so a
+	// password difficulty may already be in place; resetting to vardiff_min here
+	// would lose it, and for fd=N for good, since a fixed difficulty is never varied.
+	m->current_diff = client_vardiff_min(m);
 	
 	// default to the antminer workaround, which appears to be universally compatible
 	// except for NiceHash.
@@ -1892,8 +1894,8 @@ int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	
 	if ((datum_config.stratum_v1_fingerprint_miners) && (m->useragent[0])) {
 		datum_stratum_fingerprint_by_UA(m);
-		if (m->current_diff < datum_config.stratum_v1_vardiff_min) {
-			m->current_diff = datum_config.stratum_v1_vardiff_min;
+		if (m->current_diff < client_vardiff_min(m)) {
+			m->current_diff = client_vardiff_min(m);
 		}
 	}
 	

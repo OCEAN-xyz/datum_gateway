@@ -34,11 +34,14 @@
  */
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "datum_jsonrpc.h"
 #include "datum_stratum.h"
 #include "datum_utils.h"
+
+int client_mining_subscribe(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj);
 
 void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick);
 
@@ -447,8 +450,51 @@ static void datum_stratum_client_vardiff_floor_tests(void) {
 	datum_config.stratum_v1_vardiff_target_shares_min = saved_shares_min;
 }
 
+// Nothing makes a miner subscribe before it authorizes, and some send authorize
+// first. Subscribe used to reset the difficulty to vardiff_min unconditionally, so a
+// password request read at authorize was lost, and fd=N was lost for good, because a
+// fixed difficulty is never varied back. Driven through the real subscribe.
+static void datum_stratum_password_before_subscribe_tests(void) {
+	const int saved_client_min = datum_config.stratum_v1_vardiff_client_min;
+	const int saved_vardiff_min = datum_config.stratum_v1_vardiff_min;
+	const bool saved_password_difficulty = datum_config.stratum_v1_password_difficulty;
+	const char * const pws[] = {"fd=65536", "d=8192", "x"};
+	const uint64_t want[] = {65536, 8192, 16384};
+
+	datum_config.stratum_v1_vardiff_client_min = 1024;
+	datum_config.stratum_v1_vardiff_min = 16384;
+	datum_config.stratum_v1_password_difficulty = true;
+
+	for (size_t i = 0; i < sizeof(pws) / sizeof(pws[0]); ++i) {
+		T_DATUM_MINER_DATA * const m = calloc(1, sizeof(T_DATUM_MINER_DATA));
+		T_DATUM_STRATUM_THREADPOOL_DATA * const sd = calloc(1, sizeof(T_DATUM_STRATUM_THREADPOOL_DATA));
+		T_DATUM_CLIENT_DATA * const c = calloc(1, sizeof(T_DATUM_CLIENT_DATA));
+		T_DATUM_THREAD_DATA * const t = calloc(1, sizeof(T_DATUM_THREAD_DATA));
+		assert(m && sd && c && t);
+		m->sdata = sd;
+		c->app_client_data = m;
+		c->datum_thread = t;
+		c->cid = 1;
+		t->app_thread_data = sd;
+
+		datum_stratum_apply_password_opts(m, pws[i]);
+		datum_test(client_mining_subscribe(c, 1, NULL) == 0);
+		datum_test(m->current_diff == want[i]);
+
+		free(t);
+		free(c);
+		free(sd);
+		free(m);
+	}
+
+	datum_config.stratum_v1_vardiff_client_min = saved_client_min;
+	datum_config.stratum_v1_vardiff_min = saved_vardiff_min;
+	datum_config.stratum_v1_password_difficulty = saved_password_difficulty;
+}
+
 void datum_stratum_tests(void) {
 	datum_stratum_password_opts_tests();
+	datum_stratum_password_before_subscribe_tests();
 	datum_stratum_client_vardiff_floor_tests();
 	datum_stratum_mod_username_tests();
 }
