@@ -436,8 +436,9 @@ int assign_to_thread(T_DATUM_SOCKET_APP *app, int fd) {
 		app->datum_threads[tid].thread_id = tid;
 		app->datum_threads[tid].is_active = true;
 		
-		if (pthread_create(&app->datum_threads[i].pthread, NULL, datum_threadpool_thread, &app->datum_threads[i]) != 0) {
-			DLOG_ERROR("Could not start new thread for TID %d", tid);
+		const int result = pthread_create(&app->datum_threads[i].pthread, NULL, datum_threadpool_thread, &app->datum_threads[i]);
+		if (result != 0) {
+			DLOG_ERROR("Could not start new thread for TID %d (%d: %s)", tid, result, strerror(result));
 			return 0;
 		}
 		app->datum_active_threads++;
