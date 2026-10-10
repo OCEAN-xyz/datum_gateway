@@ -732,6 +732,10 @@ static inline void send_bad_version_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
 	send_error_to_client(c, id, "[23,\"bad-version\",null]");
 }
 
+static inline void send_version_not_negotiated_error(T_DATUM_CLIENT_DATA *c, uint64_t id) {
+	send_error_to_client(c, id, "[23,\"version-rolling-not-negotiated\",null]");
+}
+
 static inline void send_rejected_duplicate(T_DATUM_CLIENT_DATA *c, uint64_t id) {
 	send_error_to_client(c, id, "[22,\"duplicate\",null]");
 }
@@ -1066,6 +1070,22 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 			return 0;
 		}
 		bver |= vroll_uint;
+	} else {
+		// unnegotiated version bits can't validate; reject clearly instead of via the misleading H-not-zero hash mismatch
+		vroll = json_array_get(params_obj, 5);
+		if (vroll) {
+			vroll_s = json_string_value(vroll);
+			if (vroll_s && strtoul(vroll_s, NULL, 16) != 0) {
+				if (!m->extension_version_rolling_warned) {
+					m->extension_version_rolling_warned = true;
+					DLOG_WARN("Client %s (%s) submitted version bits (%s) without negotiating version rolling via mining.configure. Rejecting.", c->rem_host, m->useragent, vroll_s);
+				}
+				send_version_not_negotiated_error(c, id);
+				m->share_count_rejected++;
+				m->share_diff_rejected += job_diff;
+				return 0;
+			}
+		}
 	}
 	
 	// 0 - 4 = version
