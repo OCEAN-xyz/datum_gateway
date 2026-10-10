@@ -59,6 +59,8 @@
 #include "datum_submitblock.h"
 #include "datum_protocol.h"
 
+static const char datum_stratum_nonstring_username[] = "NULL";
+
 T_DATUM_SOCKET_APP *global_stratum_app = NULL;
 
 int stratum_job_next = 0;
@@ -925,7 +927,6 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	// 4 = nonce
 	// 5 = version roll (OR with version)
 	
-	json_t *username;
 	json_t *job_id;
 	json_t *extranonce2;
 	json_t *ntime;
@@ -1214,15 +1215,8 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		return 0;
 	}
 	
-	username = json_array_get(params_obj, 0);
-	if (!username) {
-		username_s = (const char *)"NULL";
-	} else {
-		username_s = json_string_value(username);
-		if (!username_s) {
-			username_s = (const char *)"NULL";
-		}
-	}
+	username_s = json_string_value(json_array_get(params_obj, 0));
+	if (!username_s) username_s = datum_stratum_nonstring_username;
 	
 	if (datum_config.stratum_username_mod) {
 		const char * const tilde = strchr(username_s, '~');
@@ -1445,19 +1439,11 @@ int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj) {
 	char s[256];
 	const char *username_s;
-	json_t *username;
 	
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
 	
-	username = json_array_get(params_obj, 0);
-	if (!username) {
-		username_s = (const char *)"NULL";
-	} else {
-		username_s = json_string_value(username);
-		if (!username_s) {
-			username_s = (const char *)"NULL";
-		}
-	}
+	username_s = json_string_value(json_array_get(params_obj, 0));
+	if (!username_s) username_s = datum_stratum_nonstring_username;
 	
 	strncpy(m->last_auth_username, username_s, sizeof(m->last_auth_username) - 1);
 	m->last_auth_username[sizeof(m->last_auth_username)-1] = 0;
