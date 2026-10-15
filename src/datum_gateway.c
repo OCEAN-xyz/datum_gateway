@@ -60,6 +60,7 @@
 #include "datum_api.h"
 #include "datum_coinbaser.h"
 #include "datum_protocol.h"
+#include "datum_submitblock.h"
 
 const char *datum_gateway_config_filename = NULL;
 
@@ -106,6 +107,7 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 			datum_utils_tests();
 			datum_conf_tests();
 			datum_stratum_tests();
+			datum_submitblock_tests();
 			exit(datum_test_failed);
 		default:
 			return ARGP_ERR_UNKNOWN;

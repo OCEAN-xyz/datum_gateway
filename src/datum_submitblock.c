@@ -42,6 +42,7 @@
 #include "datum_utils.h"
 #include "datum_conf.h"
 #include "datum_jsonrpc.h"
+#include "datum_submitblock.h"
 
 pthread_mutex_t submitblock_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t submitblock_cond = PTHREAD_COND_INITIALIZER;
@@ -61,28 +62,46 @@ void preciousblock(CURL *curl, char *blockhash) {
 	return;
 }
 
+datum_submitblock_status datum_submitblock_reply_status(const json_t *reply) {
+	if (!reply) return DATUM_SUBMITBLOCK_ACCEPTED;
+	const json_t * const result = json_object_get(reply, "result");
+	if (!result || json_is_null(result)) return DATUM_SUBMITBLOCK_ACCEPTED;
+	if (json_is_string(result) && !strcmp(json_string_value(result), "duplicate")) return DATUM_SUBMITBLOCK_DUPLICATE;
+	return DATUM_SUBMITBLOCK_REJECTED;
+}
+
+// Log what the node said about our block. Returns true when the block is in
+// the node's chain, which includes "duplicate": the block is handed in twice,
+// once inline from the share that found it and once from the submit thread,
+// and the second copy is not a rejection.
+bool datum_submitblock_log_reply(const json_t *reply, const char *block_hash_hex) {
+	switch (datum_submitblock_reply_status(reply)) {
+		case DATUM_SUBMITBLOCK_ACCEPTED:
+			DLOG_INFO("Block %s submitted to upstream node successfully!", block_hash_hex);
+			return true;
+		case DATUM_SUBMITBLOCK_DUPLICATE:
+			DLOG_INFO("Block %s was already accepted by the upstream node (duplicate submission)", block_hash_hex);
+			return true;
+		case DATUM_SUBMITBLOCK_REJECTED:
+		default: {
+			char * const s = json_dumps(reply, JSON_ENCODE_ANY);
+			DLOG_WARN("Upstream node rejected our block! (%s)", s ? s : "unknown");
+			free(s);
+			return false;
+		}
+	}
+}
+
 void datum_submitblock_doit(CURL *tcurl, char *url, const char *submitblock_req, const char *block_hash_hex) {
 	json_t *r;
-	char *s = NULL;
 	// TODO: Move these types of things to the conf file
 	if (!url) {
 		r = bitcoind_json_rpc_call(tcurl, &datum_config, submitblock_req);
 	} else {
 		r = json_rpc_call(tcurl, url, NULL, submitblock_req);
 	}
-	if (!r) {
-		// oddly, this means success here.
-		DLOG_INFO("Block %s submitted to upstream node successfully!",block_hash_hex);
-	} else {
-		s = json_dumps(r, JSON_ENCODE_ANY);
-		if (!s) {
-			DLOG_WARN("Upstream node rejected our block! (unknown)");
-		} else {
-			DLOG_WARN("Upstream node rejected our block! (%s)",s);
-			free(s);
-		}
-		json_decref(r);
-	}
+	datum_submitblock_log_reply(r, block_hash_hex);
+	if (r) json_decref(r);
 	
 	// precious block!
 	preciousblock(tcurl, submitblock_hash);
