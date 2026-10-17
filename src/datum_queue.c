@@ -129,7 +129,7 @@ int datum_queue_add_item(DATUM_QUEUE *q, void *item) {
 	uint64_t buffer_version;
 	void *out;
 	
-	if (!q->initialized) return -1;
+	if (!q || !item || !q->initialized) return -1;
 	
 	// Add the msg to the logger queue
 	// this is probably overkill...

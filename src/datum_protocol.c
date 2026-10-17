@@ -49,6 +49,7 @@
 #include <sodium.h>
 #include <stdatomic.h>
 #include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1365,6 +1366,7 @@ int datum_protocol_server_msg(T_DATUM_PROTOCOL_HEADER *h, unsigned char *data) {
 }
 
 // Work submission multithreaded queue
+// Keep its storage and locks valid for submitters across protocol reconnects.
 DATUM_QUEUE pow_queue;
 
 void datum_protocol_pow_queue_submits(void) {
@@ -1638,12 +1640,16 @@ void *datum_protocol_client(void *args) {
 	pthread_mutex_unlock(&datum_protocol_sender_stage1_lock);
 	memset(&s_header, 0, sizeof(T_DATUM_PROTOCOL_HEADER));
 	
-	// Note: The pool can not set a LOWER vardiff minimum than the client has set, so this is safe to use for that calculation.
-	if (datum_queue_prep(&pow_queue, (datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16), sizeof(T_DATUM_PROTOCOL_POW), datum_protocol_pow) != 0) {
-		DLOG_FATAL("Could not setup work submission queue!");
-		datum_protocol_client_active = 0;
-		return 0;
-	}
+	// The previous consumer has stopped. Discard pending work while keeping the queue
+	// and its locks valid for concurrent submitters.
+	pthread_rwlock_wrlock(&pow_queue.active_buffer_rwlock);
+	pthread_rwlock_wrlock(&pow_queue.buffer_rwlock[0]);
+	pthread_rwlock_wrlock(&pow_queue.buffer_rwlock[1]);
+	pow_queue.queue_next[0] = 0;
+	pow_queue.queue_next[1] = 0;
+	pthread_rwlock_unlock(&pow_queue.buffer_rwlock[1]);
+	pthread_rwlock_unlock(&pow_queue.buffer_rwlock[0]);
+	pthread_rwlock_unlock(&pow_queue.active_buffer_rwlock);
 	
 	snprintf(port_str, sizeof(port_str)-1, "%d", datum_config.datum_pool_port);
 	port_str[6] = 0;
@@ -1999,7 +2005,6 @@ void *datum_protocol_client(void *args) {
 	close(epollfd);
 	datum_protocol_set_state(0);
 	datum_protocol_client_active = 0;
-	datum_queue_free(&pow_queue);
 	
 	// Wait up to 5 seconds for another thread to reconnect
 	for (i = 2000; i; --i) {
@@ -2033,6 +2038,9 @@ void datum_encrypt_log_pubkeys(DATUM_ENC_KEYS *keys) {
 void datum_protocol_start_connector(void) {
 	pthread_t pthread_datum_protocol_client;
 	
+	// Enabling pooled mining after solo startup must wait for initialization on restart.
+	if (!pow_queue.initialized) return;
+
 	if (!datum_protocol_client_active) {
 		datum_protocol_client_active = 1; // no delay!
 		DLOG_DEBUG("Starting DATUM " DATUM_PROTOCOL_VERSION " client...");
@@ -2080,6 +2088,20 @@ int datum_protocol_init(void) {
 	
 	DLOG_INFO("Pool's public keys: (You should periodically verify that these are what you expect!)");
 	datum_encrypt_log_pubkeys(&pool_keys);
+
+	// Initialize once, before the connector or any share-submission threads start.
+	// Note: The pool can not set a LOWER vardiff minimum than the client has set, so this is safe to use for that calculation.
+	const int64_t pow_queue_max_items = (int64_t)datum_config.stratum_v1_max_threads * datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16;
+	// The queue uses int arithmetic for byte offsets and allocation-size logging.
+	if (pow_queue_max_items <= 0 || pow_queue_max_items > INT_MAX / (2 * sizeof(T_DATUM_PROTOCOL_POW)) - 16) {
+		DLOG_FATAL("Configured work submission queue size is out of range!");
+		return -1;
+	}
+	if (datum_queue_prep(&pow_queue, (int)pow_queue_max_items, sizeof(T_DATUM_PROTOCOL_POW), datum_protocol_pow) != 0) {
+		DLOG_FATAL("Could not setup work submission queue!");
+		return -1;
+	}
+
 	datum_protocol_start_connector();
 	
 	return 0;
