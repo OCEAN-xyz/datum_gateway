@@ -2091,7 +2091,7 @@ int datum_protocol_init(void) {
 
 	// Initialize once, before the connector or any share-submission threads start.
 	// Note: The pool can not set a LOWER vardiff minimum than the client has set, so this is safe to use for that calculation.
-	const int64_t pow_queue_max_items = (int64_t)datum_config.stratum_v1_max_threads * datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16;
+	const int64_t pow_queue_max_items = (int64_t)datum_config.stratum_v1_max_threads * datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60);
 	// The queue uses int arithmetic for byte offsets and allocation-size logging.
 	if (pow_queue_max_items <= 0 || pow_queue_max_items > INT_MAX / (2 * sizeof(T_DATUM_PROTOCOL_POW)) - 16) {
 		DLOG_FATAL("Configured work submission queue size is out of range!");
