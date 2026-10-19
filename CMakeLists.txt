@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(DATUM VERSION 0.4.1 LANGUAGES C)
+project(DATUM VERSION 0.5.0 LANGUAGES C)
 
 # Enable C23 if supported, else fall back to C11 for compatibility
 if(CMAKE_VERSION VERSION_LESS "3.21")
