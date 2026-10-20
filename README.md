@@ -70,6 +70,7 @@ See [INSTALL.md](doc/INSTALL.md) for requirements, installation, and configurati
 - [Optimize share difficulty, LAN bandwidth, remote sites, and node peers](doc/OPTIMIZATIONS.md).
 
 For pooled mining, also review the [username and payout-address documentation](doc/usernames.md).
+To let miners ask for a minimum difficulty, including through the Stratum password where nothing else can be set, see [minimum difficulty requests](doc/passwords.md).
 
 ## External information
 

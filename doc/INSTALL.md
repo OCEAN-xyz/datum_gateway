@@ -314,6 +314,7 @@ There is an [example configuration file included in the doc/ directory](example_
 Set a secure `api.admin_password` to protect administrative actions, or disable the API/web interface entirely.
 
 You should review the [documentation on usernames](usernames.md) next.
+If your miners need to run above the difficulty vardiff picks for them, see the [documentation on minimum difficulty requests](passwords.md).
 Once you have everything running, you can point miners at the Gateway.
 
 ### Pooled solo mining setup (recommended)
