@@ -127,6 +127,7 @@ void datum_stratum_v1_shutdown_all(void) {
 
 // Started as its own pthread during startup
 void *datum_stratum_v1_socket_server(void *arg) {
+	pthread_setname_np(pthread_self(), "stratum");
 	// setup the stratum v1 DATUM socket server
 	T_DATUM_SOCKET_APP *app;
 	pthread_t pthread_datum_stratum_socket_server;
