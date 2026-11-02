@@ -257,13 +257,13 @@ int datum_api_json_coinbaser(struct MHD_Connection * const connection) {
 	
 	if (sjob) {
 		for(i=0;i<sjob->available_coinbase_outputs_count;i++) {
-			output_script_2_addr(sjob->available_coinbase_outputs[i].output_script, sjob->available_coinbase_outputs[i].output_script_len, outputaddr);
+			output_script_2_display_addr(sjob->available_coinbase_outputs[i].output_script, sjob->available_coinbase_outputs[i].output_script_len, outputaddr, sizeof(outputaddr), datum_config.mining_pool_address);
 			json_object_set_new(coinbase, outputaddr, json_integer(sjob->available_coinbase_outputs[i].value_sats));
 			tv += sjob->available_coinbase_outputs[i].value_sats;
 		}
 		
 		if (tv < sjob->coinbase_value) {
-			output_script_2_addr(sjob->pool_addr_script, sjob->pool_addr_script_len, outputaddr);
+			output_script_2_display_addr(sjob->pool_addr_script, sjob->pool_addr_script_len, outputaddr, sizeof(outputaddr), datum_config.mining_pool_address);
 			json_object_set_new(coinbase, outputaddr, json_integer(sjob->coinbase_value - tv));
 		}
 	}
