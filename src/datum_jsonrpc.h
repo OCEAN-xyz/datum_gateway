@@ -61,6 +61,8 @@ struct data_buffer {
 struct upload_buffer {
 	const void      *buf;
 	size_t          len;
+	const void      *start;
+	size_t          total;
 };
 
 json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass, const char *rpc_req);
