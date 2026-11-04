@@ -191,8 +191,79 @@ void datum_utils_tests_nbits_to_target(void) {
 #undef nbits_ok
 #undef nbits_bad
 
+void datum_utils_tests_output_script_addr(void) {
+	// Issue #232: a tb1 payout was re-encoded as a different bc1 address.
+	static const char tb1[] = "tb1qts77l4e4phqlljs9nn29dmy3tk2h3ysvh2wdej";
+	static const char bc1_same[] = "bc1qts77l4e4phqlljs9nn29dmy3tk2h3ysvav47zp";
+	static const char bc1_bip173[] = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+	static const char bcrt1_bip173[] = "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080";
+	static const char genesis[] = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+	unsigned char script[64];
+	unsigned char other[64];
+	char addr[256];
+	char encoded_tb[256];
+	char encoded_bc[256];
+	int n, n_other;
+	
+	n = addr_2_output_script(tb1, script, (int)sizeof(script));
+	datum_test(n == 22);
+	
+	datum_test(output_script_2_addr(script, n, addr, "bc") > 0);
+	datum_test(strcmp(addr, bc1_same) == 0);
+	datum_test(strcmp(addr, tb1) != 0);
+	
+	datum_test(output_script_2_addr(script, n, addr, "tb") > 0);
+	datum_test(strcmp(addr, tb1) == 0);
+	
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), tb1) > 0);
+	datum_test(strcmp(addr, tb1) == 0);
+	
+	n_other = addr_2_output_script(bc1_bip173, other, (int)sizeof(other));
+	datum_test(n_other == 22);
+	datum_test(output_script_2_addr(other, n_other, addr, NULL) > 0);
+	datum_test(strcmp(addr, bc1_bip173) == 0);
+	
+	// A different output on a testnet gateway must stay tb1, not the configured address and not bc1.
+	datum_test(output_script_2_addr(other, n_other, encoded_tb, "tb") > 0);
+	datum_test(output_script_2_addr(other, n_other, encoded_bc, "bc") > 0);
+	datum_test(strcmp(encoded_tb, encoded_bc) != 0);
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), tb1) > 0);
+	datum_test(strcmp(addr, encoded_tb) == 0);
+	datum_test(strcmp(addr, tb1) != 0);
+	datum_test(strncmp(addr, "tb1", 3) == 0);
+	
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bc1_bip173) > 0);
+	datum_test(strcmp(addr, bc1_bip173) == 0);
+
+	// A regtest payout decodes to the same witness program as its bc1 twin.
+	n_other = addr_2_output_script(bcrt1_bip173, other, (int)sizeof(other));
+	datum_test(n_other == 22);
+	datum_test(output_script_2_addr(other, n_other, addr, "bcrt") > 0);
+	datum_test(strcmp(addr, bcrt1_bip173) == 0);
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bcrt1_bip173) > 0);
+	datum_test(strcmp(addr, bcrt1_bip173) == 0);
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), bcrt1_bip173) > 0);
+	datum_test(strncmp(addr, "bcrt1", 5) == 0);
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bc1_bip173) > 0);
+	datum_test(strcmp(addr, bc1_bip173) == 0);
+
+	// Legacy scripts have no network byte. Version follows the payout HRP.
+	n = addr_2_output_script(genesis, script, (int)sizeof(script));
+	datum_test(n == 25);
+	datum_test(output_script_2_addr(script, n, addr, NULL) > 0);
+	datum_test(strcmp(addr, genesis) == 0);
+	datum_test(output_script_2_addr(script, n, addr, "tb") > 0);
+	datum_test(strcmp(addr, genesis) != 0);
+	datum_test(addr[0] == 'm' || addr[0] == 'n');
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), tb1) > 0);
+	datum_test(addr[0] == 'm' || addr[0] == 'n');
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), bcrt1_bip173) > 0);
+	datum_test(addr[0] == 'm' || addr[0] == 'n');
+}
+
 void datum_utils_tests(void) {
 	datum_utils_tests_hex();
 	datum_utils_tests_secure_strequals();
 	datum_utils_tests_nbits_to_target();
+	datum_utils_tests_output_script_addr();
 }
