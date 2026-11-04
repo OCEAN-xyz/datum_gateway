@@ -196,6 +196,7 @@ void datum_utils_tests_output_script_addr(void) {
 	static const char tb1[] = "tb1qts77l4e4phqlljs9nn29dmy3tk2h3ysvh2wdej";
 	static const char bc1_same[] = "bc1qts77l4e4phqlljs9nn29dmy3tk2h3ysvav47zp";
 	static const char bc1_bip173[] = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+	static const char bcrt1_bip173[] = "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080";
 	static const char genesis[] = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
 	unsigned char script[64];
 	unsigned char other[64];
@@ -233,7 +234,19 @@ void datum_utils_tests_output_script_addr(void) {
 	
 	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bc1_bip173) > 0);
 	datum_test(strcmp(addr, bc1_bip173) == 0);
-	
+
+	// A regtest payout decodes to the same witness program as its bc1 twin.
+	n_other = addr_2_output_script(bcrt1_bip173, other, (int)sizeof(other));
+	datum_test(n_other == 22);
+	datum_test(output_script_2_addr(other, n_other, addr, "bcrt") > 0);
+	datum_test(strcmp(addr, bcrt1_bip173) == 0);
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bcrt1_bip173) > 0);
+	datum_test(strcmp(addr, bcrt1_bip173) == 0);
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), bcrt1_bip173) > 0);
+	datum_test(strncmp(addr, "bcrt1", 5) == 0);
+	datum_test(output_script_2_display_addr(other, n_other, addr, sizeof(addr), bc1_bip173) > 0);
+	datum_test(strcmp(addr, bc1_bip173) == 0);
+
 	// Legacy scripts have no network byte. Version follows the payout HRP.
 	n = addr_2_output_script(genesis, script, (int)sizeof(script));
 	datum_test(n == 25);
@@ -243,6 +256,8 @@ void datum_utils_tests_output_script_addr(void) {
 	datum_test(strcmp(addr, genesis) != 0);
 	datum_test(addr[0] == 'm' || addr[0] == 'n');
 	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), tb1) > 0);
+	datum_test(addr[0] == 'm' || addr[0] == 'n');
+	datum_test(output_script_2_display_addr(script, n, addr, sizeof(addr), bcrt1_bip173) > 0);
 	datum_test(addr[0] == 'm' || addr[0] == 'n');
 }
 
