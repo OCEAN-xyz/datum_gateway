@@ -758,7 +758,19 @@ void reset_vardiff_stats(T_DATUM_CLIENT_DATA *c) {
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
 	m->share_count_since_snap = 0;
 	m->share_diff_since_snap = 0;
+	m->share_count_below_diff_since_snap = 0;
 	m->share_snap_tsms = m->sdata->loop_tsms;
+}
+
+// Count an accepted share toward vardiff's rate. One credited at nothing (it missed the
+// difficulty now served) isn't counted, so the rate is measured at the current difficulty.
+void datum_stratum_count_vardiff_share(T_DATUM_MINER_DATA *m, uint64_t credit_diff) {
+	if (!credit_diff) {
+		m->share_count_below_diff_since_snap++;
+		return;
+	}
+	m->share_count_since_snap++;
+	m->share_diff_since_snap += credit_diff;
 }
 
 void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
@@ -784,6 +796,12 @@ void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
 		// no shares since last snap
 		// is it because our diff is way too high?
 		if (delta_tsms > 60000) {
+			// Only shares below the current difficulty arrived, so the miner isn't silent:
+			// start a fresh minute. If it then finds nothing, it steps down a minute later.
+			if (m->share_count_below_diff_since_snap) {
+				reset_vardiff_stats(c);
+				return;
+			}
 			// 60s with no shares seems sufficient to bump diff down next round.
 			m->current_diff = m->current_diff >> 1;
 			if (m->current_diff < m->forced_high_min_diff) {
@@ -1359,8 +1377,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	m->share_count_accepted++;
 	
 	// update since-snap totals
-	m->share_count_since_snap++;
-	m->share_diff_since_snap += credit_diff;
+	datum_stratum_count_vardiff_share(m, credit_diff);
 	
 	stratum_update_miner_stats_accepted(c, credit_diff);
 	stratum_update_vardiff(c,false);
@@ -1677,6 +1694,8 @@ int send_mining_set_difficulty(T_DATUM_CLIENT_DATA *c) {
 	datum_socket_send_string_to_client(c, s);
 	
 	m->last_sent_diff = m->current_diff;
+	// The rate measured so far was at the old difficulty.
+	reset_vardiff_stats(c);
 	
 	return 0;
 }

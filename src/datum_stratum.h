@@ -247,6 +247,8 @@ typedef struct {
 	uint64_t share_count_since_snap;
 	uint64_t share_diff_since_snap;
 	uint64_t share_snap_tsms;
+	// Accepted shares since the snapshot that missed the difficulty now served (not counted).
+	uint64_t share_count_below_diff_since_snap;
 	
 	bool quickdiff_active;
 	uint64_t quickdiff_value;
@@ -267,6 +269,9 @@ extern T_DATUM_STRATUM_JOB *global_cur_stratum_jobs[MAX_STRATUM_JOBS];
 
 const char *datum_stratum_mod_username(const char *username_s, char *username_buf, size_t username_buf_sz, uint16_t share_rnd, const char *modname, size_t modname_len);
 
+void reset_vardiff_stats(T_DATUM_CLIENT_DATA *c);
+void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick);
+void datum_stratum_count_vardiff_share(T_DATUM_MINER_DATA *m, uint64_t credit_diff);
 uint64_t datum_stratum_share_credit_diff(const uint8_t *share_hash, uint64_t job_diff, uint64_t served_diff);
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block);
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state);

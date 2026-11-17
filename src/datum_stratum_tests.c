@@ -191,7 +191,82 @@ static void datum_stratum_share_credit_tests(void) {
 	datum_test(datum_stratum_share_credit_diff(t_hard, 16384, 1024) == 16384);
 }
 
+static T_DATUM_CLIENT_DATA *datum_stratum_test_client(void) {
+	T_DATUM_MINER_DATA * const m = calloc(1, sizeof(T_DATUM_MINER_DATA));
+	T_DATUM_STRATUM_THREADPOOL_DATA * const sd = calloc(1, sizeof(T_DATUM_STRATUM_THREADPOOL_DATA));
+	T_DATUM_CLIENT_DATA * const c = calloc(1, sizeof(T_DATUM_CLIENT_DATA));
+	T_DATUM_THREAD_DATA * const t = calloc(1, sizeof(T_DATUM_THREAD_DATA));
+	assert(m && sd && c && t);
+	m->sdata = sd;
+	c->app_client_data = m;
+	c->datum_thread = t;
+	c->cid = 1;
+	t->app_thread_data = sd;
+	return c;
+}
+
+static void datum_stratum_test_client_free(T_DATUM_CLIENT_DATA *c) {
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	free(c->datum_thread);
+	free(m->sdata);
+	free(m);
+	free(c);
+}
+
+static const char *datum_stratum_test_take(T_DATUM_CLIENT_DATA *c) {
+	c->w_buffer[c->out_buf] = 0;
+	c->out_buf = 0;
+	return c->w_buffer;
+}
+
+// Vardiff measures the rate at the difficulty now served.
+static void datum_stratum_vardiff_measure_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_config.stratum_v1_vardiff_min = 1024;
+	datum_config.stratum_v1_vardiff_target_shares_min = 1;
+	datum_config.stratum_v1_vardiff_quickdiff_count = 8;
+	datum_config.stratum_v1_vardiff_quickdiff_delta = 8;
+	T_DATUM_CLIENT_DATA * const c = datum_stratum_test_client();
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	m->sdata->loop_tsms = 1000000;
+	m->current_diff = m->last_sent_diff = 8192;
+	
+	// A new difficulty starts a new measurement.
+	m->share_count_since_snap = 250;
+	m->share_count_below_diff_since_snap = 3;
+	m->current_diff = 16384;
+	datum_test(send_mining_set_difficulty(c) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "\"mining.set_difficulty\",\"params\":[16384]") != NULL);
+	datum_test(m->share_count_since_snap == 0 && m->share_count_below_diff_since_snap == 0);
+	
+	// A share credited at nothing is not counted; one credited at the served difficulty is.
+	datum_stratum_count_vardiff_share(m, 0);
+	datum_test(m->share_count_since_snap == 0 && m->share_count_below_diff_since_snap == 1);
+	datum_stratum_count_vardiff_share(m, 16384);
+	datum_test(m->share_count_since_snap == 1 && m->share_diff_since_snap == 16384);
+	
+	// Uncounted shares alone don't trigger a quickdiff, and a minute of only them is not
+	// silence: a fresh minute starts and the count is cleared...
+	reset_vardiff_stats(c);
+	m->share_snap_tsms = m->sdata->loop_tsms - 2000;
+	for (int i = 0; i < 9; ++i) datum_stratum_count_vardiff_share(m, 0);
+	stratum_update_vardiff(c, false);
+	datum_test(m->current_diff == 16384);
+	m->share_snap_tsms = m->sdata->loop_tsms - 70000;
+	stratum_update_vardiff(c, true);
+	datum_test(m->current_diff == 16384);
+	datum_test(m->share_count_below_diff_since_snap == 0);
+	// ...and a miner that then finds nothing is stepped down a minute later, as before.
+	m->share_snap_tsms = m->sdata->loop_tsms - 70000;
+	stratum_update_vardiff(c, true);
+	datum_test(m->current_diff == 8192);
+	
+	datum_stratum_test_client_free(c);
+	datum_config = saved;
+}
+
 void datum_stratum_tests(void) {
 	datum_stratum_mod_username_tests();
 	datum_stratum_share_credit_tests();
+	datum_stratum_vardiff_measure_tests();
 }
