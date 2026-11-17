@@ -34,6 +34,7 @@
  */
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "datum_jsonrpc.h"
@@ -178,6 +179,19 @@ void datum_stratum_mod_username_tests() {
 	datum_test(0 == strcmp(res, "def.ghi"));
 }
 
+// A share for an older job, once a harder difficulty is served, gets the served difficulty if
+// it meets it and nothing otherwise.
+static void datum_stratum_share_credit_tests(void) {
+	unsigned char t_easy[32], t_hard[32];
+	get_target_from_diff(t_easy, 1024);
+	get_target_from_diff(t_hard, 16384);
+	datum_test(datum_stratum_share_credit_diff(t_hard, 1024, 16384) == 16384);
+	datum_test(datum_stratum_share_credit_diff(t_easy, 1024, 16384) == 0);
+	datum_test(datum_stratum_share_credit_diff(t_easy, 1024, 1024) == 1024);
+	datum_test(datum_stratum_share_credit_diff(t_hard, 16384, 1024) == 16384);
+}
+
 void datum_stratum_tests(void) {
 	datum_stratum_mod_username_tests();
+	datum_stratum_share_credit_tests();
 }

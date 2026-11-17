@@ -1354,17 +1354,29 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	datum_socket_send_string_to_client(c, s);
 	
 	// update connection totals
-	m->share_diff_accepted += job_diff;
+	const uint64_t credit_diff = datum_stratum_share_credit_diff(share_hash, job_diff, m->last_sent_diff);
+	m->share_diff_accepted += credit_diff;
 	m->share_count_accepted++;
 	
 	// update since-snap totals
 	m->share_count_since_snap++;
-	m->share_diff_since_snap += job_diff;
+	m->share_diff_since_snap += credit_diff;
 	
-	stratum_update_miner_stats_accepted(c, job_diff);
+	stratum_update_miner_stats_accepted(c, credit_diff);
 	stratum_update_vardiff(c,false);
 	
 	return 0;
+}
+
+// The difficulty to credit an accepted share at. Normally the job's. When a harder difficulty
+// is now served than the job was sent at, the share gets the served difficulty if it meets it
+// and nothing otherwise (it is still accepted), which is unbiased whichever target the miner
+// filtered at.
+uint64_t datum_stratum_share_credit_diff(const uint8_t *share_hash, uint64_t job_diff, uint64_t served_diff) {
+	if (served_diff <= job_diff) return job_diff;
+	unsigned char served_target[32];
+	get_target_from_diff(served_target, served_diff);
+	return compare_hashes(share_hash, served_target) <= 0 ? served_diff : 0;
 }
 
 int client_mining_configure(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj) {
