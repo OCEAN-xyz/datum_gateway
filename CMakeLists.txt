@@ -163,7 +163,7 @@ endif()
 
 install(FILES README.md CONTRIBUTING.md SECURITY.md LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(FILES doc/DATUM_recommended_setup-network_diagram.svg DESTINATION ${CMAKE_INSTALL_DOCDIR}/doc)
-install(FILES doc/INSTALL.md doc/OPTIMIZATIONS.md doc/usernames.md doc/json_api.md doc/original.md doc/original.txt DESTINATION ${CMAKE_INSTALL_DOCDIR}/doc)
+install(FILES doc/INSTALL.md doc/OPTIMIZATIONS.md doc/usernames.md doc/vardiff_below_pool_min.md doc/json_api.md doc/original.md doc/original.txt DESTINATION ${CMAKE_INSTALL_DOCDIR}/doc)
 
 set(PREGEN_DOC ${CMAKE_SOURCE_DIR}/doc/example_datum_gateway_config.json)
 install(FILES ${PREGEN_DOC} DESTINATION ${CMAKE_INSTALL_DOCDIR})

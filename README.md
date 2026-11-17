@@ -71,6 +71,8 @@ See [INSTALL.md](doc/INSTALL.md) for requirements, installation, and configurati
 
 For pooled mining, also review the [username and payout-address documentation](doc/usernames.md).
 
+If your pool's minimum difficulty is far above what suits a small miner (common with rented rigs), see [vardiff_below_pool_min](doc/vardiff_below_pool_min.md).
+
 ## External information
 
 Learn more about DATUM from its creator, Jason Hughes:
