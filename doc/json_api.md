@@ -250,6 +250,7 @@ The token is returned by the `GET` method below (as `csrf_token`). It is generat
     "pubkey": "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003"
   },
   "fingerprint_miners": true,
+  "vardiff_below_pool_min": false,
   "always_pay_self": true,
   "work_update_seconds": 40,
   "rpcurl": "http://localhost:8332",
@@ -277,6 +278,7 @@ The token is returned by the `GET` method below (as `csrf_token`). It is generat
     "pubkey": "f21f2f0ef0aa1970468f22bad9bb7f4535146f8e4a8f646bebc93da3d89b1406f40d032f09a417d94dc068055df654937922d2c89522e3e8f6f0e649de473003"
   },
   "fingerprint_miners": true,
+  "vardiff_below_pool_min": false,
   "always_pay_self": true,
   "work_update_seconds": 40,
   "rpcurl": "http://localhost:8332",
