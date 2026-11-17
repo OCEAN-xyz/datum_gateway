@@ -290,8 +290,9 @@ T_DATUM_STRATUM_DUPE_ITEM *datum_stratum_add_new_dupe(T_DATUM_STRATUM_DUPES *dup
 	i->job_index = job_index;
 	i->ntime = ntime_val;
 	i->version_bits = version_bits;
-	i->extra_nonce_a = *((uint64_t *)&extranonce_bin[0]);
-	i->extra_nonce_b = *((uint32_t *)&extranonce_bin[8]);
+	// The extranonce is a byte array with no alignment guarantee; memcpy avoids a misaligned load.
+	memcpy(&i->extra_nonce_a, &extranonce_bin[0], sizeof(i->extra_nonce_a));
+	memcpy(&i->extra_nonce_b, &extranonce_bin[8], sizeof(i->extra_nonce_b));
 	if (!insert_after) {
 		// is a new entry
 		i->next = NULL;
@@ -375,9 +376,9 @@ bool datum_stratum_check_for_dupe(T_DATUM_STRATUM_THREADPOOL_DATA *t, unsigned i
 					// same ntime....!
 					if (version_bits == i->version_bits) {
 						// same version bits?!?!?!?
-						if (i->extra_nonce_a == *((uint64_t *)&extranonce_bin[0])) {
+						if (!memcmp(&i->extra_nonce_a, &extranonce_bin[0], sizeof(i->extra_nonce_a))) {
 							// same extra nonce 1?!?!?!??!
-							if (i->extra_nonce_b == *((uint32_t *)&extranonce_bin[8])) {
+							if (!memcmp(&i->extra_nonce_b, &extranonce_bin[8], sizeof(i->extra_nonce_b))) {
 								// ok, this is a duplicate :(
 								return true;
 							}
