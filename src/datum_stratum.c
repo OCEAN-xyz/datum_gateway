@@ -1060,6 +1060,9 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 		return 0;
 	}
 	
+	// A Q share not bound to the current quickdiff: for another job, or with no quickdiff sent.
+	const bool q_unbound = quickdiff && (!m->quickdiff_value || g_job_index != m->quickdiff_job_index);
+	
 	const uint64_t job_diff = quickdiff ? m->quickdiff_value : m->stratum_job_diffs[g_job_index];
 	
 	// construct block header
@@ -1237,6 +1240,16 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	my_sha256(digest_temp, block_header, 80);
 	my_sha256(share_hash, digest_temp, 32);
 	
+	// An unbound Q share was rebuilt above with the current quickdiff's target byte, which isn't
+	// the one its work carried, so it fails H-not-zero. Answer that as the unknown work it is,
+	// not as a high hash that reads like a hardware fault.
+	if (q_unbound && upk_u32le(share_hash, 28) != 0) {
+		send_unknown_work_error(c, id);
+		m->share_count_rejected++;
+		m->share_diff_rejected += m->last_sent_diff; // guestimate here
+		return 0;
+	}
+	
 	if (upk_u32le(share_hash, 28) != 0) {
 		// H-not-zero
 		//LOG_PRINTF("HIGH HASH: %8.8lx", (unsigned long)upk_u32le(share_hash, 28));
@@ -1292,6 +1305,15 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 			// submit via DATUM
 			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
 		}
+	}
+	
+	// A quickdiff share is only for the job its quickdiff notify was sent for. Checked after the
+	// block check, like the other rejections here, so a block is never lost to it.
+	if (q_unbound) {
+		send_unknown_work_error(c,id);
+		m->share_count_rejected++;
+		m->share_diff_rejected+=m->last_sent_diff; // guestimate here
+		return 0;
 	}
 	
 	// we check this after checking if the share is a valid block because... well, we want to try and build on our own block even on the off chance it's late.
@@ -1591,6 +1613,10 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 		m->quickdiff_active = true;
 		m->quickdiff_value = m->last_sent_diff;
 		get_target_from_diff(m->quickdiff_target, m->quickdiff_value);
+	}
+	if (quickdiff) {
+		// The job this quickdiff is for; Q shares for any other are refused.
+		m->quickdiff_job_index = j->global_index;
 	}
 	
 	// We'll use the client's send buffer for sanity, since in this environment it wont result in a partial send and we can just build up the string in the output buffer

@@ -38,6 +38,10 @@
 #include <string.h>
 
 #include "datum_jsonrpc.h"
+#include "datum_logger.h"
+#include "datum_protocol.h"
+#include "datum_queue.h"
+#include "datum_stratum_dupes.h"
 #include "datum_stratum.h"
 #include "datum_utils.h"
 
@@ -265,8 +269,218 @@ static void datum_stratum_vardiff_measure_tests(void) {
 	datum_config = saved;
 }
 
+// A pooled job whose coinbase target byte sits at index 4 of a 20-byte coinb1 of 0x11s,
+// with a template that accepts any ntime, and no share or block meeting its targets unless
+// a test opens them up.
+static T_DATUM_STRATUM_JOB *datum_stratum_test_pooled_job(void) {
+	T_DATUM_STRATUM_JOB * const j = calloc(1, sizeof(*j));
+	T_DATUM_TEMPLATE_DATA * const t = calloc(1, sizeof(*t));
+	assert(j && t);
+	j->is_datum_job = true;
+	strcpy(j->job_id, "0000000000c0de");
+	memset(j->prevhash, '0', 64);
+	strcpy(j->version, "20000000");
+	strcpy(j->nbits, "1d00ffff");
+	strcpy(j->ntime, "6625406b");
+	strcpy(j->merklebranches_full, "[]");
+	j->target_pot_index = 4;
+	j->coinbase[0].coinb1_len = 20;
+	memset(j->coinbase[0].coinb1_bin, 0x11, 20);
+	memset(j->coinbase[0].coinb1, '1', 40);
+	memset(j->coinbase[0].coinb2, '2', 16);
+	t->curtime = 0xffffff00;
+	j->block_template = t;
+	return j;
+}
+
+static void datum_stratum_test_pooled_job_free(T_DATUM_STRATUM_JOB *j) {
+	free(j->block_template);
+	free(j);
+}
+
+// Captures what client_mining_submit sends to the pool, via the real POW queue.
+extern DATUM_QUEUE pow_queue;
+extern int log_level_console;
+static int datum_stratum_test_pow_handler(void *arg) { (void)arg; return 0; }
+
+static int datum_stratum_test_pow_count(bool *last_is_block) {
+	const int buf = pow_queue.active_buffer;
+	const int n = pow_queue.queue_next[buf];
+	if (n && last_is_block) *last_is_block = ((T_DATUM_PROTOCOL_POW *)pow_queue.buffer[buf])[n - 1].is_block;
+	return n;
+}
+
+// Settings an accepted share needs (vardiff runs on each one).
+static void datum_stratum_test_submit_config(void) {
+	datum_config.stratum_v1_share_stale_seconds = 120;
+	datum_config.stratum_v1_vardiff_min = 1024;
+	datum_config.stratum_v1_vardiff_target_shares_min = 8;
+	datum_config.stratum_v1_vardiff_quickdiff_count = 8;
+	datum_config.stratum_v1_vardiff_quickdiff_delta = 8;
+}
+
+// A subscribed connection on job index 0, ready for client_mining_submit.
+static T_DATUM_CLIENT_DATA *datum_stratum_test_submit_client(T_DATUM_STRATUM_JOB *job) {
+	T_DATUM_CLIENT_DATA * const c = datum_stratum_test_client();
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	datum_stratum_dupes_init(m->sdata);
+	m->sdata->loop_tsms = 1000000;
+	job->tsms = m->sdata->loop_tsms;
+	m->subscribed = true;
+	m->current_diff = m->last_sent_diff = 1024;
+	m->stratum_job_diffs[0] = 1024;
+	return c;
+}
+
+static void datum_stratum_test_submit_client_free(T_DATUM_CLIENT_DATA *c) {
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	T_DATUM_STRATUM_DUPES * const dupes = m->sdata->dupes;
+	free(dupes->ptr);
+	free(dupes);
+	datum_stratum_test_client_free(c);
+}
+
+// Submits extranonce2 0 with the given ntime and nonce. Every accepted share needs a hash whose
+// top 32 bits are zero (H-not-zero), so the tests use ntime/nonce pairs found for their header.
+static int datum_stratum_test_submit(T_DATUM_CLIENT_DATA *c, const char *job_id, uint32_t ntime, uint32_t nonce) {
+	char req[160];
+	snprintf(req, sizeof(req), "[\"w\", \"%s\", \"0000000000000000\", \"%08x\", \"%08x\"]", job_id, (unsigned)ntime, (unsigned)nonce);
+	json_error_t err;
+	json_t * const params = json_loads(req, 0, &err);
+	assert(params);
+	const int ret = client_mining_submit(c, 1, params);
+	json_decref(params);
+	return ret;
+}
+
+// A quickdiff (Q) share is only for the job its quickdiff notify was sent for, and the check
+// comes after the block check, so a block in such a share is still submitted. One ntime/nonce
+// serves all three shares: a refused Q share never reaches the dupe check.
+#define Q_NTIME 0x6625406c
+#define Q_NONCE 0xcfbde4b9
+static void datum_stratum_quickdiff_job_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_stratum_test_submit_config();
+	T_DATUM_STRATUM_JOB * const job = datum_stratum_test_pooled_job();
+	T_DATUM_STRATUM_JOB * const saved_job0 = global_cur_stratum_jobs[0];
+	global_cur_stratum_jobs[0] = job;
+	datum_test(datum_queue_prep(&pow_queue, 16, sizeof(T_DATUM_PROTOCOL_POW), datum_stratum_test_pow_handler) == 0);
+	bool is_block = false;
+	
+	T_DATUM_CLIENT_DATA *c = datum_stratum_test_submit_client(job);
+	T_DATUM_MINER_DATA *m = c->app_client_data;
+	m->quickdiff_value = 4096;
+	memset(m->quickdiff_target, 0xff, 32);
+	
+	// A Q share for another job is refused, and nothing is sent upstream.
+	m->quickdiff_job_index = 7;
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", Q_NTIME, Q_NONCE) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "\"result\":true") == NULL);
+	datum_test(m->share_count_rejected == 1 && m->share_count_accepted == 0);
+	datum_test(datum_stratum_test_pow_count(NULL) == 0);
+	
+	// A Q share for its own job is accepted and forwarded.
+	m->quickdiff_job_index = 0;
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", Q_NTIME, Q_NONCE) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "\"result\":true") != NULL);
+	datum_test(m->share_count_rejected == 1 && m->share_count_accepted == 1);
+	datum_test(datum_stratum_test_pow_count(&is_block) == 1 && !is_block);
+	
+	// A block in a Q share for another job is still submitted, then the share is refused. The
+	// node submission fails at once (no RPC URL); its logging is muted.
+	memset(job->block_target, 0xff, 32);
+	m->quickdiff_job_index = 7;
+	datum_config.bitcoind_rpcurl[0] = 0;
+	const int saved_log_level = log_level_console;
+	log_level_console = DLOG_LEVEL_FATAL;
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", Q_NTIME, Q_NONCE) == 0);
+	log_level_console = saved_log_level;
+	datum_test(strstr(datum_stratum_test_take(c), "\"result\":true") == NULL);
+	datum_test(m->share_count_rejected == 2 && m->share_count_accepted == 1);
+	datum_test(datum_stratum_test_pow_count(&is_block) == 2 && is_block);
+	memset(job->block_target, 0, 32);
+	
+	datum_stratum_test_submit_client_free(c);
+	datum_queue_free(&pow_queue);
+	global_cur_stratum_jobs[0] = saved_job0;
+	datum_stratum_test_pooled_job_free(job);
+	datum_config = saved;
+}
+// The quickdiff is bound to the job it was sent for whatever its index: here job index 1,
+// through send_mining_notify, and a Q share for it is accepted.
+static void datum_stratum_quickdiff_job_index_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_stratum_test_submit_config();
+	T_DATUM_STRATUM_JOB * const job = datum_stratum_test_pooled_job();
+	strcpy(job->job_id, "0000000000c0df");
+	job->global_index = 1;
+	T_DATUM_STRATUM_JOB * const saved_job1 = global_cur_stratum_jobs[1];
+	global_cur_stratum_jobs[1] = job;
+	T_DATUM_CLIENT_DATA * const c = datum_stratum_test_submit_client(job);
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	m->sdata->cur_stratum_job = job;
+	m->share_snap_tsms = m->sdata->loop_tsms;
+	
+	datum_test(send_mining_notify(c, true, false, false) == 0);
+	m->current_diff = 4096;
+	datum_test(send_mining_notify(c, true, true, false) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "\"mining.notify\",\"params\":[\"Q0000000000c0df00") != NULL);
+	datum_test(m->quickdiff_job_index == 1 && m->quickdiff_value == 4096);
+	// (Its target is opened up: no share meeting 4096 can be found in a test.)
+	memset(m->quickdiff_target, 0xff, 32);
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0df00", Q_NTIME, Q_NONCE) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "\"result\":true") != NULL);
+	datum_test(m->share_count_accepted == 1 && m->share_count_rejected == 0);
+	
+	datum_stratum_test_submit_client_free(c);
+	global_cur_stratum_jobs[1] = saved_job1;
+	datum_stratum_test_pooled_job_free(job);
+	datum_config = saved;
+}
+#undef Q_NTIME
+#undef Q_NONCE
+
+// A Q share not bound to the current quickdiff fails H-not-zero (it is rebuilt with the wrong
+// target byte) and is answered as unknown work at the difficulty now served, not as a high
+// hash. A bound share failing H-not-zero is refused for what it is.
+static void datum_stratum_unbound_quickdiff_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_stratum_test_submit_config();
+	T_DATUM_STRATUM_JOB * const job = datum_stratum_test_pooled_job();
+	T_DATUM_STRATUM_JOB * const saved_job0 = global_cur_stratum_jobs[0];
+	global_cur_stratum_jobs[0] = job;
+	T_DATUM_CLIENT_DATA * const c = datum_stratum_test_submit_client(job);
+	T_DATUM_MINER_DATA * const m = c->app_client_data;
+	
+	// With no quickdiff sent (the job index matches the empty entry's 0).
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", 0x6625406b, 1) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "unknown-work") != NULL);
+	datum_test(m->share_count_rejected == 1 && m->share_diff_rejected == 1024);
+	
+	// For another job, and failing H-not-zero (nonce 1 is far from a valid share).
+	m->quickdiff_value = 4096;
+	m->quickdiff_job_index = 7;
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", 0x6625406b, 1) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "unknown-work") != NULL);
+	datum_test(m->share_count_rejected == 2 && m->share_diff_rejected == 2048);
+	
+	// Bound to the current quickdiff: refused as H-not-zero, at the quickdiff difficulty.
+	m->quickdiff_job_index = 0;
+	datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", 0x6625406b, 1) == 0);
+	datum_test(strstr(datum_stratum_test_take(c), "H-not-zero") != NULL);
+	datum_test(m->share_count_rejected == 3 && m->share_diff_rejected == 2048 + 4096);
+	
+	datum_stratum_test_submit_client_free(c);
+	global_cur_stratum_jobs[0] = saved_job0;
+	datum_stratum_test_pooled_job_free(job);
+	datum_config = saved;
+}
+
 void datum_stratum_tests(void) {
 	datum_stratum_mod_username_tests();
 	datum_stratum_share_credit_tests();
 	datum_stratum_vardiff_measure_tests();
+	datum_stratum_quickdiff_job_tests();
+	datum_stratum_quickdiff_job_index_tests();
+	datum_stratum_unbound_quickdiff_tests();
 }
