@@ -1361,6 +1361,16 @@ bool datum_api_config_set(const char * const key, const char * const val, struct
 		datum_config.stratum_v1_fingerprint_miners = val_bool;
 		datum_api_json_modify_new("stratum", "fingerprint_miners", json_boolean(val_bool));
 		// TODO: apply change to connected miners?
+	} else if (0 == strcmp(key, "stratum_vardiff_below_pool_min")) {
+		// Applies from each connection's next job; no restart needed.
+		bool val_bool;
+		if (!datum_str_to_bool_strict(val, &val_bool)) {
+			json_array_append_new(errors, json_string_nocheck("\"Serve miners below the pool's minimum difficulty\" must be 0 or 1"));
+			return false;
+		}
+		if (val_bool == datum_config.stratum_v1_vardiff_below_pool_min) return true;
+		datum_config.stratum_v1_vardiff_below_pool_min = val_bool;
+		datum_api_json_modify_new("stratum", "vardiff_below_pool_min", json_boolean(val_bool));
 	} else if (0 == strcmp(key, "datum_always_pay_self")) {
 		bool val_bool;
 		if (!datum_str_to_bool_strict(val, &val_bool)) {

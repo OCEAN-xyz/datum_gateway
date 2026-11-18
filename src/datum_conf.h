@@ -118,6 +118,7 @@ typedef struct {
 	int stratum_v1_vardiff_quickdiff_delta;
 	int stratum_v1_share_stale_seconds;
 	bool stratum_v1_fingerprint_miners;
+	bool stratum_v1_vardiff_below_pool_min;
 	int stratum_v1_idle_timeout_no_subscribe;
 	int stratum_v1_idle_timeout_no_share;
 	int stratum_v1_idle_timeout_max_last_work;

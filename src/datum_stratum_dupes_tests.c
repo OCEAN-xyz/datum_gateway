@@ -66,9 +66,8 @@ static void datum_dupe_table_fill_tests(void) {
 	job->tsms = current_time_millis();
 	global_cur_stratum_jobs[1] = job;
 
-	// Eight byte aligned. datum_stratum_add_new_dupe on this branch reads the extranonce
-	// back through a uint64_t cast, which is a misaligned load on a plain char array and
-	// something UBSan reports. That is a separate issue from what these tests cover.
+	// Eight byte aligned, though the dupe table no longer needs it (see
+	// datum_dupe_extranonce_tests).
 	uint64_t extranonce_storage[2] = {0};
 	unsigned char * const extranonce = (unsigned char *)extranonce_storage;
 
@@ -158,9 +157,8 @@ static void datum_dupe_table_prune_tests(void) {
 	global_cur_stratum_jobs[1] = fresh;
 	global_cur_stratum_jobs[2] = old;
 
-	// Eight byte aligned. datum_stratum_add_new_dupe on this branch reads the extranonce
-	// back through a uint64_t cast, which is a misaligned load on a plain char array and
-	// something UBSan reports. That is a separate issue from what these tests cover.
+	// Eight byte aligned, though the dupe table no longer needs it (see
+	// datum_dupe_extranonce_tests).
 	uint64_t extranonce_storage[2] = {0};
 	unsigned char * const extranonce = (unsigned char *)extranonce_storage;
 
@@ -229,9 +227,8 @@ static void datum_dupe_table_cycle_tests(void) {
 		global_cur_stratum_jobs[j] = &jobs[j];
 	}
 
-	// Eight byte aligned. datum_stratum_add_new_dupe on this branch reads the extranonce
-	// back through a uint64_t cast, which is a misaligned load on a plain char array and
-	// something UBSan reports. That is a separate issue from what these tests cover.
+	// Eight byte aligned, though the dupe table no longer needs it (see
+	// datum_dupe_extranonce_tests).
 	uint64_t extranonce_storage[2] = {0};
 	unsigned char * const extranonce = (unsigned char *)extranonce_storage;
 	bool saw_expand = false;
@@ -283,7 +280,46 @@ static void datum_dupe_table_cycle_tests(void) {
 	datum_config.stratum_v1_share_stale_seconds = saved_stale;
 }
 
+// The extranonce is compared byte for byte, at any alignment: a share differing from an earlier
+// one only in the first eight or the last four extranonce bytes is not a duplicate.
+static void datum_dupe_extranonce_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_config.stratum_v1_max_clients_per_thread = 1;
+	datum_config.stratum_v1_vardiff_target_shares_min = 1;
+	datum_config.stratum_v1_share_stale_seconds = 60;
+	T_DATUM_STRATUM_THREADPOOL_DATA * const thread_data = calloc(1, sizeof(*thread_data));
+	datum_test(thread_data != NULL);
+	if (!thread_data) return;
+	datum_stratum_dupes_init(thread_data);
+	T_DATUM_STRATUM_JOB * const job = calloc(1, sizeof(*job));
+	T_DATUM_STRATUM_JOB * const saved_job = global_cur_stratum_jobs[1];
+	datum_test(job != NULL);
+	if (!job) { free(thread_data); return; }
+	job->tsms = current_time_millis();
+	global_cur_stratum_jobs[1] = job;
+	
+	unsigned char buf[16] = {0};
+	unsigned char * const extranonce = &buf[1];  // deliberately misaligned
+	for (int i = 0; i < 12; ++i) extranonce[i] = (unsigned char)(i + 1);
+	datum_test(!datum_stratum_check_for_dupe(thread_data, 0x1234, 1, 1000, 0, extranonce));
+	datum_test(datum_stratum_check_for_dupe(thread_data, 0x1234, 1, 1000, 0, extranonce));
+	extranonce[10] ^= 0xff;
+	datum_test(!datum_stratum_check_for_dupe(thread_data, 0x1234, 1, 1000, 0, extranonce));
+	extranonce[10] ^= 0xff;
+	extranonce[3] ^= 0xff;
+	datum_test(!datum_stratum_check_for_dupe(thread_data, 0x1234, 1, 1000, 0, extranonce));
+	
+	global_cur_stratum_jobs[1] = saved_job;
+	T_DATUM_STRATUM_DUPES * const dupes = thread_data->dupes;
+	free(dupes->ptr);
+	free(thread_data->dupes);
+	free(thread_data);
+	free(job);
+	datum_config = saved;
+}
+
 void datum_stratum_dupes_tests(void) {
+	datum_dupe_extranonce_tests();
 	datum_dupe_table_fill_tests();
 	datum_dupe_table_prune_tests();
 	datum_dupe_table_cycle_tests();

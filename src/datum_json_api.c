@@ -481,6 +481,7 @@ int datum_api_json_configuration(struct MHD_Connection * const connection) {
 	json_object_set_new(json_object_get(config, "pool"), "port", json_integer(datum_config.datum_pool_port));
 	json_object_set_new(json_object_get(config, "pool"), "pubkey", json_string(datum_config.datum_pool_pubkey));
 	json_object_set_new(config, "fingerprint_miners", json_boolean(datum_config.stratum_v1_fingerprint_miners));
+	json_object_set_new(config, "vardiff_below_pool_min", json_boolean(datum_config.stratum_v1_vardiff_below_pool_min));
 	json_object_set_new(config, "always_pay_self", json_boolean(datum_config.datum_always_pay_self));
 	json_object_set_new(config, "work_update_seconds", json_integer(datum_config.bitcoind_work_update_seconds));
 	json_object_set_new(config, "rpcurl", json_string(datum_config.bitcoind_rpcurl));
@@ -698,6 +699,20 @@ int datum_api_json_set_configuration(struct MHD_Connection * const connection, c
 				}
 			} else {
 				goto_error = "fingerprint_miners is not a boolean";
+				goto error;
+			}
+		}
+		
+		current_val = json_object_get(config, "vardiff_below_pool_min");
+		if (current_val) {
+			if (json_is_boolean(current_val)){
+				if (json_boolean_value(current_val) != datum_config.stratum_v1_vardiff_below_pool_min) {
+					datum_config.stratum_v1_vardiff_below_pool_min = json_boolean_value(current_val);
+					json_incref(current_val);
+					datum_api_json_modify_new("stratum", "vardiff_below_pool_min", current_val);
+				}
+			} else {
+				goto_error = "vardiff_below_pool_min is not a boolean";
 				goto error;
 			}
 		}

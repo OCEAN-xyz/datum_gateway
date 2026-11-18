@@ -234,6 +234,9 @@ typedef struct {
 	
 	uint8_t stratum_job_targets[MAX_STRATUM_JOBS][32];
 	uint64_t stratum_job_diffs[MAX_STRATUM_JOBS];
+	// vardiff_below_pool_min: the power of two each job's work is committed to (its coinbase target
+	// byte) when that is above the served difficulty, else 0.
+	uint8_t stratum_job_commit_pots[MAX_STRATUM_JOBS];
 	
 	unsigned char coinbase_selection;
 	
@@ -247,10 +250,17 @@ typedef struct {
 	uint64_t share_count_since_snap;
 	uint64_t share_diff_since_snap;
 	uint64_t share_snap_tsms;
+	// Accepted shares since the snapshot that missed the difficulty now served (not counted).
+	uint64_t share_count_below_diff_since_snap;
 	
 	bool quickdiff_active;
 	uint64_t quickdiff_value;
+	uint8_t quickdiff_commit_pot;
 	uint8_t quickdiff_target[32];
+	uint16_t quickdiff_job_index;
+	// The job ID and coinbase that Q work went out with, to tell a repeat of it.
+	uint64_t quickdiff_job_id;
+	unsigned int quickdiff_cbselect;
 	
 	uint64_t forced_high_min_diff;
 	
@@ -267,6 +277,14 @@ extern T_DATUM_STRATUM_JOB *global_cur_stratum_jobs[MAX_STRATUM_JOBS];
 
 const char *datum_stratum_mod_username(const char *username_s, char *username_buf, size_t username_buf_sz, uint16_t share_rnd, const char *modname, size_t modname_len);
 
+void reset_vardiff_stats(T_DATUM_CLIENT_DATA *c);
+void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick);
+void datum_stratum_count_vardiff_share(T_DATUM_MINER_DATA *m, uint64_t credit_diff);
+uint64_t datum_stratum_share_credit_diff(const uint8_t *share_hash, uint64_t job_diff, uint64_t served_diff);
+uint64_t datum_stratum_pool_min_diff(void);
+bool datum_stratum_share_forwardable(const uint8_t *share_hash, unsigned char commit_pot);
+int client_datum_capabilities(T_DATUM_CLIENT_DATA *c, uint64_t id);
+int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj);
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block);
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state);
 void stratum_job_merkle_root_calc(T_DATUM_STRATUM_JOB *s, unsigned char *coinbase_txn_hash, unsigned char *merkle_root_output);
