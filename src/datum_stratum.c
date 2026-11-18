@@ -1559,6 +1559,14 @@ int client_mining_authorize(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_
 	return 0;
 }
 
+// The coinbase send_mining_notify picks for work that isn't a new block's empty work.
+static unsigned int stratum_notify_cbselect(const T_DATUM_THREAD_DATA *t, const T_DATUM_STRATUM_JOB *j, const T_DATUM_MINER_DATA *m) {
+	if (j->job_state >= JOB_STATE_FULL_PRIORITY_WAIT_COINBASER && ((T_DATUM_STRATUM_THREADPOOL_DATA *)t->app_thread_data)->full_coinbase_ready) {
+		return m->coinbase_selection;
+	}
+	return 0;
+}
+
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block) {
 	// send the current job to the miner
 	
@@ -1639,6 +1647,20 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 		if (m->last_sent_diff < pool_min_diff) commit_pot = floorPoT(pool_min_diff);
 	}
 	
+	// vardiff_below_pool_min: two quickdiffs on the same job share the coinb1 marker, so they are
+	// different work only through the target byte. After one committed at the pool minimum, a
+	// second one with the same byte (after a regular notify for the same job, such as its full
+	// coinbase) would resend the Q work the miner already has. Send only the new difficulty (done
+	// above) and leave the quickdiff entries, so its in-flight Q shares still validate;
+	// quickdiff_active stays set until the next regular notify.
+	if (quickdiff && m->quickdiff_commit_pot &&
+		m->quickdiff_job_index == j->global_index && m->quickdiff_job_id == upk_u64le(j->job_id, 0) &&
+		m->quickdiff_cbselect == stratum_notify_cbselect(t, j, m) &&
+		m->quickdiff_commit_pot == (commit_pot ? commit_pot : floorPoT(m->last_sent_diff))) {
+		m->quickdiff_active = true;
+		return 0;
+	}
+	
 	// if this is a quick diff change, the job is likely identical to one we've already sent
 	// in which case, we don't want to clobber the normal target table and reject shares that we shouldn't
 	if (!quickdiff) {
@@ -1682,6 +1704,11 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	
 	cb = &j->coinbase[cbselect];
 	// new block work always is just a blank coinbase, for now
+	if (quickdiff) {
+		// The work this quickdiff went out with, to tell a repeat of it (see above).
+		m->quickdiff_job_id = upk_u64le(j->job_id, 0);
+		m->quickdiff_cbselect = cbselect;
+	}
 	
 	if (quickdiff) {
 		snprintf(s, sizeof(s), "\"Q%s%2.2x\",\"%s\",\"", j->job_id, cbselect, j->prevhash);

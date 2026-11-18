@@ -258,6 +258,9 @@ typedef struct {
 	uint8_t quickdiff_commit_pot;
 	uint8_t quickdiff_target[32];
 	uint16_t quickdiff_job_index;
+	// The job ID and coinbase that Q work went out with, to tell a repeat of it.
+	uint64_t quickdiff_job_id;
+	unsigned int quickdiff_cbselect;
 	
 	uint64_t forced_high_min_diff;
 	

@@ -708,6 +708,149 @@ static void datum_stratum_quickdiff_above_min_tests(void) {
 	datum_stratum_test_pooled_job_free(job);
 	datum_config = saved;
 }
+// A second quickdiff on the same job, after a regular notify for it, is not resent as the same
+// Q work when the commitment is held at the pool minimum: only the new difficulty goes out, and
+// the miner's in-flight Q shares are still accepted. With the option off it is sent.
+#define RQ_NTIME 0x6625406b
+#define RQ_NONCE 0x31f2e833
+static void datum_stratum_repeat_quickdiff_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_stratum_test_submit_config();
+	T_DATUM_STRATUM_JOB * const job = datum_stratum_test_pooled_job();
+	T_DATUM_STRATUM_JOB * const saved_job0 = global_cur_stratum_jobs[0];
+	global_cur_stratum_jobs[0] = job;
+	const uint64_t pool_min = UINT64_C(1) << 20;
+	const char *out;
+	
+	for (int pinned = 1; pinned >= 0; --pinned) {
+		datum_config.stratum_v1_vardiff_below_pool_min = pinned;
+		datum_config.override_vardiff_min = pinned ? pool_min : 1024;
+		T_DATUM_CLIENT_DATA * const c = datum_stratum_test_submit_client(job);
+		T_DATUM_MINER_DATA * const m = c->app_client_data;
+		m->sdata->cur_stratum_job = job;
+		m->share_snap_tsms = m->sdata->loop_tsms;
+		
+		// Regular notify, then a quickdiff.
+		datum_test(send_mining_notify(c, true, false, false) == 0);
+		datum_test(strstr(datum_stratum_test_take(c), "\"mining.notify\"") != NULL);
+		m->current_diff = 16384;
+		datum_test(send_mining_notify(c, true, true, false) == 0);
+		datum_test(strstr(datum_stratum_test_take(c), "\"mining.notify\",\"params\":[\"Q") != NULL);
+		datum_test(m->quickdiff_value == 16384 && m->quickdiff_job_index == 0);
+		datum_test(m->quickdiff_commit_pot == (pinned ? 20 : 0));
+		unsigned char q_target[32];
+		memcpy(q_target, m->quickdiff_target, 32);
+		
+		// A regular notify for the same job (as when its full coinbase follows), then a second quickdiff.
+		datum_test(send_mining_notify(c, false, false, false) == 0);
+		out = datum_stratum_test_take(c);
+		datum_test(strstr(out, "\"mining.notify\",\"params\":[\"0") != NULL);
+		datum_test(!m->quickdiff_active);
+		m->current_diff = 131072;
+		datum_test(send_mining_notify(c, true, true, false) == 0);
+		out = datum_stratum_test_take(c);
+		datum_test(strstr(out, "\"mining.set_difficulty\",\"params\":[131072]") != NULL);
+		if (pinned) {
+			// Only the difficulty: the Q work would have been the same as before.
+			datum_test(strstr(out, "mining.notify") == NULL);
+			datum_test(m->quickdiff_active);
+			datum_test(m->quickdiff_value == 16384 && m->quickdiff_commit_pot == 20 && m->quickdiff_job_index == 0);
+			datum_test(!memcmp(m->quickdiff_target, q_target, 32));
+			
+			// A share from the Q work the miner holds is still accepted. (Its target is opened up:
+			// no share meeting 16384 can be found in a test.)
+			memset(m->quickdiff_target, 0xff, 32);
+			datum_test(datum_stratum_test_submit(c, "Q0000000000c0de00", RQ_NTIME, RQ_NONCE) == 0);
+			datum_test(strstr(datum_stratum_test_take(c), "\"result\":true") != NULL);
+			datum_test(m->share_count_accepted == 1 && m->share_count_rejected == 0);
+		} else {
+			// Distinct commitments make the second quickdiff new work, so it is sent.
+			datum_test(strstr(out, "\"mining.notify\",\"params\":[\"Q") != NULL);
+			datum_test(m->quickdiff_value == 131072 && m->quickdiff_commit_pot == 0);
+		}
+		datum_stratum_test_submit_client_free(c);
+	}
+	
+	global_cur_stratum_jobs[0] = saved_job0;
+	datum_stratum_test_pooled_job_free(job);
+	datum_config = saved;
+}
+#undef RQ_NTIME
+#undef RQ_NONCE
+
+// The skip's identity guards: the second quickdiff is sent whenever its Q work would differ
+// from the Q work already sent for the job, and skipped only when it would be the same.
+static void datum_stratum_repeat_quickdiff_guard_tests(void) {
+	const global_config_t saved = datum_config;
+	datum_stratum_test_submit_config();
+	T_DATUM_STRATUM_JOB * const job = datum_stratum_test_pooled_job();
+	T_DATUM_STRATUM_JOB * const job2 = datum_stratum_test_pooled_job();
+	job->coinbase[5] = job->coinbase[0];
+	// Another job at index 1 whose job ID starts with the same 8 bytes (the index is encoded after them).
+	strcpy(job2->job_id, "0000000000c0df");
+	job2->global_index = 1;
+	const uint64_t pool_min = UINT64_C(1) << 20;
+	datum_config.stratum_v1_vardiff_below_pool_min = true;
+	const char *out;
+	
+	// 0: unchanged (skip). 1: job ID changed at the same index. 2: full coinbase ready, so the
+	// coinbase changes. 3: pool minimum doubled. 4: served difficulty above the pool minimum, so
+	// the target byte moves. 5: on the full coinbase throughout (skip). 6: another job at another
+	// index. 7: served exactly at the pool minimum, so the same target byte (skip).
+	for (int sc = 0; sc <= 7; ++sc) {
+		datum_config.override_vardiff_min = pool_min;
+		strcpy(job->job_id, "0000000000c0de");
+		job->job_state = (sc == 5) ? JOB_STATE_FULL_PRIORITY_WAIT_COINBASER : 0;
+		T_DATUM_CLIENT_DATA * const c = datum_stratum_test_submit_client(job);
+		T_DATUM_MINER_DATA * const m = c->app_client_data;
+		m->sdata->cur_stratum_job = job;
+		m->sdata->full_coinbase_ready = (sc == 5);
+		m->share_snap_tsms = m->sdata->loop_tsms;
+		m->coinbase_selection = 5;
+		
+		datum_test(send_mining_notify(c, true, false, false) == 0);
+		m->current_diff = 16384;
+		datum_test(send_mining_notify(c, true, true, false) == 0);
+		datum_test(strstr(datum_stratum_test_take(c), "\"mining.notify\",\"params\":[\"Q") != NULL);
+		if (sc == 6) m->sdata->cur_stratum_job = job2;
+		datum_test(send_mining_notify(c, false, false, false) == 0);
+		(void)datum_stratum_test_take(c);
+		m->current_diff = 131072;
+		if (sc == 1) strcpy(job->job_id, "0000000100c0de");
+		if (sc == 2) {
+			job->job_state = JOB_STATE_FULL_PRIORITY_WAIT_COINBASER;
+			m->sdata->full_coinbase_ready = true;
+		}
+		if (sc == 3) datum_config.override_vardiff_min = pool_min << 1;
+		if (sc == 4) m->current_diff = UINT64_C(1) << 22;
+		if (sc == 7) m->current_diff = pool_min;
+		datum_test(send_mining_notify(c, true, true, false) == 0);
+		out = datum_stratum_test_take(c);
+		const bool sent = strstr(out, "\"mining.notify\",\"params\":[\"Q") != NULL;
+		datum_test(sent == (sc != 0 && sc != 5 && sc != 7));
+		datum_stratum_test_submit_client_free(c);
+	}
+	
+	// A first quickdiff is always sent, even where the empty quickdiff entries of a new connection
+	// match it in every other way (job index 0, job ID bytes zero, coinbase 0, and a target byte
+	// of 0 from difficulty 1): the skip needs a quickdiff already sent with a commitment.
+	{
+		datum_config.override_vardiff_min = 0;
+		memset(job->job_id, 0, 8);
+		job->job_state = 0;
+		T_DATUM_CLIENT_DATA * const c = datum_stratum_test_submit_client(job);
+		T_DATUM_MINER_DATA * const m = c->app_client_data;
+		m->sdata->cur_stratum_job = job;
+		m->current_diff = m->last_sent_diff = 1;
+		datum_test(send_mining_notify(c, true, true, false) == 0);
+		datum_test(strstr(datum_stratum_test_take(c), "\"mining.notify\",\"params\":[\"Q") != NULL);
+		datum_stratum_test_submit_client_free(c);
+	}
+	
+	datum_stratum_test_pooled_job_free(job);
+	datum_stratum_test_pooled_job_free(job2);
+	datum_config = saved;
+}
 
 void datum_stratum_tests(void) {
 	datum_stratum_mod_username_tests();
@@ -719,4 +862,6 @@ void datum_stratum_tests(void) {
 	datum_stratum_vardiff_below_pool_min_tests();
 	datum_stratum_submit_forwarding_tests();
 	datum_stratum_quickdiff_above_min_tests();
+	datum_stratum_repeat_quickdiff_tests();
+	datum_stratum_repeat_quickdiff_guard_tests();
 }
