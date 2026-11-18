@@ -1775,12 +1775,20 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 	
 	switch (url[1]) {
 		case 'N': {
-			if (!strcmp(url, "/NOTIFY")) {
-				// TODO: Implement faster notifies with hash+height
-				datum_blocktemplates_notifynew(NULL, 0);
-				return datum_api_OK(connection);
+			static const char prefix[] = "/NOTIFY/";
+			const char *blockhash = NULL;
+			if (!strncmp(url, prefix, sizeof(prefix) - 1)) {
+				const char *suffix = url + sizeof(prefix) - 1;
+				if (strlen(suffix) == 64 && strspn(suffix, "0123456789abcdef") == 64) {
+					blockhash = suffix;
+				} else {
+					DLOG_WARN("Invalid block hash in /NOTIFY request. Processing notification without a hash.");
+				}
+			} else if (strcmp(url, "/NOTIFY")) {
+				break;
 			}
-			break;
+			datum_blocktemplates_notifynew(blockhash, 0);
+			return datum_api_OK(connection);
 		}
 		
 		case 'a': {
