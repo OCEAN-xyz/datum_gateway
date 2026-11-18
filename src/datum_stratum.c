@@ -1185,6 +1185,11 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	} else {
 		full_cb_txn[job->target_pot_index] = floorPoT(m->stratum_job_diffs[g_job_index]);
 	}
+	// vardiff_below_pool_min: work committed above the served difficulty carries that commitment.
+	const unsigned char commit_pot = quickdiff ? m->quickdiff_commit_pot : m->stratum_job_commit_pots[g_job_index];
+	if (commit_pot) {
+		full_cb_txn[job->target_pot_index] = commit_pot;
+	}
 	
 	if ((job->merklebranch_count) && (!empty_work)) {
 		// hash the CB txn
@@ -1383,7 +1388,7 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	
 	// work accepted
 	if (!was_block) {
-		if (job->is_datum_job) {
+		if (job->is_datum_job && datum_stratum_share_forwardable(share_hash, commit_pot)) {
 			// submit via DATUM
 			datum_protocol_pow_submit(c, job, username_s, was_block, empty_work, quickdiff, block_header, job_diff, full_cb_txn, cb, extranonce_bin, coinbase_index);
 		}
@@ -1405,6 +1410,25 @@ int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj
 	stratum_update_vardiff(c,false);
 	
 	return 0;
+}
+
+// The pool's minimum, rounded up to a power of two as the pool applies it. The protocol thread
+// already rounds it, but holds the raw value for a moment while it does.
+uint64_t datum_stratum_pool_min_diff(void) {
+	uint64_t d = datum_config.override_vardiff_min;
+	if (d > (UINT64_C(1) << 63)) return UINT64_C(1) << 63;
+	if (d && roundDownToPowerOfTwo_64(d) != d) d = roundDownToPowerOfTwo_64(d) << 1;
+	return d;
+}
+
+// Whether an accepted share may be sent to the pool: always, unless vardiff_below_pool_min
+// committed its work above the served difficulty (to 2^commit_pot) and the share doesn't meet it.
+bool datum_stratum_share_forwardable(const uint8_t *share_hash, unsigned char commit_pot) {
+	if (!commit_pot) return true;
+	if (commit_pot >= 64) return false;
+	unsigned char commit_target[32];
+	get_target_from_diff(commit_target, UINT64_C(1) << commit_pot);
+	return compare_hashes(share_hash, commit_target) <= 0;
 }
 
 // The difficulty to credit an accepted share at. Normally the job's. When a harder difficulty
@@ -1590,7 +1614,10 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 		stratum_update_vardiff(c, true);
 	}
 	
-	if (j->is_datum_job) {
+	// Read once: the raise below and the commitment must agree on it.
+	const bool below_pool_min = datum_config.stratum_v1_vardiff_below_pool_min;
+	
+	if (j->is_datum_job && !below_pool_min) {
 		// check if our client meets of exceeds the minimum datum diff
 		if (m->current_diff < datum_config.override_vardiff_min) {
 			m->current_diff = datum_config.override_vardiff_min;
@@ -1601,6 +1628,15 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	// applies to quick and normal diff changes
 	if (m->last_sent_diff != m->current_diff) {
 		send_mining_set_difficulty(c);
+	}
+	
+	// vardiff_below_pool_min: pooled work served below the pool minimum is committed at the minimum,
+	// as the power of two in the coinbase target byte the pool checks a share against. 0 means it
+	// is committed at the served difficulty, as without the option.
+	unsigned char commit_pot = 0;
+	if (below_pool_min && j->is_datum_job) {
+		const uint64_t pool_min_diff = datum_stratum_pool_min_diff();
+		if (m->last_sent_diff < pool_min_diff) commit_pot = floorPoT(pool_min_diff);
 	}
 	
 	// if this is a quick diff change, the job is likely identical to one we've already sent
@@ -1617,6 +1653,9 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	if (quickdiff) {
 		// The job this quickdiff is for; Q shares for any other are refused.
 		m->quickdiff_job_index = j->global_index;
+		m->quickdiff_commit_pot = commit_pot;
+	} else {
+		m->stratum_job_commit_pots[j->global_index] = commit_pot;
 	}
 	
 	// We'll use the client's send buffer for sanity, since in this environment it wont result in a partial send and we can just build up the string in the output buffer
@@ -1664,6 +1703,7 @@ int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool 
 	// the miner's PoT diff needs to be encoded here.
 	// TODO: Rework job ID to include the target byte.  This is gateway side, and the server doesn't care at all about the SV1 job ID.
 	tdiff = floorPoT(m->last_sent_diff);
+	if (commit_pot) tdiff = commit_pot;
 	uchar_to_hex(&cb1[j->target_pot_index<<1], tdiff);
 	
 	if (quickdiff) {

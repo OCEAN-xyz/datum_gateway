@@ -106,6 +106,8 @@ const T_DATUM_CONFIG_ITEM datum_config_options[] = {
 		.required = false, .ptr = &datum_config.stratum_v1_share_stale_seconds, 		.default_int = 120 },
 	{ .var_type = DATUM_CONF_BOOL, 		.category = "stratum", 		.name = "fingerprint_miners",		.description = "Attempt to fingerprint miners for better use of coinbase space",
 		.required = false, .ptr = &datum_config.stratum_v1_fingerprint_miners, 			.default_bool = true },
+	{ .var_type = DATUM_CONF_BOOL, 		.category = "stratum", 		.name = "vardiff_below_pool_min",	.description = "Serve miners below the pool's minimum difficulty; only shares meeting it are sent to the pool",
+		.required = false, .ptr = &datum_config.stratum_v1_vardiff_below_pool_min, 		.default_bool = false },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "idle_timeout_no_subscribe",.description = "Seconds we allow a connection to be idle without seeing a work subscription? (0 disables)",
 		.required = false, .ptr = &datum_config.stratum_v1_idle_timeout_no_subscribe, 	.default_int = 15 },
 	{ .var_type = DATUM_CONF_INT, 		.category = "stratum", 		.name = "idle_timeout_no_shares",	.description = "Seconds we allow a subscribed connection to be idle without seeing at least one accepted share? (0 disables)",

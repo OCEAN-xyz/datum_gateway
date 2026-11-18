@@ -234,6 +234,9 @@ typedef struct {
 	
 	uint8_t stratum_job_targets[MAX_STRATUM_JOBS][32];
 	uint64_t stratum_job_diffs[MAX_STRATUM_JOBS];
+	// vardiff_below_pool_min: the power of two each job's work is committed to (its coinbase target
+	// byte) when that is above the served difficulty, else 0.
+	uint8_t stratum_job_commit_pots[MAX_STRATUM_JOBS];
 	
 	unsigned char coinbase_selection;
 	
@@ -252,6 +255,7 @@ typedef struct {
 	
 	bool quickdiff_active;
 	uint64_t quickdiff_value;
+	uint8_t quickdiff_commit_pot;
 	uint8_t quickdiff_target[32];
 	uint16_t quickdiff_job_index;
 	
@@ -274,6 +278,8 @@ void reset_vardiff_stats(T_DATUM_CLIENT_DATA *c);
 void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick);
 void datum_stratum_count_vardiff_share(T_DATUM_MINER_DATA *m, uint64_t credit_diff);
 uint64_t datum_stratum_share_credit_diff(const uint8_t *share_hash, uint64_t job_diff, uint64_t served_diff);
+uint64_t datum_stratum_pool_min_diff(void);
+bool datum_stratum_share_forwardable(const uint8_t *share_hash, unsigned char commit_pot);
 int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj);
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block);
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state);
