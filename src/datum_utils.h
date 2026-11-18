@@ -70,7 +70,10 @@ void hash2hex(unsigned char *bytes, char *hexString);
 void get_target_from_diff(unsigned char *result, uint64_t diff);
 uint64_t roundDownToPowerOfTwo_64(uint64_t x);
 int addr_2_output_script(const char *addr, unsigned char *script, int max_len);
-int output_script_2_addr(const unsigned char *script, const int len, char *addr);
+// hrp selects the network ("bc", "tb", "bcrt"). NULL means mainnet ("bc").
+int output_script_2_addr(const unsigned char *script, const int len, char *addr, const char *hrp);
+// If script is configured_addr, copy that string. Otherwise encode on its network.
+int output_script_2_display_addr(const unsigned char *script, const int len, char *addr, size_t addr_max, const char *configured_addr);
 int base64_decode(const char *in, size_t inLen, unsigned char *out, size_t *outLen);
 void uchar_to_hex(char *s, const unsigned char b);
 int get_bitcoin_varint_len_bytes(uint64_t n);

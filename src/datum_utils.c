@@ -418,9 +418,11 @@ int addr_2_output_script(const char *addr, unsigned char *script, int max_len) {
 	if (al < 16) return 0;
 	
 	if (((addr[0] == 'b') && (addr[1] == 'c')) || ((addr[0] == 't') && (addr[1] == 'b'))) {
-		// bitcoin mainnet and testnet BIP 0173
+		// bitcoin mainnet, testnet and regtest BIP 0173
 		if (addr[0] == 't') {
 			hrp = "tb";
+		} else if (!strncmp(addr, "bcrt1", 5)) {
+			hrp = "bcrt";
 		}
 		i = segwit_addr_decode(&witver, witprog, &witprog_len, hrp, addr);
 		if (!i) {
@@ -452,7 +454,34 @@ int addr_2_output_script(const char *addr, unsigned char *script, int max_len) {
 	return 0;
 }
 
-int output_script_2_addr(const unsigned char *script, const int len, char *addr) {
+static bool segwit_hrp_is_testnet(const char *hrp) {
+	if (!hrp) return false;
+	return !strcmp(hrp, "tb") || !strcmp(hrp, "bcrt");
+}
+
+// Script bytes do not carry a network. Infer it from the payout address so a
+// testnet witness program is not re-encoded as mainnet.
+static const char *addr_network_hrp(const char *addr) {
+	char prefix[6];
+	size_t i;
+	
+	if (!addr || !addr[0]) return "bc";
+	
+	for (i = 0; i < sizeof(prefix) - 1 && addr[i]; ++i) {
+		prefix[i] = (char)tolower((unsigned char)addr[i]);
+	}
+	prefix[i] = 0;
+	
+	if (!strncmp(prefix, "tb1", 3)) return "tb";
+	if (!strncmp(prefix, "bcrt1", 5)) return "bcrt";
+	if (!strncmp(prefix, "bc1", 3)) return "bc";
+	
+	// Testnet P2PKH (m/n) and P2SH (2). Mainnet legacy addresses stay "bc".
+	if (addr[0] == 'm' || addr[0] == 'n' || addr[0] == '2') return "tb";
+	return "bc";
+}
+
+int output_script_2_addr(const unsigned char *script, const int len, char *addr, const char *hrp) {
 	int i;
 	int version = 0;
 	int programLen;
@@ -461,6 +490,8 @@ int output_script_2_addr(const unsigned char *script, const int len, char *addr)
 	unsigned char temp[32];
 	unsigned char digest[32];
 	size_t sz;
+	
+	if (!hrp || !hrp[0]) hrp = "bc";
 	
 	if (!len) {
 		return 0;
@@ -473,11 +504,11 @@ int output_script_2_addr(const unsigned char *script, const int len, char *addr)
 	
 	if ((script[0] == 0xA9) || (script[0] == 0x76)) { // P2SH / P2PKH
 		if (script[0] == 0xA9) {
-			version = 5;
+			version = segwit_hrp_is_testnet(hrp) ? 196 : 5;
 			ptr = &script[2];
 			if (len != 23) return 0;
 		} else {
-			version = 0;
+			version = segwit_hrp_is_testnet(hrp) ? 111 : 0;
 			ptr = &script[3];
 			if (len != 25) return 0;
 		}
@@ -513,7 +544,7 @@ int output_script_2_addr(const unsigned char *script, const int len, char *addr)
 		version = (script[0] == 0x00) ? 0 : script[0] - 0x50;
 		programLen = script[1];
 		
-		if (segwit_addr_encode(addr, "bc", version, &script[2], programLen) != 1) {
+		if (segwit_addr_encode(addr, hrp, version, &script[2], programLen) != 1) {
 			i = sprintf(addr, "UNKNOWN");
 			return i;
 		}
@@ -522,6 +553,29 @@ int output_script_2_addr(const unsigned char *script, const int len, char *addr)
 	
 	i = sprintf(addr, "UNKNOWN");
 	return i;
+}
+
+int output_script_2_display_addr(const unsigned char *script, const int len, char *addr, const size_t addr_max, const char *configured_addr) {
+	unsigned char cfg_script[64];
+	int cfg_len;
+	size_t al;
+	
+	// Encode path still uses sprintf into addr. Callers pass 256; refuse a short buffer.
+	if (!addr || addr_max < 96) return 0;
+	addr[0] = 0;
+	
+	// Same locking script as the configured payout: show that string. The encoder
+	// used to hardcode HRP "bc", so a tb1 address was displayed as a different bc1.
+	if (configured_addr && configured_addr[0] && script && len > 0) {
+		cfg_len = addr_2_output_script(configured_addr, cfg_script, (int)sizeof(cfg_script));
+		al = strlen(configured_addr);
+		if (cfg_len > 0 && cfg_len == len && al + 1 <= addr_max && !memcmp(cfg_script, script, (size_t)cfg_len)) {
+			memcpy(addr, configured_addr, al + 1);
+			return (int)al;
+		}
+	}
+	
+	return output_script_2_addr(script, len, addr, addr_network_hrp(configured_addr));
 }
 
 static const unsigned char b64d[] = {
