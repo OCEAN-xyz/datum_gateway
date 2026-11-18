@@ -34,6 +34,7 @@
  */
 
 #include <assert.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -301,6 +302,7 @@ static void datum_stratum_test_pooled_job_free(T_DATUM_STRATUM_JOB *j) {
 // Captures what client_mining_submit sends to the pool, via the real POW queue.
 extern DATUM_QUEUE pow_queue;
 extern int log_level_console;
+extern atomic_int datum_protocol_client_active;
 static int datum_stratum_test_pow_handler(void *arg) { (void)arg; return 0; }
 
 static int datum_stratum_test_pow_count(bool *last_is_block) {
@@ -852,6 +854,59 @@ static void datum_stratum_repeat_quickdiff_guard_tests(void) {
 	datum_config = saved;
 }
 
+// datum.capabilities: a JSON reply with the release, the features and whether each is on, and
+// the pool minimum; no "algo" (a DATUM Gateway is SHA256 only).
+static void datum_stratum_capabilities_tests(void) {
+	const global_config_t saved = datum_config;
+	T_DATUM_CLIENT_DATA * const c = datum_stratum_test_client();
+	for (int on = 0; on <= 1; ++on) {
+		datum_config.stratum_v1_vardiff_below_pool_min = on;
+		datum_test(client_datum_capabilities(c, 9) == 0);
+		json_error_t err;
+		json_t * const reply = json_loads(datum_stratum_test_take(c), JSON_DISABLE_EOF_CHECK, &err);
+		json_t * const result = reply ? json_object_get(reply, "result") : NULL;
+		json_t * const feats = result ? json_object_get(result, "features") : NULL;
+		const char * const gw = result ? json_string_value(json_object_get(result, "gateway")) : NULL;
+		datum_test(reply && json_integer_value(json_object_get(reply, "id")) == 9);
+		datum_test(reply && json_is_null(json_object_get(reply, "error")));
+		datum_test(gw && !strcmp(gw, DATUM_PROTOCOL_VERSION));
+		datum_test(result && !json_object_get(result, "algo"));
+		datum_test(feats && json_is_boolean(json_object_get(feats, "vardiff_below_pool_min")));
+		datum_test(feats && json_boolean_value(json_object_get(feats, "vardiff_below_pool_min")) == on);
+		datum_test(feats && json_is_true(json_object_get(feats, "reject_tls_probe")));
+		datum_test(result && json_is_boolean(json_object_get(result, "pooled")));
+		datum_test(result && json_is_integer(json_object_get(result, "pool_min_diff")));
+		json_decref(reply);
+	}
+	
+	// Mining pooled: "pooled" is true and the pool's minimum is reported, rounded as applied.
+	datum_protocol_client_active = 3;
+	datum_config.override_vardiff_min = 3 * (UINT64_C(1) << 18);
+	datum_test(client_datum_capabilities(c, 10) == 0);
+	{
+		json_error_t err;
+		json_t * const reply = json_loads(datum_stratum_test_take(c), JSON_DISABLE_EOF_CHECK, &err);
+		json_t * const result = reply ? json_object_get(reply, "result") : NULL;
+		datum_test(result && json_is_true(json_object_get(result, "pooled")));
+		datum_test(result && json_integer_value(json_object_get(result, "pool_min_diff")) == (1 << 20));
+		json_decref(reply);
+	}
+	datum_protocol_client_active = 0;
+	
+	// Through the stratum command dispatch, with no subscribe or authorize.
+	char line[] = "{\"id\":5,\"method\":\"datum.capabilities\",\"params\":[]}";
+	datum_test(datum_stratum_v1_socket_thread_client_cmd(c, line) == 0);
+	{
+		json_error_t err;
+		json_t * const reply = json_loads(datum_stratum_test_take(c), JSON_DISABLE_EOF_CHECK, &err);
+		datum_test(reply && json_integer_value(json_object_get(reply, "id")) == 5);
+		datum_test(reply && json_object_get(json_object_get(reply, "result"), "features") != NULL);
+		json_decref(reply);
+	}
+	datum_stratum_test_client_free(c);
+	datum_config = saved;
+}
+
 void datum_stratum_tests(void) {
 	datum_stratum_mod_username_tests();
 	datum_stratum_share_credit_tests();
@@ -864,4 +919,5 @@ void datum_stratum_tests(void) {
 	datum_stratum_quickdiff_above_min_tests();
 	datum_stratum_repeat_quickdiff_tests();
 	datum_stratum_repeat_quickdiff_guard_tests();
+	datum_stratum_capabilities_tests();
 }

@@ -283,6 +283,7 @@ void datum_stratum_count_vardiff_share(T_DATUM_MINER_DATA *m, uint64_t credit_di
 uint64_t datum_stratum_share_credit_diff(const uint8_t *share_hash, uint64_t job_diff, uint64_t served_diff);
 uint64_t datum_stratum_pool_min_diff(void);
 bool datum_stratum_share_forwardable(const uint8_t *share_hash, unsigned char commit_pot);
+int client_datum_capabilities(T_DATUM_CLIENT_DATA *c, uint64_t id);
 int client_mining_submit(T_DATUM_CLIENT_DATA *c, uint64_t id, json_t *params_obj);
 int send_mining_notify(T_DATUM_CLIENT_DATA *c, bool clean, bool quickdiff, bool new_block);
 void update_stratum_job(T_DATUM_TEMPLATE_DATA *block_template, bool new_block, int job_state);
