@@ -101,6 +101,23 @@ static size_t upload_data_cb(void *ptr, size_t size, size_t nmemb, void *user_da
 	return len;
 }
 
+// curl rewinds the request to send it again, as when a kept-alive connection
+// turns out to have been closed by the node.  Without this the request fails
+// with "necessary data rewind was not possible", and libcurl 8.14 then fails
+// every later request on the same handle the same way.
+static int upload_seek_cb(void *user_data, curl_off_t offset, int origin) {
+	struct upload_buffer *ub = user_data;
+	
+	if ((origin != SEEK_SET) || (offset < 0) || ((size_t)offset > ub->total)) {
+		return CURL_SEEKFUNC_CANTSEEK;
+	}
+	
+	ub->buf = &((const char *)ub->start)[offset];
+	ub->len = ub->total - (size_t)offset;
+	
+	return CURL_SEEKFUNC_OK;
+}
+
 char *basic_http_call(CURL *curl, const char *url) {
 	CURLcode rc;
 	struct data_buffer all_data = { };
@@ -157,6 +174,8 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &all_data);
 	curl_easy_setopt(curl, CURLOPT_READFUNCTION, upload_data_cb);
 	curl_easy_setopt(curl, CURLOPT_READDATA, &upload_data);
+	curl_easy_setopt(curl, CURLOPT_SEEKFUNCTION, upload_seek_cb);
+	curl_easy_setopt(curl, CURLOPT_SEEKDATA, &upload_data);
 	curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curl_err_str);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L); // quick timeout!
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L); // quick timeout!
@@ -171,6 +190,8 @@ json_t *json_rpc_call_full(CURL *curl, const char *url, const char *userpass, co
 	
 	upload_data.buf = rpc_req;
 	upload_data.len = strlen(rpc_req);
+	upload_data.start = upload_data.buf;
+	upload_data.total = upload_data.len;
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)upload_data.len);
 	
 	headers = curl_slist_append(headers, "Content-type: application/json");
