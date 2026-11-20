@@ -1619,18 +1619,30 @@ void datum_api_dash_stats(T_DATUM_API_DASH_VARS *dashdata) {
 
 int datum_api_homepage(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
-	char output[DATUM_API_HOMEPAGE_MAX_SIZE];
+	char *output;
+	size_t sz;
 	T_DATUM_API_DASH_VARS vardata;
+	
+	// musl's default pthread stack is ~128 KiB. This buffer is 128000 bytes, so a
+	// stack allocation overflows the libmicrohttpd worker on Alpine (SIGSEGV).
+	output = malloc(DATUM_API_HOMEPAGE_MAX_SIZE);
+	if (!output) {
+		return MHD_NO;
+	}
 	
 	memset(&vardata, 0, sizeof(T_DATUM_API_DASH_VARS));
 	
 	datum_api_dash_stats(&vardata);
 	
 	output[0] = 0;
-	datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, datum_api_fill_var, &vardata);
+	sz = datum_api_fill_vars(www_home_html, output, DATUM_API_HOMEPAGE_MAX_SIZE, datum_api_fill_var, &vardata);
 	
 	// return the home page with some data and such
-	response = MHD_create_response_from_buffer (strlen(output), (void *) output, MHD_RESPMEM_MUST_COPY);
+	response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
+	if (!response) {
+		free(output);
+		return MHD_NO;
+	}
 	MHD_add_response_header(response, "Content-Type", "text/html");
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
