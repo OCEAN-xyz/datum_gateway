@@ -66,8 +66,8 @@ void datum_stratum_dupes_init(void *sdata_v) {
 	// bound and not a lower one, and this is the product of three configured values. A zero
 	// or a negative sizes the table at nothing, and nothing is not a table that merely
 	// overflows quickly: the expand grows it by 25%, 25% of zero is zero, and the gateway
-	// takes a share it then has nowhere to put. Sixteen is also the point below which the
-	// same rounding stops the table growing at all.
+	// takes a share it then has nowhere to put. The same rounding stops the table growing
+	// at all below 4 (125% of 3 rounds down to 3), which the floor also keeps clear of.
 	int max_items = datum_config.stratum_v1_max_clients_per_thread * datum_config.stratum_v1_vardiff_target_shares_min * (datum_config.stratum_v1_share_stale_seconds/60) * 16;
 	if (max_items < 16) max_items = 16;
 
