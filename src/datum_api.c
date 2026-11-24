@@ -862,7 +862,7 @@ struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 		if (conns) {
 			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD><TD><button ", j, conns, subs, thr);
 			if (have_admin) {
-				sz += snprintf(&output[sz], max_sz-1-sz, "name='empty_thread' value='%d' onclick=\"sendPostRequest('/cmd', {cmd:'empty_thread',tid:%d}); return false;\"", j, j);
+				sz += snprintf(&output[sz], max_sz-1-sz, "name='empty_thread' value='%d'", j);
 			} else {
 				sz += snprintf(&output[sz], max_sz-1-sz, "disabled");
 			}
@@ -871,9 +871,7 @@ struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE>");
 	if (have_admin) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "</form><script>");
-		sz += snprintf(&output[sz], max_sz-1-sz, www_assets_post_js, datum_config.api_csrf_token);
-		sz += snprintf(&output[sz], max_sz-1-sz, "</script>");
+		sz += snprintf(&output[sz], max_sz-1-sz, "</form>");
 	}
 	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
 	
@@ -989,14 +987,13 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
 				}
 				
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu' onclick=\"sendPostRequest('/cmd', {cmd:'kill_client',tid:%d,cid:%d,t:%lu,id:%lu}); return false;\">Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id, j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu'>Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
 			}
 		}
 	}
 	
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p><script>", thr);
-	sz = datum_buf_append_snprintf(output, max_sz, sz, www_assets_post_js, datum_config.api_csrf_token);
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "</script>%s", www_foot_html);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p>", thr);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
