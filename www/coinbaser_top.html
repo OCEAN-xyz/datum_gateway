@@ -1,44 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<title>DATUM Gateway Status</title>
-	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
-	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<style>
-		.table-wrapper {
-			justify-content: center;
-		}
-		
-		.table-container {
-			max-width: 800px;
-		}
-		
-		table {
-			border-collapse: collapse;
-		}
-		
-		td {
-			word-break: break-all;
-		}
-	</style>
+	<title>DATUM Gateway · Coinbaser</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" href="/assets/style.css?v=2">
 </head>
 <body>
-	<div class="container">
-		<div class="header">
-			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
-		</div>
-		<div class="menu-container">
-			<a href="/">Status</a>
-			<a href="/config">Config</a>
-			<a href="/clients">Clients</a>
-			<a href="/threads">Threads</a>
-			<a href="/coinbaser" style="background-color: darkslategrey;">Coinbaser</a>
+<header class="topbar">
+	<div class="wrap topbar-in">
+		<div class="topbar-left">
+			<a class="brand" href="/"><img src="/assets/icons/datum_logo.svg?v=2" alt="" width="20" height="20"><span>DATUM Gateway</span></a>
+			<nav aria-label="Gateway sections">
+				<a href="/">Status</a>
+				<a href="/config">Config</a>
+				<a href="/clients">Clients</a>
+				<a href="/threads">Threads</a>
+				<a href="/coinbaser" aria-current="page">Coinbaser</a>
+			</nav>
 		</div>
 	</div>
-	
-	<div class="tables-container">
-		<div class="table-wrapper">
-			<div class="table-container">
-				<h2>Current Coinbaser</h2>
+</header>
+
+<main class="wrap page">
+	<div class="page-head">
+		<div>
+			<h1>Coinbaser</h1>
+			<p class="lede">Where the reward goes if your miners find the current block. Outputs come from the pool.</p>
+		</div>
+	</div>

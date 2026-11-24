@@ -80,6 +80,16 @@ static struct MHD_Response *datum_api_create_empty_mhd_response() {
 	return MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
 }
 
+// Every page is plain HTML with one stylesheet: no scripts, no inline styles,
+// nothing from other origins.
+static void http_resp_html(struct MHD_Response * const response) {
+	MHD_add_response_header(response, "Content-Type", "text/html; charset=utf-8");
+	MHD_add_response_header(response, "Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+}
+
+// Shown above the client and thread tables
+#define DATUM_API_LOCK_SVG "<svg aria-hidden='true' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.75' stroke-linecap='square'><rect x='5' y='11' width='14' height='10'/><path d='M8 11V7a4 4 0 0 1 8 0v4'/></svg>"
+
 static void html_leading_zeros(char * const buffer, const size_t buffer_size, const char * const numstr) {
 	int zeros = 0;
 	while (numstr[zeros] == '0') {
@@ -87,38 +97,61 @@ static void html_leading_zeros(char * const buffer, const size_t buffer_size, co
 	}
 	if (zeros) {
 		snprintf(buffer, buffer_size, "<span class='leading_zeros'>%.*s</span>%s", zeros, numstr, &numstr[zeros]);
+	} else {
+		snprintf(buffer, buffer_size, "%s", numstr);
 	}
 }
 
 void datum_api_var_DATUM_SHARES_ACCEPTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_accepted_share_count, (unsigned long long)datum_accepted_share_diff);
+	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_accepted_share_count);
+}
+void datum_api_var_DATUM_SHARES_ACCEPTED_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_accepted_share_diff);
 }
 void datum_api_var_DATUM_SHARES_REJECTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu  (%llu diff)", (unsigned long long)datum_rejected_share_count, (unsigned long long)datum_rejected_share_diff);
+	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_rejected_share_count);
+}
+void datum_api_var_DATUM_SHARES_REJECTED_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_rejected_share_diff);
+}
+
+// The decentralized client's state: a status class (ok, warn, err, idle) for
+// the coloured dot, a short label for the page header, and the full text.
+static void datum_api_connection_state(const T_DATUM_API_DASH_VARS * const vardata, const char ** const cls, const char ** const label, const char ** const text, const char ** const detail) {
+	const char * const bt_err = datum_blocktemplates_error;
+	*detail = "";
+	if (bt_err) {
+		*cls = "err";
+		*label = "Template error";
+		*text = "ERROR: ";
+		*detail = bt_err;
+	} else if (!vardata->sjob) {
+		*cls = "idle";
+		*label = "Initialising";
+		*text = "Initialising...";
+	} else if (datum_protocol_is_active()) {
+		*cls = "ok";
+		*label = "Pool connected";
+		*text = "Connected and Ready";
+	} else if (datum_config.datum_pooled_mining_only && datum_config.datum_pool_host[0]) {
+		*cls = "err";
+		*label = "Pool not ready";
+		*text = "Not Ready";
+	} else {
+		*cls = datum_config.datum_pool_host[0] ? "warn" : "ok";
+		*label = "Non-pooled mode";
+		*text = "Non-Pooled Mode";
+	}
 }
 void datum_api_var_DATUM_CONNECTION_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	const char *colour = "lime";
-	const char *s, *s2 = "";
-	const char * const bt_err = datum_blocktemplates_error;
-	if (bt_err) {
-		colour = "red";
-		s = "ERROR: ";
-		s2 = bt_err;
-	} else if (!vardata->sjob) {
-		colour = "silver";
-		s = "Initialising...";
-	} else if (datum_protocol_is_active()) {
-		s = "Connected and Ready";
-	} else if (datum_config.datum_pooled_mining_only && datum_config.datum_pool_host[0]) {
-		colour = "red";
-		s = "Not Ready";
-	} else {
-		if (datum_config.datum_pool_host[0]) {
-			colour = "yellow";
-		}
-		s = "Non-Pooled Mode";
-	}
-	snprintf(buffer, buffer_size, "<svg viewBox='0 0 100 100' role='img' style='width:1em;height:1em'><circle cx='50' cy='60' r='35' style='fill:%s' /></svg> %s%s", colour, s, s2);
+	const char *cls, *label, *text, *detail;
+	datum_api_connection_state(vardata, &cls, &label, &text, &detail);
+	snprintf(buffer, buffer_size, "<span class='status status-%s'>%s%.160s</span>", cls, text, detail);
+}
+void datum_api_var_DATUM_CONNECTION_PILL(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const char *cls, *label, *text, *detail;
+	datum_api_connection_state(vardata, &cls, &label, &text, &detail);
+	snprintf(buffer, buffer_size, "<span class='pill status-%s'>%s</span>", cls, label);
 }
 void datum_api_var_DATUM_POOL_HOST(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	if (datum_config.datum_pool_host[0]) {
@@ -157,7 +190,14 @@ void datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS(char *buffer, size_t buffer_size,
 	snprintf(buffer, buffer_size, "%d", vardata->STRATUM_TOTAL_SUBSCRIPTIONS);
 }
 void datum_api_var_STRATUM_HASHRATE_ESTIMATE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%.2f Th/sec", vardata->STRATUM_HASHRATE_ESTIMATE);
+	snprintf(buffer, buffer_size, "%.2f Th/s", vardata->STRATUM_HASHRATE_ESTIMATE);
+}
+void datum_api_var_STRATUM_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	if (vardata->STRATUM_TOTAL_CONNECTIONS > 0) {
+		snprintf(buffer, buffer_size, "<span class='status status-ok'>Serving :%d</span>", datum_config.stratum_v1_listen_port);
+	} else {
+		snprintf(buffer, buffer_size, "<span class='status status-idle'>Idle :%d</span>", datum_config.stratum_v1_listen_port);
+	}
 }
 void datum_api_var_DATUM_PROCESS_UPTIME(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	uint64_t uptime_seconds = get_process_uptime_seconds();
@@ -165,18 +205,15 @@ void datum_api_var_DATUM_PROCESS_UPTIME(char *buffer, size_t buffer_size, const 
 	unsigned int hours = (uptime_seconds % (24 * 3600)) / 3600;
 	unsigned int minutes = (uptime_seconds % 3600) / 60;
 	unsigned int seconds = uptime_seconds % 60;
-	
+
 	if (days > 0) {
-		snprintf(buffer, buffer_size, "%"PRIu64" days, %u hours, %u minutes, %u seconds",
-			days, hours, minutes, seconds);
+		snprintf(buffer, buffer_size, "%"PRIu64"d %uh %um %us", days, hours, minutes, seconds);
 	} else if (hours > 0) {
-		snprintf(buffer, buffer_size, "%u hours, %u minutes, %u seconds",
-			hours, minutes, seconds);
+		snprintf(buffer, buffer_size, "%uh %um %us", hours, minutes, seconds);
 	} else if (minutes > 0) {
-		snprintf(buffer, buffer_size, "%u minutes, %u seconds",
-			minutes, seconds);
+		snprintf(buffer, buffer_size, "%um %us", minutes, seconds);
 	} else {
-		snprintf(buffer, buffer_size, "%u seconds", seconds);
+		snprintf(buffer, buffer_size, "%us", seconds);
 	}
 }
 void datum_api_var_STRATUM_JOB_INFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
@@ -210,17 +247,35 @@ void datum_api_var_STRATUM_JOB_BITS(char *buffer, size_t buffer_size, const T_DA
 void datum_api_var_STRATUM_JOB_TIMEINFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "Current: %llu / Min: %llu", (unsigned long long)vardata->sjob->block_template->curtime, (unsigned long long)vardata->sjob->block_template->mintime);
 }
-void datum_api_var_STRATUM_JOB_LIMITINFO(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "Size: %lu, Weight: %lu, SigOps: %lu", (unsigned long)vardata->sjob->block_template->sizelimit, (unsigned long)vardata->sjob->block_template->weightlimit, (unsigned long)vardata->sjob->block_template->sigoplimit);
+static void datum_api_percent(char * const buffer, const size_t buffer_size, const uint64_t used, const uint64_t limit) {
+	snprintf(buffer, buffer_size, "%.2f%%", limit ? (100.0 * (double)used / (double)limit) : 0.0);
 }
 void datum_api_var_STRATUM_JOB_SIZE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_size);
 }
+void datum_api_var_STRATUM_JOB_SIZE_LIMIT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->sizelimit);
+}
+void datum_api_var_STRATUM_JOB_SIZE_PCT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	datum_api_percent(buffer, buffer_size, vardata->sjob->block_template->txn_total_size, vardata->sjob->block_template->sizelimit);
+}
 void datum_api_var_STRATUM_JOB_WEIGHT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_weight);
 }
+void datum_api_var_STRATUM_JOB_WEIGHT_LIMIT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->weightlimit);
+}
+void datum_api_var_STRATUM_JOB_WEIGHT_PCT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	datum_api_percent(buffer, buffer_size, vardata->sjob->block_template->txn_total_weight, vardata->sjob->block_template->weightlimit);
+}
 void datum_api_var_STRATUM_JOB_SIGOPS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->txn_total_sigops);
+}
+void datum_api_var_STRATUM_JOB_SIGOPS_LIMIT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	snprintf(buffer, buffer_size, "%lu", (unsigned long)vardata->sjob->block_template->sigoplimit);
+}
+void datum_api_var_STRATUM_JOB_SIGOPS_PCT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	datum_api_percent(buffer, buffer_size, vardata->sjob->block_template->txn_total_sigops, vardata->sjob->block_template->sigoplimit);
 }
 void datum_api_var_STRATUM_JOB_TXNCOUNT(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%u", (unsigned)vardata->sjob->block_template->txn_count);
@@ -232,8 +287,11 @@ void datum_api_var_DATUM_GATEWAY_VERSION(char *buffer, size_t buffer_size, const
 
 DATUM_API_VarEntry var_entries[] = {
 	{"DATUM_SHARES_ACCEPTED", datum_api_var_DATUM_SHARES_ACCEPTED},
+	{"DATUM_SHARES_ACCEPTED_DIFF", datum_api_var_DATUM_SHARES_ACCEPTED_DIFF},
 	{"DATUM_SHARES_REJECTED", datum_api_var_DATUM_SHARES_REJECTED},
+	{"DATUM_SHARES_REJECTED_DIFF", datum_api_var_DATUM_SHARES_REJECTED_DIFF},
 	{"DATUM_CONNECTION_STATUS", datum_api_var_DATUM_CONNECTION_STATUS},
+	{"DATUM_CONNECTION_PILL", datum_api_var_DATUM_CONNECTION_PILL},
 	{"DATUM_POOL_HOST", datum_api_var_DATUM_POOL_HOST},
 	{"DATUM_POOL_TAG", datum_api_var_DATUM_POOL_TAG},
 	{"DATUM_MINER_TAG", datum_api_var_DATUM_MINER_TAG},
@@ -245,7 +303,8 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_TOTAL_CONNECTIONS", datum_api_var_STRATUM_TOTAL_CONNECTIONS},
 	{"STRATUM_TOTAL_SUBSCRIPTIONS", datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS},
 	{"STRATUM_HASHRATE_ESTIMATE", datum_api_var_STRATUM_HASHRATE_ESTIMATE},
-	
+	{"STRATUM_STATUS", datum_api_var_STRATUM_STATUS},
+
 	{"STRATUM_JOB_INFO", datum_api_var_STRATUM_JOB_INFO},
 	{"STRATUM_JOB_BLOCK_HEIGHT", datum_api_var_STRATUM_JOB_BLOCK_HEIGHT},
 	{"STRATUM_JOB_BLOCK_VALUE", datum_api_var_STRATUM_JOB_BLOCK_VALUE},
@@ -256,10 +315,15 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_JOB_VERSION", datum_api_var_STRATUM_JOB_VERSION},
 	{"STRATUM_JOB_BITS", datum_api_var_STRATUM_JOB_BITS},
 	{"STRATUM_JOB_TIMEINFO", datum_api_var_STRATUM_JOB_TIMEINFO},
-	{"STRATUM_JOB_LIMITINFO", datum_api_var_STRATUM_JOB_LIMITINFO},
 	{"STRATUM_JOB_SIZE", datum_api_var_STRATUM_JOB_SIZE},
+	{"STRATUM_JOB_SIZE_LIMIT", datum_api_var_STRATUM_JOB_SIZE_LIMIT},
+	{"STRATUM_JOB_SIZE_PCT", datum_api_var_STRATUM_JOB_SIZE_PCT},
 	{"STRATUM_JOB_WEIGHT", datum_api_var_STRATUM_JOB_WEIGHT},
+	{"STRATUM_JOB_WEIGHT_LIMIT", datum_api_var_STRATUM_JOB_WEIGHT_LIMIT},
+	{"STRATUM_JOB_WEIGHT_PCT", datum_api_var_STRATUM_JOB_WEIGHT_PCT},
 	{"STRATUM_JOB_SIGOPS", datum_api_var_STRATUM_JOB_SIGOPS},
+	{"STRATUM_JOB_SIGOPS_LIMIT", datum_api_var_STRATUM_JOB_SIGOPS_LIMIT},
+	{"STRATUM_JOB_SIGOPS_PCT", datum_api_var_STRATUM_JOB_SIGOPS_PCT},
 	{"STRATUM_JOB_TXNCOUNT", datum_api_var_STRATUM_JOB_TXNCOUNT},
 	
 	{"DATUM_GATEWAY_VERSION", datum_api_var_DATUM_GATEWAY_VERSION},
@@ -557,7 +621,7 @@ static struct MHD_Response *datum_api_create_response_authfail(const char * cons
 	sz += www_foot_html_sz;
 	
 	struct MHD_Response * const response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return response;
 }
 
@@ -586,7 +650,7 @@ static struct MHD_Response *datum_api_create_response_authfail_config() {
 	const size_t sz = datum_api_fill_vars(www_config_errors_html, output, max_sz, datum_api_fill_authfail_error, NULL);
 	
 	struct MHD_Response * const response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return response;
 }
 
@@ -599,6 +663,7 @@ static int datum_api_asset(struct MHD_Connection * const connection, const char 
 	if (if_none_match_header && 0 == strcmp(if_none_match_header, etag)) {
 		struct MHD_Response *response = datum_api_create_empty_mhd_response();
 		MHD_add_response_header(response, "Etag", etag);
+		MHD_add_response_header(response, "Cache-Control", "no-cache");
 		int ret = MHD_queue_response(connection, MHD_HTTP_NOT_MODIFIED, response);
 		MHD_destroy_response(response);
 		return ret;
@@ -606,6 +671,9 @@ static int datum_api_asset(struct MHD_Connection * const connection, const char 
 	struct MHD_Response * const response = MHD_create_response_from_buffer(datasz, (void*)data, MHD_RESPMEM_PERSISTENT);
 	MHD_add_response_header(response, "Content-Type", mimetype);
 	MHD_add_response_header(response, "Etag", etag);
+	// Revalidate with the Etag on every use, so a cache (a browser, a CDN in
+	// front of the gateway) never pairs new pages with an old stylesheet
+	MHD_add_response_header(response, "Cache-Control", "no-cache");
 	const int ret = MHD_queue_response (connection, MHD_HTTP_OK, response);
 	MHD_destroy_response (response);
 	return ret;
@@ -770,7 +838,8 @@ int datum_api_cmd(struct MHD_Connection *connection, char *post, int len) {
 int datum_api_coinbaser(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	T_DATUM_STRATUM_JOB *sjob;
-	int j, i, max_sz = 0, sz = 0;
+	int j, i;
+	size_t max_sz = 0, sz = 0;
 	char tempaddr[256];
 	uint64_t tv = 0;
 	char *output = NULL;
@@ -780,103 +849,136 @@ int datum_api_coinbaser(struct MHD_Connection *connection) {
 	sjob = (j >= 0 && j < MAX_STRATUM_JOBS) ? global_cur_stratum_jobs[j] : NULL;
 	pthread_rwlock_unlock(&stratum_global_job_ptr_lock);
 	
-	max_sz = www_coinbaser_top_html_sz + www_foot_html_sz + (sjob ? (sjob->available_coinbase_outputs_count * 512) : 0) + 2048; // approximate max size of each row
+	max_sz = www_coinbaser_top_html_sz + www_foot_html_sz + (sjob ? (sjob->available_coinbase_outputs_count * 512) : 0) + 4096; // approximate max size of each row
 	output = calloc(max_sz+16,1);
 	if (!output) {
 		return MHD_NO;
 	}
-	
-	sz = snprintf(output, max_sz-1-sz, "%s", www_coinbaser_top_html);
-	sz += snprintf(&output[sz], max_sz-1-sz, "<TABLE><TR><TD><U>Value</U></TD>  <TD><U>Address</U></TD></TR>");
-	
+
+	sz = datum_buf_append_snprintf(output, max_sz, 0, "%s", www_coinbaser_top_html);
+
 	if (sjob) {
+		int outputs = sjob->available_coinbase_outputs_count;
 		for(i=0;i<sjob->available_coinbase_outputs_count;i++) {
-			output_script_2_addr(sjob->available_coinbase_outputs[i].output_script, sjob->available_coinbase_outputs[i].output_script_len, tempaddr);
-			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%.8f BTC</TD><TD>%s</TD></TR>", (double)sjob->available_coinbase_outputs[i].value_sats / (double)100000000.0, tempaddr);
 			tv += sjob->available_coinbase_outputs[i].value_sats;
 		}
-		
-		if (tv < sjob->coinbase_value) {
-			output_script_2_addr(sjob->pool_addr_script, sjob->pool_addr_script_len, tempaddr);
-			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%.8f BTC</TD><TD>%s</TD></TR>", (double)(sjob->coinbase_value - tv) / (double)100000000.0, tempaddr);
+		const uint64_t remainder = (tv < sjob->coinbase_value) ? (sjob->coinbase_value - tv) : 0;
+		if (remainder) ++outputs;
+		const uint64_t total = tv + remainder;
+
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<section class='tiles' aria-label='Totals'><div class='tile'><span class='cap'>Block value</span><span class='big'>%.8f BTC</span></div><div class='tile'><span class='cap'>Outputs</span><span class='big'>%d</span></div><div class='tile'><span class='cap'>Job</span><span class='big'>%s</span></div></section>", (double)sjob->coinbase_value / (double)100000000.0, outputs, sjob->job_id);
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<div class='table-scroll'><table class='data'><thead><tr><th scope='col' class='num'>#</th><th scope='col'>Address</th><th scope='col' class='num'>Value</th><th scope='col'>Share</th></tr></thead><tbody>");
+
+		for(i=0;i<outputs;i++) {
+			uint64_t value_sats;
+			if (i < sjob->available_coinbase_outputs_count) {
+				output_script_2_addr(sjob->available_coinbase_outputs[i].output_script, sjob->available_coinbase_outputs[i].output_script_len, tempaddr);
+				value_sats = sjob->available_coinbase_outputs[i].value_sats;
+			} else {
+				output_script_2_addr(sjob->pool_addr_script, sjob->pool_addr_script_len, tempaddr);
+				value_sats = remainder;
+			}
+			sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td class='num'>%d</td><td>%s</td><td class='num strong'>%.8f BTC</td><td><div class='share'><progress max='%"PRIu64"' value='%"PRIu64"'></progress><span>%.2f%%</span></div></td></tr>", i, tempaddr, (double)value_sats / (double)100000000.0, total, value_sats, total ? (100.0 * (double)value_sats / (double)total) : 0.0);
 		}
+		if (!outputs) {
+			sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td colspan='4' class='empty'>No coinbase outputs in the current job</td></tr>");
+		}
+
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "</tbody><tfoot><tr><td></td><th scope='row'>Total</th><td class='num'>%.8f BTC</td><td>100.00%%</td></tr></tfoot></table></div>", (double)total / (double)100000000.0);
+	} else {
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='notice'>No Stratum job yet. The coinbase outputs show up once the gateway has its first block template.</p>");
 	}
-	
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE>");
-	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
-	
+
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
+
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
 static
 struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	struct MHD_Response *response;
-	int sz=0, max_sz = 0, j, ii;
+	size_t sz = 0, max_sz = 0;
+	int j, ii;
 	char *output = NULL;
 	T_DATUM_MINER_DATA *m = NULL;
 	uint64_t tsms;
 	double hr;
 	unsigned char astat;
-	double thr = 0.0;
-	int subs,conns;
-	
+	struct { int conns, subs; double thr; } *rows = NULL;
+	int total_threads = 0, total_conns = 0;
+	double total_thr = 0.0;
+
 	const int max_threads = global_stratum_app ? global_stratum_app->max_threads : 0;
-	
-	max_sz = www_threads_top_html_sz + www_foot_html_sz + (max_threads * 512) + 2048; // approximate max size of each row
+
+	max_sz = www_threads_top_html_sz + www_foot_html_sz + ((size_t)max_threads * 512) + 4096; // approximate max size of each row
 	output = calloc(max_sz+16,1);
-	if (!output) {
+	rows = calloc(max_threads ? max_threads : 1, sizeof(*rows));
+	if (!(output && rows)) {
+		free(output);
+		free(rows);
 		return datum_api_create_empty_mhd_response();
 	}
-	
+
 	tsms = current_time_millis();
-	
-	sz = snprintf(output, max_sz-1-sz, "%s", www_threads_top_html);
-	if (have_admin) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' />", datum_config.api_csrf_token);
-	}
-	sz += snprintf(&output[sz], max_sz-1-sz, "<TABLE><TR><TD><U>TID</U></TD>  <TD><U>Connection Count</U></TD>  <TD><U>Sub Count</U></TD> <TD><U>Approx. Hashrate</U></TD> <TD><U>Command</U></TD></TR>");
+
+	// Totals first, for each thread's share of the hashrate
 	for (j = 0; j < max_threads; ++j) {
-		thr = 0.0;
-		subs = 0;
-		conns = 0;
-		
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
 			if (global_stratum_app->datum_threads[j].client_data[ii].fd > 0) {
-				conns++;
+				rows[j].conns++;
 				m = (T_DATUM_MINER_DATA *)global_stratum_app->datum_threads[j].client_data[ii].app_client_data;
 				if (m->subscribed) {
-					subs++;
+					rows[j].subs++;
 					astat = m->stats.active_index?0:1; // inverted
 					hr = 0.0;
 					if ((m->stats.last_swap_ms > 0) && (m->stats.diff_accepted[astat] > 0)) {
 						hr = ((double)m->stats.diff_accepted[astat] / (double)((double)m->stats.last_swap_ms/1000.0)) * 0.004294967296; // Th/sec based on shares/sec
 					}
 					if (((double)(tsms - m->stats.last_swap_tsms)/1000.0) < 180.0) {
-						thr += hr;
+						rows[j].thr += hr;
 					}
 				}
 			}
 		}
-		if (conns) {
-			sz += snprintf(&output[sz], max_sz-1-sz, "<TR><TD>%d</TD>  <TD>%d</TD>  <TD>%d</TD> <TD>%.2f Th/s</TD><TD><button ", j, conns, subs, thr);
-			if (have_admin) {
-				sz += snprintf(&output[sz], max_sz-1-sz, "name='empty_thread' value='%d'", j);
-			} else {
-				sz += snprintf(&output[sz], max_sz-1-sz, "disabled");
-			}
-			sz += snprintf(&output[sz], max_sz-1-sz, ">Disconnect All</button></TD></TR>");
+		if (rows[j].conns) {
+			++total_threads;
+			total_conns += rows[j].conns;
+			total_thr += rows[j].thr;
 		}
 	}
-	sz += snprintf(&output[sz], max_sz-1-sz, "</TABLE>");
+
+	sz = datum_buf_append_snprintf(output, max_sz, 0, "%s", www_threads_top_html);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='notice'>" DATUM_API_LOCK_SVG "<span>%s</span></p>", have_admin ? "Disconnect all drops every client on that thread. Miners usually reconnect on their own." : "Read-only. Disconnecting a thread's clients needs the admin password.");
 	if (have_admin) {
-		sz += snprintf(&output[sz], max_sz-1-sz, "</form>");
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s'>", datum_config.api_csrf_token);
 	}
-	sz += snprintf(&output[sz], max_sz-1-sz, "%s", www_foot_html);
-	
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<div class='table-scroll'><table class='data'><thead><tr><th scope='col'>Thread</th><th scope='col' class='num'>Connections</th><th scope='col' class='num'>Subscriptions</th><th scope='col' class='num'>Est. hashrate</th><th scope='col'>Share of total</th><th scope='col'><span class='dim'>Action</span></th></tr></thead><tbody>");
+	for (j = 0; j < max_threads; ++j) {
+		if (!rows[j].conns) continue;
+		const double share = (total_thr > 0.0) ? (rows[j].thr / total_thr) : 0.0;
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td class='id'>%d</td><td class='num'>%d</td><td class='num'>%d</td><td class='num strong'>%.2f Th/s</td><td><div class='share'><progress max='1000' value='%d'></progress><span>%.2f%%</span></div></td><td class='act'>", j, rows[j].conns, rows[j].subs, rows[j].thr, (int)(share * 1000.0 + 0.5), share * 100.0);
+		if (have_admin) {
+			sz = datum_buf_append_snprintf(output, max_sz, sz, "<button class='btn-kick' type='submit' name='empty_thread' value='%d' aria-label='Disconnect all clients on thread %d'>Disconnect all</button>", j, j);
+		} else {
+			sz = datum_buf_append_snprintf(output, max_sz, sz, "<button class='btn-kick' type='button' disabled>Disconnect all</button>");
+		}
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "</td></tr>");
+	}
+	if (!total_threads) {
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td colspan='6' class='empty'>No thread has a connected client</td></tr>");
+	}
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</tbody></table></div>");
+	if (have_admin) {
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "</form>");
+	}
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='summary'><span>%d active threads · %d connections · %.2f Th/s combined</span><span>Hashrate estimated from accepted shares</span></p>", total_threads, total_conns, total_thr);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
+	free(rows);
+
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return response;
 }
 
@@ -906,6 +1008,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	double hr;
 	unsigned char astat;
 	double thr = 0.0;
+	int shown = 0;
 	
 	// Auth before sizing/allocating - unauthenticated callers must not force large calloc.
 	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_clients)) {
@@ -919,7 +1022,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	}
 	
 	// Worst-case escaped row ~1146 (user) + ~508 (ua) + cells; 3072 B/row + slack.
-	max_sz = www_clients_top_html_sz + www_foot_html_sz + ((size_t)connected_clients * 3072) + 4096;
+	max_sz = www_clients_top_html_sz + www_foot_html_sz + ((size_t)connected_clients * 3072) + 8192;
 	output = calloc(max_sz + 16, 1);
 	if (!output) {
 		return MHD_NO;
@@ -928,37 +1031,38 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	tsms = current_time_millis();
 	
 	sz = datum_buf_append_snprintf(output, max_sz, 0, "%s", www_clients_top_html);
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s' /><TABLE><TR><TD><U>TID/CID</U></TD>  <TD><U>RemHost</U></TD>  <TD><U>Auth Username</U></TD> <TD><U>Subbed</U></TD> <TD><U>Last Accepted</U></TD> <TD><U>VDiff</U></TD> <TD><U>DiffA (A)</U></TD> <TD><U>DiffR (R)</U></TD> <TD><U>Hashrate (age)</U></TD> <TD><U>Coinbase</U></TD> <TD><U>UserAgent</U> </TD><TD><U>Command</U></TD></TR>", datum_config.api_csrf_token);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='notice'>" DATUM_API_LOCK_SVG "<span>Kick disconnects a client right away. Most miners reconnect on their own.</span></p>");
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<form action='/cmd' method='post'><input type='hidden' name='csrf' value='%s'><div class='table-scroll'><table class='data'><thead><tr><th scope='col'>Thread / client</th><th scope='col'>Remote host</th><th scope='col'>Username</th><th scope='col'>Subscribed</th><th scope='col'>Last share</th><th scope='col' class='num'>Vardiff</th><th scope='col' class='num'>Accepted diff (shares)</th><th scope='col' class='num'>Rejected diff (shares)</th><th scope='col' class='num'>Hashrate (age)</th><th scope='col'>Coinbase</th><th scope='col'>User agent</th><th scope='col'><span class='dim'>Action</span></th></tr></thead><tbody>", datum_config.api_csrf_token);
 	
 	for (j = 0; j < max_threads; ++j) {
 		for(ii=0;ii<global_stratum_app->max_clients_thread;ii++) {
 			if (global_stratum_app->datum_threads[j].client_data[ii].fd > 0) {
 				m = (T_DATUM_MINER_DATA *)global_stratum_app->datum_threads[j].client_data[ii].app_client_data;
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TR><TD>%d/%d</TD>", j,ii);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td class='id'>%d / %d</td>", j,ii);
 				
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%s</TD>", global_stratum_app->datum_threads[j].client_data[ii].rem_host);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<td>%s</td>", global_stratum_app->datum_threads[j].client_data[ii].rem_host);
 				
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>");
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='strong'>");
 				sz = datum_buf_append_html_escape(output, max_sz, sz, m->last_auth_username);
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "</TD>");
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "</td>");
 				
 				if (m->subscribed) {
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD> <span style=\"font-family: monospace;\">%4.4x</span> %.1fs</TD>", m->sid, (double)(tsms - m->subscribe_tsms)/1000.0);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td>%4.4x · %.1fs</td>", m->sid, (double)(tsms - m->subscribe_tsms)/1000.0);
 					
 					if (m->stats.last_share_tsms) {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%.1fs</TD>", (double)(tsms - m->stats.last_share_tsms)/1000.0);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td>%.1fs ago</td>", (double)(tsms - m->stats.last_share_tsms)/1000.0);
 					} else {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>N/A</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='dim'>N/A</td>");
 					}
 					
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64"</TD>", m->current_diff);
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64" (%"PRIu64")</TD>", m->share_diff_accepted, m->share_count_accepted);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num'>%"PRIu64"</td>", m->current_diff);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num'>%"PRIu64" (%"PRIu64")</td>", m->share_diff_accepted, m->share_count_accepted);
 					
 					hr = 0.0;
 					if (m->share_diff_accepted > 0) {
 						hr = ((double)m->share_diff_rejected / (double)(m->share_diff_accepted + m->share_diff_rejected))*100.0;
 					}
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%"PRIu64" (%"PRIu64") %.2f%%</TD>", m->share_diff_rejected, m->share_count_rejected, hr);
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num'>%"PRIu64" (%"PRIu64") %.2f%%</td>", m->share_diff_rejected, m->share_count_rejected, hr);
 					
 					astat = m->stats.active_index?0:1; // inverted
 					hr = 0.0;
@@ -969,35 +1073,39 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 						thr += hr;
 					}
 					if (m->share_diff_accepted > 0) {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%.2f Th/s (%.1fs)</TD>", hr, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num strong'>%.2f Th/s (%.1fs)</td>", hr, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
 					} else {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>N/A</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num dim'>N/A</td>");
 					}
 					
 					if (m->coinbase_selection < (sizeof(cbnames) / sizeof(cbnames[0]))) {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>%s</TD>", cbnames[m->coinbase_selection]);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td>%s</td>", cbnames[m->coinbase_selection]);
 					} else {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>Unknown</TD>");
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td>Unknown</td>");
 					}
 					
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD>");
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='dim'>");
 					sz = datum_buf_append_html_escape(output, max_sz, sz, m->useragent);
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "</TD>");
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "</td>");
 				} else {
-					sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD COLSPAN=\"8\">Not Subscribed</TD>");
+					sz = datum_buf_append_snprintf(output, max_sz, sz, "<td colspan='8' class='dim'>Not subscribed</td>");
 				}
 				
-				sz = datum_buf_append_snprintf(output, max_sz, sz, "<TD><button name='kill_client' value='%d_%d_%lu_%lu'>Kick</button></TD></TR>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id);
+				sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='act'><button class='btn-kick' type='submit' name='kill_client' value='%d_%d_%lu_%lu' aria-label='Kick client %d / %d'>Kick</button></td></tr>", j, ii, (unsigned long)m->connect_tsms, (unsigned long)m->unique_id, j, ii);
+				++shown;
 			}
 		}
 	}
 	
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "</TABLE></form><p class=\"table-footer\">Total active hashrate estimate: %.2f Th/s</p>", thr);
+	if (!shown) {
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td colspan='12' class='empty'>No clients connected</td></tr>");
+	}
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</tbody></table></div></form><p class='summary'><span>%d clients · %.2f Th/s total active hashrate estimate</span><span>Hashrate estimated from accepted shares</span></p>", shown, thr);
 	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (sz, (void *) output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
@@ -1113,8 +1221,9 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 			return attr_len;
 		} else if (0 == strncmp(var_start, "msg:", 4)) {
 			if (val) {
-				static const char * const msg = "<br /><em>Config file disallows editing (set \"admin_password\" and \"modify_conf\" in \"api\" section of config file)</em>";
-				const size_t len = strlen(msg);
+				static const char * const msg = "<p class='notice'>Editing from this page is off. Set <code>admin_password</code> and <code>modify_conf</code> in the <code>api</code> section of the config file.</p>";
+				size_t len = strlen(msg);
+				if (len >= replacement_max_len) len = replacement_max_len - 1;
 				memcpy(replacement, msg, len);
 				return len;
 			} else {
@@ -1147,7 +1256,7 @@ int datum_api_config_dashboard(struct MHD_Connection *connection) {
 	sz += datum_api_fill_vars(www_config_html, output, max_sz, datum_api_fill_config_var, NULL);
 	
 	response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
@@ -1542,10 +1651,10 @@ int datum_api_config_post(struct MHD_Connection * const connection, char * const
 		const size_t sz = datum_api_fill_vars(www_config_errors_html, output, max_sz, datum_api_fill_config_errors, (void*)errors);
 		
 		response = MHD_create_response_from_buffer(sz, output, MHD_RESPMEM_MUST_FREE);
-		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_html(response);
 	} else if (status.need_restart) {
 		response = MHD_create_response_from_buffer(www_config_restart_html_sz, (void*)www_config_restart_html, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_html(response);
 	} else {
 		response = datum_api_create_empty_mhd_response();
 		MHD_add_response_header(response, "Location", "/config");
@@ -1628,7 +1737,7 @@ int datum_api_homepage(struct MHD_Connection *connection) {
 	
 	// return the home page with some data and such
 	response = MHD_create_response_from_buffer (strlen(output), (void *) output, MHD_RESPMEM_MUST_COPY);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
@@ -1636,7 +1745,7 @@ int datum_api_OK(struct MHD_Connection *connection) {
 	struct MHD_Response *response;
 	const char *ok_response = "OK";
 	response = MHD_create_response_from_buffer(strlen(ok_response), (void *)ok_response, MHD_RESPMEM_PERSISTENT);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	return datum_api_submit_uncached_response(connection, MHD_HTTP_OK, response);
 }
 
@@ -1696,7 +1805,7 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 	if (!int_method) {
 		const char *error_response = "<H1>Method not allowed.</H1>";
 		response = MHD_create_response_from_buffer(strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(response, "Content-Type", "text/html");
+		http_resp_html(response);
 		ret = MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
 		MHD_destroy_response(response);
 		return ret;
@@ -1742,7 +1851,7 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 		} else if (!con_info->data_size) {
 			const char *error_response = "<H1>Invalid request.</H1>";
 			response = MHD_create_response_from_buffer(strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
-			MHD_add_response_header(response, "Content-Type", "text/html");
+			http_resp_html(response);
 			ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
 			MHD_destroy_response(response);
 			return ret;
@@ -1871,7 +1980,7 @@ enum MHD_Result datum_api_answer(void *cls, struct MHD_Connection *connection, c
 	
 	const char *error_response = "<H1>Not found</H1>";
 	response = MHD_create_response_from_buffer(strlen(error_response), (void *)error_response, MHD_RESPMEM_PERSISTENT);
-	MHD_add_response_header(response, "Content-Type", "text/html");
+	http_resp_html(response);
 	ret = MHD_queue_response (connection, MHD_HTTP_NOT_FOUND, response);
 	MHD_destroy_response (response);
 	return ret;

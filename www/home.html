@@ -1,182 +1,142 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<title>DATUM Gateway Status</title>
-	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
-	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<style>
-		.table-wrapper {
-			justify-content: center;
-		}
-		
-		.table-container {
-			max-width: 800px;
-		}
-		
-		table {
-			border-collapse: collapse;
-		}
-		
-		td {
-			word-break: break-all;
-		}
-		
-		.leading_zeros {
-			color: gray;
-		}
-	</style>
+	<title>DATUM Gateway · Status</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" href="/assets/style.css?v=2">
 </head>
 <body>
-	<div class="container">
-		<div class="header">
-			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
+<header class="topbar">
+	<div class="wrap topbar-in">
+		<div class="topbar-left">
+			<a class="brand" href="/"><img src="/assets/icons/datum_logo.svg?v=2" alt="" width="20" height="20"><span>DATUM Gateway</span></a>
+			<nav aria-label="Gateway sections">
+				<a href="/" aria-current="page">Status</a>
+				<a href="/config">Config</a>
+				<a href="/clients">Clients</a>
+				<a href="/threads">Threads</a>
+				<a href="/coinbaser">Coinbaser</a>
+			</nav>
 		</div>
-		<div class="menu-container">
-			<a href="/" style="background-color: darkslategrey;">Status</a>
-			<a href="/config">Config</a>
-			<a href="/clients">Clients</a>
-			<a href="/threads">Threads</a>
-			<a href="/coinbaser">Coinbaser</a>
+		${DATUM_CONNECTION_PILL}
+	</div>
+</header>
+
+<main class="wrap page">
+	<div class="page-head">
+		<div>
+			<h1>Status</h1>
+			<p class="lede">Decentralized client, Stratum server and the job your miners are working on.</p>
+		</div>
+		<div class="page-meta">
+			<span>Uptime ${DATUM_PROCESS_UPTIME}</span>
+			<a class="btn" href="/">Refresh →</a>
 		</div>
 	</div>
-	
-	<div class="tables-container">
-		<div class="table-wrapper">
-			<div class="table-container">
-				<h2>Decentralized Client Stats</h2>
-				<table>
-					<tr>
-						<td class="label">Shares Accepted:</td>
-						<td>${DATUM_SHARES_ACCEPTED}</td>
-					</tr>
-					<tr>
-						<td class="label">Shares Rejected:</td>
-						<td>${DATUM_SHARES_REJECTED}</td>
-					</tr>
-					<tr>
-						<td class="label">Status:</td>
-						<td>${DATUM_CONNECTION_STATUS}</td>
-					</tr>
-					<tr>
-						<td class="label">Pool Host:</td>
-						<td>${DATUM_POOL_HOST}</td>
-					</tr>
-					<tr>
-						<td class="label">Pool Tag:</td>
-						<td>${DATUM_POOL_TAG}</td>
-					</tr>
-					<tr>
-						<td class="label">Secondary/Miner Tag:</td>
-						<td>${DATUM_MINER_TAG}</td>
-					</tr>
-					<tr>
-						<td class="label">Pool Current MinDiff:</td>
-						<td>${DATUM_POOL_DIFF}</td>
-					</tr>
-					<tr>
-						<td class="label">Pool Pubkey:</td>
-						<td class="fixed-width">${DATUM_POOL_PUBKEY}</td>
-					</tr>
-					<tr>
-						<td class="label">Process uptime:</td>
-						<td>${DATUM_PROCESS_UPTIME}</td>
-					</tr>
-				</table>
+
+	<section class="tiles" aria-label="Totals">
+		<div class="tile">
+			<span class="cap">Shares accepted</span>
+			<span class="big">${DATUM_SHARES_ACCEPTED}</span>
+			<span class="sub">${DATUM_SHARES_ACCEPTED_DIFF} diff</span>
+		</div>
+		<div class="tile">
+			<span class="cap">Shares rejected</span>
+			<span class="big">${DATUM_SHARES_REJECTED}</span>
+			<span class="sub">${DATUM_SHARES_REJECTED_DIFF} diff</span>
+		</div>
+		<div class="tile">
+			<span class="cap">Est. hashrate</span>
+			<span class="big">${STRATUM_HASHRATE_ESTIMATE}</span>
+			<span class="sub">${STRATUM_TOTAL_SUBSCRIPTIONS} work subscriptions</span>
+		</div>
+		<div class="tile">
+			<span class="cap">Connections</span>
+			<span class="big">${STRATUM_TOTAL_CONNECTIONS}</span>
+			<span class="sub">${STRATUM_ACTIVE_THREADS} active threads</span>
+		</div>
+	</section>
+
+	<section class="panels" aria-label="Services">
+		<div class="panel">
+			<div class="panel-head">
+				<h2>Decentralized client</h2>
+				${DATUM_CONNECTION_STATUS}
 			</div>
-			
-			<div class="table-container">
-				<h2>Stratum Server Info</h2>
-				<table>
-					<tr>
-						<td class="label">Active Threads:</td>
-						<td>${STRATUM_ACTIVE_THREADS}</td>
-					</tr>
-					<tr>
-						<td class="label">Total Connections:</td>
-						<td>${STRATUM_TOTAL_CONNECTIONS}</td>
-					</tr>
-					<tr>
-						<td class="label">Total Work Subscriptions:</td>
-						<td>${STRATUM_TOTAL_SUBSCRIPTIONS}</td>
-					</tr>
-					<tr>
-						<td class="label">Estimated Hashrate:</td>
-						<td>${STRATUM_HASHRATE_ESTIMATE}</td>
-					</tr>
-				</table>
+			<dl class="kv">
+				<div><dt>Pool host</dt><dd>${DATUM_POOL_HOST}</dd></div>
+				<div><dt>Pool tag</dt><dd>${DATUM_POOL_TAG}</dd></div>
+				<div><dt>Secondary / miner tag</dt><dd>${DATUM_MINER_TAG}</dd></div>
+				<div><dt>Pool minimum difficulty</dt><dd>${DATUM_POOL_DIFF}</dd></div>
+			</dl>
+			<div class="keybox">
+				<span class="cap">Pool public key</span>
+				<code>${DATUM_POOL_PUBKEY}</code>
 			</div>
 		</div>
-		<div class="table-wrapper">
-		<div class="table-container" style="min-width: fit-content;">
-			<h2>Current Stratum Job</h2>
-			<table>
-				<tr>
-					<td class="label">Job ID:</td>
-					<td>${STRATUM_JOB_INFO}</td> <!-- Job ID (Index) @ Timestamp -->
-				</tr>
-				<tr>
-					<td class="label">Block Height:</td>
-					<td>${STRATUM_JOB_BLOCK_HEIGHT}</td>
-				</tr>
-				<tr>
-					<td class="label">Block Value:</td>
-					<td>${STRATUM_JOB_BLOCK_VALUE}</td>
-				</tr>
-				<tr>
-					<td class="label">Previous Block:</td>
-					<td class="fixed-width">${STRATUM_JOB_PREVBLOCK}</td>
-				</tr>
-				<tr>
-					<td class="label">Block Target:</td>
-					<td class="fixed-width">${STRATUM_JOB_TARGET}</td>
-				</tr>
-				<tr>
-					<td class="label">Witness Commitment:</td>
-					<td class="fixed-width">${STRATUM_JOB_WITNESS}</td>
-				</tr>
-				<tr>
-					<td class="label">Block Difficulty:</td>
-					<td>${STRATUM_JOB_DIFF}</td>
-				</tr>
-				<tr>
-					<td class="label">Version:</td>
-					<td>${STRATUM_JOB_VERSION}</td>
-				</tr>
-				<tr>
-					<td class="label">Bits:</td>
-					<td>${STRATUM_JOB_BITS}</td>
-				</tr>
-				<tr>
-					<td class="label">Time:</td>
-					<td>${STRATUM_JOB_TIMEINFO}</td>
-				</tr>
-				<tr>
-					<td class="label">Limits:</td>
-					<td>${STRATUM_JOB_LIMITINFO}</td>
-				</tr>
-				<tr>
-					<td class="label">Size:</td>
-					<td>${STRATUM_JOB_SIZE}</td>
-				</tr>
-				<tr>
-					<td class="label">Weight:</td>
-					<td>${STRATUM_JOB_WEIGHT}</td>
-				</tr>
-				<tr>
-					<td class="label">Sigops:</td>
-					<td>${STRATUM_JOB_SIGOPS}</td>
-				</tr>
-				<tr>
-					<td class="label">Txn Count:</td>
-					<td>${STRATUM_JOB_TXNCOUNT}</td>
-				</tr>
-			</table>
+
+		<div class="panel">
+			<div class="panel-head">
+				<h2>Stratum server</h2>
+				${STRATUM_STATUS}
+			</div>
+			<dl class="kv">
+				<div><dt>Active threads</dt><dd>${STRATUM_ACTIVE_THREADS}</dd></div>
+				<div><dt>Total connections</dt><dd>${STRATUM_TOTAL_CONNECTIONS}</dd></div>
+				<div><dt>Work subscriptions</dt><dd>${STRATUM_TOTAL_SUBSCRIPTIONS}</dd></div>
+				<div><dt>Estimated hashrate</dt><dd>${STRATUM_HASHRATE_ESTIMATE}</dd></div>
+			</dl>
 		</div>
+	</section>
+
+	<section class="panel" aria-labelledby="job-h">
+		<div class="panel-head">
+			<h2 id="job-h">Current Stratum job</h2>
+			<span class="mono dim">Job ${STRATUM_JOB_INFO}</span>
 		</div>
+		<div class="jobstats">
+			<div><span class="cap">Block height</span><span class="mid">${STRATUM_JOB_BLOCK_HEIGHT}</span></div>
+			<div><span class="cap">Block value</span><span class="mid">${STRATUM_JOB_BLOCK_VALUE}</span></div>
+			<div><span class="cap">Difficulty</span><span class="mid">${STRATUM_JOB_DIFF}</span></div>
+			<div><span class="cap">Bits</span><span class="mid">${STRATUM_JOB_BITS}</span></div>
+		</div>
+		<div class="meters">
+			<div class="meter">
+				<div class="meter-head"><span class="cap">Weight</span><span class="mono dim">${STRATUM_JOB_WEIGHT_PCT}</span></div>
+				<progress max="${STRATUM_JOB_WEIGHT_LIMIT}" value="${STRATUM_JOB_WEIGHT}">${STRATUM_JOB_WEIGHT_PCT}</progress>
+				<span class="mono dim">${STRATUM_JOB_WEIGHT} / ${STRATUM_JOB_WEIGHT_LIMIT}</span>
+			</div>
+			<div class="meter">
+				<div class="meter-head"><span class="cap">Size</span><span class="mono dim">${STRATUM_JOB_SIZE_PCT}</span></div>
+				<progress max="${STRATUM_JOB_SIZE_LIMIT}" value="${STRATUM_JOB_SIZE}">${STRATUM_JOB_SIZE_PCT}</progress>
+				<span class="mono dim">${STRATUM_JOB_SIZE} / ${STRATUM_JOB_SIZE_LIMIT}</span>
+			</div>
+			<div class="meter">
+				<div class="meter-head"><span class="cap">Sigops</span><span class="mono dim">${STRATUM_JOB_SIGOPS_PCT}</span></div>
+				<progress max="${STRATUM_JOB_SIGOPS_LIMIT}" value="${STRATUM_JOB_SIGOPS}">${STRATUM_JOB_SIGOPS_PCT}</progress>
+				<span class="mono dim">${STRATUM_JOB_SIGOPS} / ${STRATUM_JOB_SIGOPS_LIMIT}</span>
+			</div>
+		</div>
+		<div class="rows">
+			<div class="row"><span>Previous block</span><code>${STRATUM_JOB_PREVBLOCK}</code></div>
+			<div class="row"><span>Block target</span><code>${STRATUM_JOB_TARGET}</code></div>
+			<div class="row"><span>Witness commitment</span><code>${STRATUM_JOB_WITNESS}</code></div>
+			<div class="row"><span>Version</span><span>${STRATUM_JOB_VERSION}</span></div>
+			<div class="row"><span>Time</span><span>${STRATUM_JOB_TIMEINFO}</span></div>
+			<div class="row"><span>Transactions</span><span>${STRATUM_JOB_TXNCOUNT}</span></div>
+		</div>
+	</section>
+
+	<p class="note">This page does not refresh by itself. DATUM Gateway ${DATUM_GATEWAY_VERSION}</p>
+</main>
+
+<footer class="foot">
+	<div class="wrap foot-in">
+		<span>DATUM Gateway · Decentralized Alternative Templates for Universal Mining</span>
+		<span class="mono">BY OCEAN</span>
 	</div>
-	<p class="note">Note: This page does not automatically refresh</p>
-	<p class="note">DATUM gateway ${DATUM_GATEWAY_VERSION}</p>
+</footer>
 </body>
 </html>
