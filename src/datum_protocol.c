@@ -1613,6 +1613,7 @@ void *datum_protocol_client(void *args) {
 	hints.ai_socktype = SOCK_STREAM;
 	char port_str[7];  // To hold the port number as a string
 	bool break_again = false;
+	bool was_configured = false;
 	int sent = 0;
 	T_DATUM_PROTOCOL_HEADER s_header;
 	
@@ -1826,6 +1827,11 @@ void *datum_protocol_client(void *args) {
 			case 3: {
 				// we're configured!
 				datum_protocol_client_active = 3;
+				if (!was_configured) {
+					// Work made before now is for another connection's UID, so force a new job
+					was_configured = true;
+					datum_blocktemplates_notify_othercause();
+				}
 				break;
 			}
 			
@@ -2006,13 +2012,13 @@ void *datum_protocol_client(void *args) {
 	datum_protocol_set_state(0);
 	datum_protocol_client_active = 0;
 	
-	// Wait up to 5 seconds for another thread to reconnect
+	// Wait up to 5 seconds for another thread to reconnect, which forces a new job itself
 	for (i = 2000; i; --i) {
 		if (datum_protocol_client_active >= 3) break;
 		usleep(2500);
 	}
-	// ...then force a new job
-	datum_blocktemplates_notify_othercause();
+	// ...otherwise force one now, unless this connection never had any work out
+	if (was_configured && !i) datum_blocktemplates_notify_othercause();
 	
 	return 0;
 }

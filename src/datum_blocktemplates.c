@@ -586,6 +586,8 @@ void *datum_gateway_template_thread(void *args) {
 					DLOG_INFO("NEW NETWORK BLOCK NOTIFICATION RECEIVED");
 					break;
 				}
+				// Work that is no longer valid can't wait for the next scheduled update
+				if (notify_othercause) break;
 			}
 		} else {
 			usleep(250000);
