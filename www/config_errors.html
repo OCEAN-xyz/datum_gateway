@@ -1,73 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<title>DATUM Gateway Configuration - ERROR</title>
-	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
-	<link rel="stylesheet" type="text/css" href="./assets/style.css">
+	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<style>
-		.table-wrapper {
-			justify-content: center;
-		}
-		
-		.table-container {
-			max-width: 800px;
-		}
-		
-		button {
-			background-color: #444;
-			color: #3498db;
-			padding: 10px 20px;
-			margin: 5px;
-			border-radius: 5px;
-			text-decoration: none;
-			transition: background-color 0.3s, color 0.3s;
-			font-weight: bold;
-			font-size: large;
-		}
-		
-		.err {
-			border-bottom: 1px solid #444;
-			padding: 10px;
-			background-color: #2a2a3b;
-			white-space: nowrap;
-		}
-		
-		.err:last-child {
-			border-bottom: none;
-		}
-	</style>
+	<title>DATUM Gateway · Config</title>
+	<link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico">
+	<link rel="stylesheet" href="/assets/style.css?v=2">
 </head>
 <body>
-	<div class="container">
-		<div class="header">
-			<h1><img src="/assets/icons/datum_logo.svg" alt="(DATUM Logo)" style="vertical-align: text-top" width="28" height="33"> DATUM <span>GATEWAY</span></h1>
-		</div>
-		<div class="menu-container">
-			<a href="/">Status</a>
-			<a href="/config" style="background-color: darkslategrey;">Config</a>
-			<a href="/clients">Clients</a>
-			<a href="/threads">Threads</a>
-			<a href="/coinbaser">Coinbaser</a>
+<header class="topbar">
+	<div class="wrap topbar-in">
+		<div class="topbar-left">
+			<a class="brand" href="/"><img src="/assets/icons/datum_logo.svg?v=2" alt="" width="20" height="20"><span>DATUM Gateway</span></a>
+			<nav aria-label="Gateway sections">
+				<a href="/">Status</a>
+				<a href="/config" aria-current="page">Config</a>
+				<a href="/clients">Clients</a>
+				<a href="/threads">Threads</a>
+				<a href="/coinbaser">Coinbaser</a>
+			</nav>
 		</div>
 	</div>
-	
-	<div class="tables-container">
-		<script>
-			document.write('<div style="margin-top: 20px; text-align: center;"><button onclick="javascript:history.back(); return false;">Go Back</button></div>')
-		</script>
-		
-		<div class="table-wrapper">
-			<div class="table-container">
-				<h2>Errors Occurred</h2>
-				${*errors}
-			</div>
+</header>
+
+<main class="wrap page">
+	<div class="page-head">
+		<div>
+			<h1>Config</h1>
+			<p class="lede">The changes could not all be saved.</p>
 		</div>
-		
-		<script>
-			document.write('<div style="margin-bottom: 20px; text-align: center;"><button onclick="javascript:history.back(); return false;">Go Back</button></div>')
-		</script>
 	</div>
+	<section class="panel" aria-labelledby="err-h">
+		<div class="panel-head"><h2 id="err-h">Errors occurred</h2></div>
+		<div class="errors">
+			${*errors}
+		</div>
+	</section>
+	<p class="note">Use your browser's Back button to return to your edits, or <a href="/config">reload the config page</a>.</p>
+</main>
+
+<footer class="foot">
+	<div class="wrap foot-in">
+		<span>DATUM Gateway · Decentralized Alternative Templates for Universal Mining</span>
+		<span class="mono">BY OCEAN</span>
+	</div>
+</footer>
 </body>
 </html>

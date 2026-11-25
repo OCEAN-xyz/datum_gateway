@@ -52,7 +52,6 @@ set(WEB_RESOURCES
 	www/config_restart.html
 	www/threads_top.html
 	www/foot.html
-	www/assets/post.js
 	www/assets/style.css
 	www/assets/icons/datum_logo.svg
 	www/assets/icons/favicon.ico

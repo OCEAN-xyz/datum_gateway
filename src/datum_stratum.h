@@ -285,6 +285,7 @@ void datum_stratum_v1_socket_thread_client_closed(T_DATUM_CLIENT_DATA *c, const 
 void datum_stratum_v1_socket_thread_client_new(T_DATUM_CLIENT_DATA *c);
 int datum_stratum_v1_global_subscriber_count(void);
 double datum_stratum_v1_est_total_th_sec(void);
+double datum_stratum_share_rate(uint64_t now_tsms, uint64_t *window_ms, uint64_t *last_share_tsms);
 void datum_stratum_v1_shutdown_all(void);
 
 extern T_DATUM_SOCKET_APP *global_stratum_app;
