@@ -36,26 +36,28 @@
 		</div>
 	</div>
 
+	${STRATUM_MINERS_NOTICE}
+
 	<section class="tiles" aria-label="Totals">
 		<div class="tile">
-			<span class="cap">Shares accepted</span>
+			<span class="cap">Accepted by pool</span>
 			<span class="big">${DATUM_SHARES_ACCEPTED}</span>
 			<span class="sub">${DATUM_SHARES_ACCEPTED_DIFF} diff</span>
 		</div>
 		<div class="tile">
-			<span class="cap">Shares rejected</span>
+			<span class="cap">Rejected by pool</span>
 			<span class="big">${DATUM_SHARES_REJECTED}</span>
 			<span class="sub">${DATUM_SHARES_REJECTED_DIFF} diff</span>
 		</div>
 		<div class="tile">
-			<span class="cap">Est. hashrate</span>
-			<span class="big">${STRATUM_HASHRATE_ESTIMATE}</span>
-			<span class="sub">${STRATUM_TOTAL_SUBSCRIPTIONS} work subscriptions</span>
+			<span class="cap">Hashrate</span>
+			<span class="big">${STRATUM_HASHRATE_AVG}</span>
+			<span class="sub">${STRATUM_HASHRATE_AVG_WINDOW} · ${STRATUM_LAST_SHARE}</span>
 		</div>
 		<div class="tile">
 			<span class="cap">Connections</span>
 			<span class="big">${STRATUM_TOTAL_CONNECTIONS}</span>
-			<span class="sub">${STRATUM_ACTIVE_THREADS} active threads</span>
+			<span class="sub">${STRATUM_TOTAL_SUBSCRIPTIONS} work subscriptions</span>
 		</div>
 	</section>
 
@@ -86,7 +88,7 @@
 				<div><dt>Active threads</dt><dd>${STRATUM_ACTIVE_THREADS}</dd></div>
 				<div><dt>Total connections</dt><dd>${STRATUM_TOTAL_CONNECTIONS}</dd></div>
 				<div><dt>Work subscriptions</dt><dd>${STRATUM_TOTAL_SUBSCRIPTIONS}</dd></div>
-				<div><dt>Estimated hashrate</dt><dd>${STRATUM_HASHRATE_ESTIMATE}</dd></div>
+				<div><dt>Live estimate</dt><dd>${STRATUM_HASHRATE_ESTIMATE}</dd></div>
 			</dl>
 		</div>
 	</section>

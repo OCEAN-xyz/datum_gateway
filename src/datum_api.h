@@ -47,6 +47,10 @@ typedef struct {
 	int STRATUM_TOTAL_CONNECTIONS;
 	int STRATUM_TOTAL_SUBSCRIPTIONS;
 	double STRATUM_HASHRATE_ESTIMATE;
+	double STRATUM_HASHRATE_AVG; // accepted over the window below
+	uint64_t STRATUM_HASHRATE_AVG_WINDOW_MS;
+	uint64_t STRATUM_LAST_SHARE_TSMS; // 0 for none yet
+	uint64_t tsms; // when these were taken
 	
 	T_DATUM_STRATUM_JOB *sjob;
 } T_DATUM_API_DASH_VARS;

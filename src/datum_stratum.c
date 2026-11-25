@@ -861,11 +861,65 @@ void stratum_update_vardiff(T_DATUM_CLIENT_DATA *c, bool no_quick) {
 	return;
 }
 
+// Difficulty accepted from all miners, per minute over the last hour, for the
+// dashboard's hourly average. A miner on a high share difficulty (a Bitaxe on
+// a pool's minimum, say) submits only every few minutes, too rarely for the
+// per-connection estimate below, which forgets a miner after 180 seconds.
+#define SHARE_RATE_SLOTS 60
+static pthread_mutex_t share_rate_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t share_rate_minute[SHARE_RATE_SLOTS];
+static uint64_t share_rate_diff[SHARE_RATE_SLOTS];
+static uint64_t share_rate_last_tsms;
+
+static void share_rate_add(const uint64_t diff) {
+	const uint64_t tsms = current_time_millis();
+	const uint64_t minute = tsms / 60000;
+	const unsigned int i = minute % SHARE_RATE_SLOTS;
+
+	pthread_mutex_lock(&share_rate_lock);
+	if (share_rate_minute[i] != minute) {
+		share_rate_minute[i] = minute;
+		share_rate_diff[i] = 0;
+	}
+	share_rate_diff[i] += diff;
+	share_rate_last_tsms = tsms;
+	pthread_mutex_unlock(&share_rate_lock);
+}
+
+// Average Th/s accepted over the last hour, or since start if that is sooner.
+// The window it covers goes to *window_ms, and the time of the latest
+// accepted share (0 for none yet) to *last_share_tsms.
+double datum_stratum_share_rate(const uint64_t now_tsms, uint64_t * const window_ms, uint64_t * const last_share_tsms) {
+	const uint64_t minute = now_tsms / 60000;
+	const uint64_t uptime_ms = get_process_uptime_seconds() * 1000;
+	uint64_t diff = 0, window;
+	unsigned int i;
+
+	pthread_mutex_lock(&share_rate_lock);
+	for (i = 0; i < SHARE_RATE_SLOTS; ++i) {
+		if (share_rate_minute[i] <= minute && share_rate_minute[i] + SHARE_RATE_SLOTS > minute) {
+			diff += share_rate_diff[i];
+		}
+	}
+	*last_share_tsms = share_rate_last_tsms;
+	pthread_mutex_unlock(&share_rate_lock);
+
+	// the current minute so far, and the 59 before it
+	window = now_tsms - (minute - (SHARE_RATE_SLOTS - 1)) * 60000;
+	if (uptime_ms < window) window = uptime_ms;
+	if (window < 1000) window = 1000;
+	*window_ms = window;
+
+	return ((double)diff / ((double)window / 1000.0)) * 0.004294967296; // Th/sec based on shares/sec
+}
+
 #define STAT_CYCLE_MS 60000
 
 void stratum_update_miner_stats_accepted(T_DATUM_CLIENT_DATA *c, uint64_t diff_accepted) {
 	T_DATUM_MINER_DATA * const m = c->app_client_data;
-	
+
+	share_rate_add(diff_accepted);
+
 	m->stats.diff_accepted[m->stats.active_index?1:0] += diff_accepted;
 	m->stats.last_share_tsms = m->sdata->loop_tsms;
 	

@@ -102,17 +102,76 @@ static void html_leading_zeros(char * const buffer, const size_t buffer_size, co
 	}
 }
 
+// A hashrate in the unit that fits it: 412 GH/s, 1.07 TH/s
+static void datum_api_print_hashrate(char * const buffer, const size_t buffer_size, const double th_sec) {
+	static const char * const units[] = {"H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s", "EH/s"};
+	double v = th_sec * 1e12;
+	unsigned int u = 0;
+	
+	if (!(v >= 1.0)) {
+		snprintf(buffer, buffer_size, "0 H/s");
+		return;
+	}
+	while (v >= 999.5 && u < (sizeof(units) / sizeof(units[0])) - 1) {
+		v /= 1000.0;
+		++u;
+	}
+	snprintf(buffer, buffer_size, "%.*f %s", (v < 9.995) ? 2 : ((v < 99.95) ? 1 : 0), v, units[u]);
+}
+
+// A count with thousands separators: 33,685,504
+static void datum_api_print_grouped(char * const buffer, const size_t buffer_size, const uint64_t n) {
+	char digits[24], out[32];
+	const int len = snprintf(digits, sizeof(digits), "%"PRIu64, n);
+	int i, o = 0;
+	
+	for (i = 0; i < len; ++i) {
+		if (i && !((len - i) % 3)) out[o++] = ',';
+		out[o++] = digits[i];
+	}
+	out[o] = '\0';
+	snprintf(buffer, buffer_size, "%s", out);
+}
+
+// How long ago: "42 s ago", "6 min ago", "3 h 12 min ago", "2 d ago"
+static void datum_api_print_age(char * const buffer, const size_t buffer_size, const uint64_t now_tsms, const uint64_t then_tsms) {
+	const uint64_t s = (now_tsms > then_tsms) ? (now_tsms - then_tsms) / 1000 : 0;
+	
+	if (s < 60) {
+		snprintf(buffer, buffer_size, "%u s ago", (unsigned)s);
+	} else if (s < 3600) {
+		snprintf(buffer, buffer_size, "%u min ago", (unsigned)(s / 60));
+	} else if (s < 86400) {
+		snprintf(buffer, buffer_size, "%u h %u min ago", (unsigned)(s / 3600), (unsigned)((s % 3600) / 60));
+	} else {
+		snprintf(buffer, buffer_size, "%"PRIu64" d ago", s / 86400);
+	}
+}
+
+// A listen address worth showing a miner: a specific host, short and plain
+static bool datum_api_plain_host(const char * const addr) {
+	const size_t len = strlen(addr);
+	size_t i;
+	
+	if (!len || len > 45 || !strcmp(addr, "0.0.0.0") || !strcmp(addr, "::")) return false;
+	for (i = 0; i < len; ++i) {
+		const char ch = addr[i];
+		if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '.' || ch == ':' || ch == '-')) return false;
+	}
+	return true;
+}
+
 void datum_api_var_DATUM_SHARES_ACCEPTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_accepted_share_count);
 }
 void datum_api_var_DATUM_SHARES_ACCEPTED_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_accepted_share_diff);
+	datum_api_print_grouped(buffer, buffer_size, datum_accepted_share_diff);
 }
 void datum_api_var_DATUM_SHARES_REJECTED(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_rejected_share_count);
 }
 void datum_api_var_DATUM_SHARES_REJECTED_DIFF(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%llu", (unsigned long long)datum_rejected_share_diff);
+	datum_api_print_grouped(buffer, buffer_size, datum_rejected_share_diff);
 }
 
 // The decentralized client's state: a status class (ok, warn, err, idle) for
@@ -190,7 +249,39 @@ void datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS(char *buffer, size_t buffer_size,
 	snprintf(buffer, buffer_size, "%d", vardata->STRATUM_TOTAL_SUBSCRIPTIONS);
 }
 void datum_api_var_STRATUM_HASHRATE_ESTIMATE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
-	snprintf(buffer, buffer_size, "%.2f Th/s", vardata->STRATUM_HASHRATE_ESTIMATE);
+	datum_api_print_hashrate(buffer, buffer_size, vardata->STRATUM_HASHRATE_ESTIMATE);
+}
+void datum_api_var_STRATUM_HASHRATE_AVG(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	datum_api_print_hashrate(buffer, buffer_size, vardata->STRATUM_HASHRATE_AVG);
+}
+void datum_api_var_STRATUM_HASHRATE_AVG_WINDOW(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const uint64_t s = vardata->STRATUM_HASHRATE_AVG_WINDOW_MS / 1000;
+	if (s >= 59 * 60) {
+		snprintf(buffer, buffer_size, "1 h average");
+	} else if (s >= 60) {
+		snprintf(buffer, buffer_size, "%u min average", (unsigned)(s / 60));
+	} else {
+		snprintf(buffer, buffer_size, "%u s average", (unsigned)s);
+	}
+}
+void datum_api_var_STRATUM_LAST_SHARE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	char age[32];
+	if (!vardata->STRATUM_LAST_SHARE_TSMS) {
+		snprintf(buffer, buffer_size, "no shares yet");
+		return;
+	}
+	datum_api_print_age(age, sizeof(age), vardata->tsms, vardata->STRATUM_LAST_SHARE_TSMS);
+	snprintf(buffer, buffer_size, "last share %s", age);
+}
+void datum_api_var_STRATUM_MINERS_NOTICE(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
+	const char * const addr = datum_config.stratum_v1_listen_addr;
+	if (vardata->STRATUM_TOTAL_CONNECTIONS > 0) {
+		buffer[0] = '\0';
+	} else if (datum_api_plain_host(addr)) {
+		snprintf(buffer, buffer_size, "<p class='notice notice-warn'><span>No miners connected. Point a miner at <code>stratum+tcp://%s:%d</code>.</span></p>", addr, datum_config.stratum_v1_listen_port);
+	} else {
+		snprintf(buffer, buffer_size, "<p class='notice notice-warn'><span>No miners connected. Point a miner at this machine's address, port <code>%d</code>.</span></p>", datum_config.stratum_v1_listen_port);
+	}
 }
 void datum_api_var_STRATUM_STATUS(char *buffer, size_t buffer_size, const T_DATUM_API_DASH_VARS *vardata) {
 	if (vardata->STRATUM_TOTAL_CONNECTIONS > 0) {
@@ -303,6 +394,10 @@ DATUM_API_VarEntry var_entries[] = {
 	{"STRATUM_TOTAL_CONNECTIONS", datum_api_var_STRATUM_TOTAL_CONNECTIONS},
 	{"STRATUM_TOTAL_SUBSCRIPTIONS", datum_api_var_STRATUM_TOTAL_SUBSCRIPTIONS},
 	{"STRATUM_HASHRATE_ESTIMATE", datum_api_var_STRATUM_HASHRATE_ESTIMATE},
+	{"STRATUM_HASHRATE_AVG", datum_api_var_STRATUM_HASHRATE_AVG},
+	{"STRATUM_HASHRATE_AVG_WINDOW", datum_api_var_STRATUM_HASHRATE_AVG_WINDOW},
+	{"STRATUM_LAST_SHARE", datum_api_var_STRATUM_LAST_SHARE},
+	{"STRATUM_MINERS_NOTICE", datum_api_var_STRATUM_MINERS_NOTICE},
 	{"STRATUM_STATUS", datum_api_var_STRATUM_STATUS},
 
 	{"STRATUM_JOB_INFO", datum_api_var_STRATUM_JOB_INFO},
@@ -905,6 +1000,7 @@ struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	T_DATUM_MINER_DATA *m = NULL;
 	uint64_t tsms;
 	double hr;
+	char hashrate[32];
 	unsigned char astat;
 	struct { int conns, subs; double thr; } *rows = NULL;
 	int total_threads = 0, total_conns = 0;
@@ -958,7 +1054,8 @@ struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	for (j = 0; j < max_threads; ++j) {
 		if (!rows[j].conns) continue;
 		const double share = (total_thr > 0.0) ? (rows[j].thr / total_thr) : 0.0;
-		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td class='id'>%d</td><td class='num'>%d</td><td class='num'>%d</td><td class='num strong'>%.2f Th/s</td><td><div class='share'><progress max='1000' value='%d'></progress><span>%.2f%%</span></div></td><td class='act'>", j, rows[j].conns, rows[j].subs, rows[j].thr, (int)(share * 1000.0 + 0.5), share * 100.0);
+		datum_api_print_hashrate(hashrate, sizeof(hashrate), rows[j].thr);
+		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td class='id'>%d</td><td class='num'>%d</td><td class='num'>%d</td><td class='num strong'>%s</td><td><div class='share'><progress max='1000' value='%d'></progress><span>%.2f%%</span></div></td><td class='act'>", j, rows[j].conns, rows[j].subs, hashrate, (int)(share * 1000.0 + 0.5), share * 100.0);
 		if (have_admin) {
 			sz = datum_buf_append_snprintf(output, max_sz, sz, "<button class='btn-kick' type='submit' name='empty_thread' value='%d' aria-label='Disconnect all clients on thread %d'>Disconnect all</button>", j, j);
 		} else {
@@ -973,7 +1070,8 @@ struct MHD_Response *datum_api_thread_dashboard_inner(const bool have_admin) {
 	if (have_admin) {
 		sz = datum_buf_append_snprintf(output, max_sz, sz, "</form>");
 	}
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='summary'><span>%d active threads · %d connections · %.2f Th/s combined</span><span>Hashrate estimated from accepted shares</span></p>", total_threads, total_conns, total_thr);
+	datum_api_print_hashrate(hashrate, sizeof(hashrate), total_thr);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "<p class='summary'><span>%d active threads · %d connections · %s combined</span><span>Hashrate estimated from accepted shares</span></p>", total_threads, total_conns, hashrate);
 	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
 	free(rows);
 
@@ -1009,6 +1107,7 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	unsigned char astat;
 	double thr = 0.0;
 	int shown = 0;
+	char hashrate[32];
 	
 	// Auth before sizing/allocating - unauthenticated callers must not force large calloc.
 	if (!datum_api_check_admin_password_httponly(connection, datum_api_create_response_authfail_clients)) {
@@ -1073,7 +1172,8 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 						thr += hr;
 					}
 					if (m->share_diff_accepted > 0) {
-						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num strong'>%.2f Th/s (%.1fs)</td>", hr, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
+						datum_api_print_hashrate(hashrate, sizeof(hashrate), hr);
+						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num strong'>%s (%.1fs)</td>", hashrate, (double)(tsms - m->stats.last_swap_tsms)/1000.0);
 					} else {
 						sz = datum_buf_append_snprintf(output, max_sz, sz, "<td class='num dim'>N/A</td>");
 					}
@@ -1100,7 +1200,8 @@ int datum_api_client_dashboard(struct MHD_Connection *connection) {
 	if (!shown) {
 		sz = datum_buf_append_snprintf(output, max_sz, sz, "<tr><td colspan='12' class='empty'>No clients connected</td></tr>");
 	}
-	sz = datum_buf_append_snprintf(output, max_sz, sz, "</tbody></table></div></form><p class='summary'><span>%d clients · %.2f Th/s total active hashrate estimate</span><span>Hashrate estimated from accepted shares</span></p>", shown, thr);
+	datum_api_print_hashrate(hashrate, sizeof(hashrate), thr);
+	sz = datum_buf_append_snprintf(output, max_sz, sz, "</tbody></table></div></form><p class='summary'><span>%d clients · %s total active hashrate estimate</span><span>Hashrate estimated from accepted shares</span></p>", shown, hashrate);
 	sz = datum_buf_append_snprintf(output, max_sz, sz, "%s", www_foot_html);
 	
 	// return the home page with some data and such
@@ -1221,7 +1322,7 @@ size_t datum_api_fill_config_var(const char *var_start, const size_t var_name_le
 			return attr_len;
 		} else if (0 == strncmp(var_start, "msg:", 4)) {
 			if (val) {
-				static const char * const msg = "<p class='notice'>Editing from this page is off. Set <code>admin_password</code> and <code>modify_conf</code> in the <code>api</code> section of the config file.</p>";
+				static const char * const msg = "<p class='notice'><span>Editing from this page is off. Set <code>admin_password</code> and <code>modify_conf</code> in the <code>api</code> section of the config file.</span></p>";
 				size_t len = strlen(msg);
 				if (len >= replacement_max_len) len = replacement_max_len - 1;
 				memcpy(replacement, msg, len);
@@ -1720,7 +1821,9 @@ void datum_api_dash_stats(T_DATUM_API_DASH_VARS *dashdata) {
 		dashdata->STRATUM_TOTAL_SUBSCRIPTIONS = 0;
 		dashdata->STRATUM_HASHRATE_ESTIMATE = 0.0;
 	}
-
+	
+	dashdata->tsms = tsms;
+	dashdata->STRATUM_HASHRATE_AVG = datum_stratum_share_rate(tsms, &dashdata->STRATUM_HASHRATE_AVG_WINDOW_MS, &dashdata->STRATUM_LAST_SHARE_TSMS);
 }
 
 int datum_api_homepage(struct MHD_Connection *connection) {
